@@ -1,0 +1,27 @@
+{
+  "topic": "Gemini/Copilot 非依存・Claude Code 単独の自律 PR レビュー方式の妥当性",
+  "brief": "提案ドラフト（FAIR: Fresh-context Adversarial In-session Review）を敵対的に検証する。争点は ① フレッシュ文脈の Claude 単独レビューが Copilot の他社独立性を本当に代替できるか（相関誤り・自己レビューバイアスの残存リスク）、② 追加課金ゼロ・25分待ち解消が成立するか、③ 偽陰性（バグ見逃し）増のリスクと、それを抑える Layer 構成・ルーティングが適切か。証拠接地で議論し、合意できる最終構成を出す。",
+  "participants": [
+    {
+      "name": "proposer",
+      "model": "claude-sonnet-4-6",
+      "lens": "提案推進の立場。FAIR の3層（機械ゲート=外部参照 / CCRフレッシュ文脈reviewer / 多観点敵対議論）が、同一モデルでも独立性の相当部分を回収し（自己修正盲点の緩和+相関誤りの一部削減）、追加課金ゼロ・同期化で25分待ちを解消できると論証する。相手の懸念に対し具体的な緩和策（CCRフレーミング・差分種別ルーティング・選択的エスカレーション）で応答する。"
+    },
+    {
+      "name": "independence-skeptic",
+      "model": "claude-sonnet-4-6",
+      "lens": "独立性懐疑の立場。同一 Claude モデルは誤りが相関し(60%一致)、フレッシュ文脈でも訓練分布由来の盲点は共有されるため、Copilot の他社独立レビューを完全には代替できないと指摘する。Copilot を手動エスカレーションとして残すべきか、外部独立性をどう最小コストで担保するかを詰める。根拠なき楽観を潰す。"
+    },
+    {
+      "name": "cost-ops",
+      "model": "claude-haiku-4-5",
+      "lens": "コスト・運用・レイテンシの事実検証役。①本Webセッション内subagent/claude -p実行がサブスク対話枠で完結し、6/15からのGitHub Actions/Agent SDK従量クレジットやAPI課金を発生させないか、②Layer2の議論型がトークン肥大でレート制限を圧迫しないか、③同期実行で実際に待ち時間が短縮されるかを、機械的に検証し過大評価を正す。"
+    }
+  ],
+  "synthesizer": {
+    "name": "lead",
+    "instruction": "proposer と independence-skeptic と cost-ops の対立点・合意点を整理し、証拠で支持された最終構成（各 Layer の採否・差分種別ルーティング・Copilot 残置の要否・偽陰性対策）を consensus として提示する。議論を経ても残る真の懸念のみ critical に入れる。",
+    "model": "claude-sonnet-4-6"
+  },
+  "verdict_schema": "{\"verdict\":\"PASS|WARN|FAIL\",\"critical\":[],\"consensus\":\"最終構成の要点1-3文\",\"summary\":\"議論の要約1-2文\"}"
+}

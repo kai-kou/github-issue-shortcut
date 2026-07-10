@@ -1,0 +1,32 @@
+{
+  "topic": "UserPromptSubmit プロンプト自動構造化フックの設計（既定モード・冗長化リスク・output style/skill routing 干渉）",
+  "brief": "ユーザーの生指示を着手前に作業スペックへ展開させる UserPromptSubmit フック（prompt-structuring.sh）の設計案を敵対的にレビューし、(1) 既定モードは auto かオプトイン(off)か、(2) concise-neko output style / L-111（内部作業サイレント）と干渉しないか、(3) スキル自動ルーティング（例: ディープリサーチ→research-runner）を誤誘導しないか、(4) テンプレ項目数は YAGNI 的に過剰でないか、(5) 既存 user-prompt-submit-guard.sh との責務分離、(6) 誤爆（システムメッセージ/長文ペースト）制御、(7) 注入方式（plain stdout vs JSON additionalContext）について合意と critical を出す。対象は設計提案 md。",
+  "participants": [
+    {
+      "name": "simplicity-advocate",
+      "model": "claude-sonnet-5",
+      "lens": "Simplicity First / YAGNI の立場。既定 auto の毎ターン注入が context 肥大・過剰構造化・些末タスクへの摩擦を生むと論じ、『既定は off のオプトイン、または明示トリガー接頭辞のみ発火』を推す。テンプレ 6 項目は多すぎないか、3〜4 項目に削れないかを具体的に指摘する。相手の『auto が当初依頼に忠実』論の弱点（ユーザーは自動整形を頼んだが毎回の摩擦は望んでいない）を突く。"
+    },
+    {
+      "name": "user-value-advocate",
+      "model": "claude-sonnet-5",
+      "lens": "ユーザー価値の立場。当初依頼は『手動指示を自動で適切なプロンプトに整形』であり、off 既定では価値が出ないと論じ、auto 既定 + `!` エスケープ + off モードの三段で opt-out は十分カバーされると主張。雑な短い指示ほど構造化の恩恵が大きい点を根拠に、相手の YAGNI 論に反論する。ただし過剰構造化の防止策（長文スキップ・思考内展開の明記）が十分かは自己批判的に検証する。"
+    },
+    {
+      "name": "harness-integration",
+      "model": "claude-sonnet-5",
+      "lens": "ハーネス統合・干渉の立場。(a) concise-neko output style / L-111（内部作業サイレント・逐次実況禁止）と『テンプレへ展開せよ』が衝突しないか（注入文の「思考内で展開・垂れ流さない」で緩和できているか）、(b) スキル自然文ルーティング（ディープリサーチして→research-runner 等）を構造化ディレクティブが上書き/誤誘導しないか、(c) 既存 user-prompt-submit-guard.sh との責務分離（別フックが正しいか、guard の advice と二重に長文注入されないか）、(d) システムメッセージ/task-notification/system-reminder への誤爆制御、を検証する。critical は実害あるもののみ。"
+    },
+    {
+      "name": "hook-spec-correctness",
+      "model": "claude-haiku-4-5",
+      "lens": "Claude Code フック公式仕様との整合を機械的に検証する立場。UserPromptSubmit の stdout がコンテキスト注入されること・exit 2 がプロンプトをブロックすること・additionalContext は JSON 出力時のフィールドであることを確認し、設計案の『plain stdout 注入・常に exit 0 非ブロッキング』が仕様どおりかを判定する。スキップ条件（スラッシュ/接頭辞/システム注入/長さ閾値/質問判定）の抜けや誤検知パターンを列挙する。前置き不要・要点のみ。"
+    }
+  ],
+  "synthesizer": {
+    "name": "lead",
+    "instruction": "各レンズの対立点と合意点を整理し、実装に落とせる具体的決定を出す: (1) 既定モード（auto / opt-in / トリガー接頭辞）を1つ選ぶ、(2) 最終テンプレ項目（何項目・どれ）、(3) スキップ条件の確定リスト、(4) output style / skill routing 干渉への必須緩和策、(5) 注入方式（stdout か JSON か）。critical は議論を経て残った真の問題のみ。",
+    "model": "claude-sonnet-5"
+  },
+  "verdict_schema": "{\"verdict\":\"PASS|WARN|FAIL\",\"critical\":[],\"decisions\":{\"default_mode\":\"\",\"template_fields\":[],\"skip_conditions\":[],\"injection_method\":\"\",\"mitigations\":[]},\"consensus\":\"合意の1-2文\",\"summary\":\"議論要約1-2文\"}"
+}

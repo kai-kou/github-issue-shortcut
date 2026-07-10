@@ -1,0 +1,158 @@
+#!/bin/bash
+set -euo pipefail
+# PreToolUse hook: PR作成前の未コミットファイルチェック（ハードコンストレイント Lv3）
+#
+# Bash ツールで gh pr create が実行される前に自動チェック。
+# 未コミット・未push のファイルがあれば PR 作成をブロックする。
+
+input=$(cat)
+
+# ツール名を取得（printf を使い、バックスラッシュを含む入力でも echo のエスケープ解釈に依存しない）
+tool_name=$(printf '%s\n' "$input" | jq -r '.tool_name // ""')
+
+# is_pr_create=1 のときだけ後段のゲート（git-clean + self_review_check + Layer 1 リマインダー）を実行する
+is_pr_create=0
+command=""
+
+if [ "$tool_name" = "mcp__github__create_pull_request" ]; then
+  # MCP 経由の PR 作成（クラウド主経路。gh pr create は proxy 403 で失敗するため）。
+  # コマンド文字列を持たないため直接ゲートへ。
+  is_pr_create=1
+elif [ "$tool_name" = "Bash" ]; then
+  command=$(printf '%s\n' "$input" | jq -r '.tool_input.command // ""')
+  # 行頭アンカーのみだと `git commit && gh pr create` のような複合コマンドで
+  # gh pr create がバイパスされる（pre-tool-use-router.sh のルーティング判定はアンカーなし
+  # のため両者がズレる）。区切り文字（空白・;・|・&）の直後も許容する。
+  if printf '%s\n' "$command" | grep -qE '(^|[[:space:];|&])gh\s+pr\s+create(\s|$)'; then
+    is_pr_create=1
+  fi
+else
+  # Bash / MCP PR 作成以外のツールは対象外
+  exit 0
+fi
+
+# --- poll_pr_reviews.sh 引数バリデーション（Lv3 ハードコンストレイント・Bash 経路のみ） ---
+# poll_pr_reviews.sh が呼び出される場合、引数の順序を事前チェック
+if [ "$tool_name" = "Bash" ] && printf '%s\n' "$command" | grep -qE 'poll_pr_reviews\.sh'; then
+  # 引数を抽出（bash tools/poll_pr_reviews.sh arg1 arg2 arg3）
+  arg1=$(echo "$command" | sed -E 's/.*poll_pr_reviews\.sh\s+//' | awk '{print $1}')
+  arg2=$(echo "$command" | sed -E 's/.*poll_pr_reviews\.sh\s+//' | awk '{print $2}')
+  arg3=$(echo "$command" | sed -E 's/.*poll_pr_reviews\.sh\s+//' | awk '{print $3}')
+
+  errors=""
+
+  # 第1引数が owner/repo 形式でなければエラー
+  if [ -n "$arg1" ] && ! echo "$arg1" | grep -qE '^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$'; then
+    errors="${errors}第1引数 '${arg1}' が owner/repo 形式ではありません。\n"
+  fi
+
+  # 第2引数が正の整数でなければエラー
+  if [ -n "$arg2" ] && ! echo "$arg2" | grep -qE '^[0-9]+$'; then
+    errors="${errors}第2引数 '${arg2}' がPR番号（正の整数）ではありません。\n"
+  fi
+
+  # 第3引数にパス区切りがなければエラー（リポジトリ汚染防止）
+  if [ -n "$arg3" ] && ! echo "$arg3" | grep -qE '/'; then
+    errors="${errors}第3引数 '${arg3}' に / が含まれていません。リポジトリルートに状態ファイルが作成されます。\n"
+  fi
+
+  if [ -n "$errors" ]; then
+    correct_usage="正しい形式: bash tools/poll_pr_reviews.sh {owner}/{repo} {pr_number} /tmp/pr_review_{pr_number}.json"
+    jq -n --arg e "$errors" --arg u "$correct_usage" \
+      '{"systemMessage": ("[pre-tool-use-validate] poll_pr_reviews.sh の引数が不正です。\n\n" + $e + "\n" + $u)}'
+    exit 2
+  fi
+
+  exit 0
+fi
+
+# PR 作成（gh pr create / MCP create_pull_request）でなければスキップ
+if [ "$is_pr_create" -ne 1 ]; then exit 0; fi
+
+# git リポジトリでなければスキップ
+if ! git rev-parse --git-dir >/dev/null 2>&1; then exit 0; fi
+
+errors=""
+
+# 1. 未ステージの変更チェック
+if ! git diff --quiet 2>/dev/null; then
+  changed_files=$(git diff --name-only 2>/dev/null | head -10)
+  errors="${errors}未ステージの変更があります:
+${changed_files}
+
+"
+fi
+
+# 2. ステージ済み未コミットの変更チェック
+if ! git diff --cached --quiet 2>/dev/null; then
+  staged_files=$(git diff --cached --name-only 2>/dev/null | head -10)
+  errors="${errors}ステージ済み未コミットの変更があります:
+${staged_files}
+
+"
+fi
+
+# 3. 未追跡ファイルチェック
+untracked=$(git ls-files --others --exclude-standard 2>/dev/null | head -10)
+if [ -n "$untracked" ]; then
+  errors="${errors}未追跡ファイルがあります:
+${untracked}
+
+"
+fi
+
+# 4. 未pushコミットチェック
+current_branch=$(git branch --show-current 2>/dev/null)
+if [ -n "$current_branch" ]; then
+  if git rev-parse "origin/$current_branch" >/dev/null 2>&1; then
+    unpushed=$(git rev-list "origin/$current_branch..HEAD" --count 2>/dev/null || echo "0")
+    if [ "$unpushed" -gt 0 ]; then
+      errors="${errors}未pushのコミットが ${unpushed} 件あります。git push してください。
+
+"
+    fi
+  else
+    # リモートにブランチが存在しない場合、ブランチ自体が未push
+    local_commits=$(git rev-list HEAD --count 2>/dev/null || echo "0")
+    if [ "$local_commits" -gt 0 ]; then
+      errors="${errors}ブランチ '${current_branch}' がリモートに存在しません。git push -u origin ${current_branch} してください。
+
+"
+    fi
+  fi
+fi
+
+if [ -n "$errors" ]; then
+  jq -n --arg e "$errors" \
+    '{"systemMessage": ("[pre-pr-create-check] PR作成をブロックしました。未コミット・未pushの変更があります。\n\n" + $e + "先にすべての変更をコミット＆pushしてから PR 作成（gh pr create / mcp__github__create_pull_request）を再実行してください。\n手順: git add <ファイル> → git commit → git push -u origin <ブランチ名>")}'
+  exit 2
+fi
+
+# 5. セルフレビュー機械チェック（docs/rules/self-review-checklist.md・Lv3）
+# Error 検出時のみブロック。チェッカー自体の異常（python 不在等・exit>1）ではブロックしない。
+# サブディレクトリから gh pr create が実行されてもスキップされないようリポジトリルートで実行する
+repo_root=$(git rev-parse --show-toplevel 2>/dev/null || echo ".")
+if [ -f "$repo_root/tools/self_review_check.py" ]; then
+  cd "$repo_root" || exit 0
+  check_exit=0
+  if command -v timeout >/dev/null 2>&1; then
+    check_output=$(timeout 60 python3 tools/self_review_check.py 2>&1) || check_exit=$?
+  else
+    # macOS 等 timeout 不在環境のフォールバック
+    check_output=$(python3 tools/self_review_check.py 2>&1) || check_exit=$?
+  fi
+  if [ "$check_exit" -eq 1 ]; then
+    jq -n --arg o "$check_output" \
+      '{"systemMessage": ("[pre-pr-create-check] セルフレビュー機械チェックで Error を検出したため PR 作成をブロックしました。\n\n" + $o + "\n\nError を修正してから PR 作成を再実行してください（チェックシート: docs/rules/self-review-checklist.md）。")}'
+    exit 2
+  fi
+fi
+
+# 6. Layer 1 セルフレビュー リマインダー（FAIR・全PR必須・非ブロッキング）
+# Layer 1（フレッシュ文脈レビュー）は PR 作成「後」に実行する必要があるためここではブロックしない。
+# クラウドセッションではビルトインの /code-review スラッシュコマンドを headless で起動できないため、
+# フレッシュ文脈サブエージェント（事前文脈なしで PR 差分を敵対的にレビュー）で Layer 1 を代替する。
+# 詳細は docs/rules/ai-reviewer-strategy.md。
+jq -n '{"systemMessage": "[pre-pr-create-check] Layer 0 機械ゲート通過。PR 作成後に Layer 1 セルフレビュー（FAIR・全PR必須）を必ず実行してください。対話セッションでは /code-review --comment、クラウドセッションではフレッシュ文脈サブエージェントで PR 差分をレビュー。これはブロックではありません（docs/rules/ai-reviewer-strategy.md）。"}'
+
+exit 0

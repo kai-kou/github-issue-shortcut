@@ -1,0 +1,27 @@
+{
+  "topic": "AI Agent 全工程実行を前提にした見積もり（SP）の再設計",
+  "brief": "本プロジェクトはリサーチ・判断・実装・レビューをすべて Claude Code が実行する。従来の SP（人間労力ベース）とギャップが大きい。AI 実行を前提にした SP の『単位』をどう定義し、推定↔実測の較正ループをどこまで自動化し、velocity の gaming/インフレをどう防ぐかを敵対的に議論して合意を出す。制約: (1) 実績データはまだゼロ（content/analytics/sprint 不在）。(2) 計測基盤 sprint_session_metrics.py / half_day_summary.py と owner(PO) ロール・session-sprint-rules.md は既存。(3) 過剰設計を避け、まず運用に乗る最小実装にする。論点: A) SP の単位は複雑性3軸(component=独立ステップ/ファイル数, coordinative=相互依存/SSOT同期/横断影響, dynamic=不確実性/要リサーチ/clarification見込み)を主軸にするか、トークン/レビュー往復/自律ループ回数の実測を主軸にするか。B) 推定 SP↔実測 SP の較正ループをどこまで自動化するか(記録・誤差集計・ルーブリック自動更新)。C) velocity を性能目標化しない gaming 防止策。D) 既存資産(sprint_session_metrics.py, half_day_summary collect_sprint, owner ロール, §3/§6)をどう活かし何を最小追加するか。",
+  "participants": [
+    {
+      "name": "rubric-advocate",
+      "model": "claude-sonnet-4-6",
+      "lens": "複雑性3軸ルーブリック(component/coordinative/dynamic)を SP の主軸にすべきと主張する立場。理由: SP は『着手前に』付ける見積もりであり、トークンやレビュー往復は事前に読めない(事後にしか分からない)。実測は事後検証アンカーに留め、事前見積もりはルーブリックで決定論的に付与すべき。相手(実測派)の『実測こそ唯一信頼できる』に対し『事前に測れないものを単位にはできない』と反論せよ。ミニマリスト派の『データを貯めてから』には『ルーブリックが無いと貯めた実測の解釈軸が無い』と反論せよ。"
+    },
+    {
+      "name": "metrics-empiricist",
+      "model": "claude-sonnet-4-6",
+      "lens": "AI 実行では実測(tokens/sp, レビュー往復回数, 自律ループ/サーキットブレーカー発動回数, clarification頻度, PRリードタイム)こそ唯一信頼できる較正アンカーだと主張する立場。理由: 複雑性3軸は主観的で人間が gaming しやすく、AI 実行の真のコストドライバー(コンテキスト消費・トークン)を捉えない。Anthropic 自身も autonomy を deployment behavior から経験的に測定している。相手(ルーブリック派)の主観性を突き、ルーブリックは実測で継続較正されない限りドリフトすると反論せよ。"
+    },
+    {
+      "name": "minimalist-pragmatist",
+      "model": "claude-sonnet-4-6",
+      "lens": "実績データがまだゼロ(content/analytics/sprint 不在)である事実を最重視する立場。過剰設計(新ルーブリック大改修・自動ルーブリック更新)は時期尚早で、まず Session-Id/sp:N の記録徹底と既存計測の自動実行で実測を貯めることが先だと主張する。両者の理論は実測データ無しには検証不能だと指摘し、最小実装(既存§3.2の工程別標準SP穴埋め + 記録ハーネス強化)に絞れと反論せよ。ただし『何も決めない』のではなく、データが貯まるまでの暫定ルーブリックは必要と認めよ。"
+    }
+  ],
+  "synthesizer": {
+    "name": "lead",
+    "instruction": "3者の対立点と合意可能点を整理し、本プロジェクトで実際に運用に乗る現実的な統合案を合意として提示する。必ず以下を含めること: (1) SP 事前見積もりの方式(ルーブリックか実測かハイブリッドか)。(2) 推定↔実測較正ループの自動化レベルと実装場所。(3) gaming 防止の具体策。(4) 既存資産を活かした最小追加実装リスト(ファイル単位)。(5) スコープが sp:8 級なら分割提案。critical[] には議論を経ても残る真の懸念のみ入れる。",
+    "model": "claude-sonnet-4-6"
+  },
+  "verdict_schema": "{\"verdict\":\"PASS|WARN|FAIL\",\"critical\":[],\"consensus\":\"統合案の要点3-5文\",\"sp_method\":\"事前見積もり方式の合意(1文)\",\"calibration\":\"較正ループの自動化レベル(1文)\",\"anti_gaming\":\"gaming防止策(1文)\",\"min_implementation\":[\"ファイル単位の最小追加実装リスト\"],\"summary\":\"議論の要約1-2文\"}"
+}
