@@ -323,7 +323,7 @@ CI/CD: GitHub Actions（test → deploy）・デフォルトブランチ main
 | OQ-7 | ~~カスタムドメインの選定~~ **決定済み（2026-07-10）: カスタムドメインは現時点で取得しない**。本番 URL は workers.dev サブドメイン（名称は M0 で確定）で運用する。`__Host-` Cookie はホスト単位のため workers.dev でも問題ない。TWA（M4・保留）を実施判断する際にドメイン要否を再検討する | 決定済み |
 | OQ-8 | オフラインキュー（FR-22）採用時の重複防止（FR-24）との整合: キュー再送を issue_log 照合とどう組み合わせるか | M3 設計時 |
 | OQ-9 | セッション TTL の設計（案: refresh token の 6 ヶ月に揃え、失効時は再ログイン誘導。アイドル失効は設けない） | M1 実装開始時 |
-| OQ-10 | GitHub App の表示名・公開名（ユーザーに見える名称）。候補提案済み（Issue Shortcut / Issue Dash / Poissue / Issue Toss・詳細はレビュー記録）・ユーザー選定待ち。注: 商標配慮のため名称に「GitHub」を含めない | M1 公開前 |
+| OQ-10 | ~~GitHub App の表示名・公開名~~ **決定済み（2026-07-10）: 「Issue Shortcut」**（商標配慮で名称に「GitHub」を含めない。プロダクト名・リポジトリ名は GitHub Issue Shortcut のまま） | 決定済み |
 
 ## 11. 関連ドキュメント
 
