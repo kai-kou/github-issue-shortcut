@@ -1,0 +1,32 @@
+{
+  "topic": "claude-code-base のワークフロー基盤（ルール・スキル定義・ハーネス）の徹底監査と改善点の特定",
+  "brief": "本リポジトリはClaude Code自律運用の汎用ベースであり、docs/rules/（約40ルール・Hot/Warm層）、.claude/skills/（14スキル）、.claude/hooks/（17フック）、.claude/settings.json、CLAUDE.md、.claude/agents/ でワークフローを構成する。対象が広いため各専門家は自分のレンズで重点領域を選び、Glob/Grep/Readで実ファイルを横断検証すること（推測でなく実ファイルの証拠に接地する）。争点: ① 公式Claude Code仕様・最新機能との整合（hooks/skills/agentsの仕様準拠・非推奨/未活用機能）、② ルール間の矛盾・SSOT重複・ドキュメントと実装のdesync（L-094型）、③ 運用フローの実効性とコスト（トークン浪費・冗長な手順・確認境界の過不足）、④ 過剰設計・肥大化（YAGNI違反・ルールが多すぎて遵守不能になっていないか）。各改善提案は他の専門家が敵対的に検証し、議論を経ても残ったものだけを最終improvements[]に含める。各improvementには根拠（ファイルパス・行の証拠）を必ず添える。",
+  "participants": [
+    {
+      "name": "cc-expert",
+      "model": "claude-sonnet-5",
+      "lens": "Claude Code専門家。公式仕様（hooks イベント・skills frontmatter・agents 定義・settings.json スキーマ・MCP）との整合性を検証する。.claude/hooks/*.sh と .claude/settings.json の hooks 登録の対応、.claude/skills/*/SKILL.md の frontmatter/description 品質（トリガー精度）、.claude/agents/owner.md の仕様準拠、非推奨パターンや未活用の新機能（例: 公式機能で代替できる自前実装）を具体的ファイル証拠付きで指摘する。docs/rules/hook-events-reference.md・claude-code-optimization.md の記述が現行 Claude Code 仕様と乖離していないかも検証する。"
+    },
+    {
+      "name": "auditor",
+      "model": "claude-sonnet-5",
+      "lens": "監査官。整合性・一貫性の検査役。① SSOT宣言ファイル間の重複・矛盾（user-confirmation-minimization / core-principles / CLAUDE.md 等の境界リスト同期）、② ドキュメントと実装のdesync（ルールが参照するツール・フック・スキルが実在するか、tools/check_rules_sync.sh の ESSENTIAL_RULES と .claude/rules/ symlink の一致、SKILL.md が参照するスクリプトの存在）、③ Hot層の肥大化（lessons-core.md の上限遵守・CLAUDE.md の行数）、④ 廃止済み機能（Copilot/Geminiレビュー等）への残存参照、を grep/実ファイル検証で洗い出す。推測での指摘は禁止、必ずファイルパスと該当箇所を示す。"
+    },
+    {
+      "name": "ops-improvement",
+      "model": "claude-sonnet-5",
+      "lens": "業務改善スペシャリスト。運用フローの実効性・効率を検証する。① セッション開始→タスク着手→PR→マージ→完了報告の全体フローに無駄・重複ステップがないか、② トークン/コスト効率（常駐Hot層の総量・毎ターン注入されるoutput style・フックの注入量）、③ 確認境界A-1〜A-6や通知トリアージが実運用で機能する設計か（形骸化リスク）、④ 計測・フィードバックループの欠落（ルールが守られているかを検知する仕組みの有無）、⑤ 新規プロジェクトへの適用コスト（bootstrap/apply-baseの体験）。改善は効果とコストの見積もり付きで提案する。"
+    },
+    {
+      "name": "simplicity-skeptic",
+      "model": "claude-sonnet-5",
+      "lens": "シンプリシティ懐疑役（敵対的検証の要）。① 既存基盤の過剰設計・肥大化（ルール数・フック数がLLMの遵守能力・保守能力を超えていないか、1箇所でしか使わない抽象化、YAGNI違反）を突く。② 同時に、他の専門家の「追加せよ」提案に対して敵対的に反論する: その追加は本当に問題を解くか、既存ルールの削減・統合で足りないか、追加の保守コストが利益を上回らないか。「ルールを足す」より「削る・統合する」解を常に対案として出す。round2では他者の全提案に必ず賛否を表明する。"
+    }
+  ],
+  "synthesizer": {
+    "name": "lead",
+    "instruction": "全投稿を読み、対立点・合意点を整理する。議論を経ても残った改善点（相互検証で否定されなかったもの）だけを improvements[] に列挙する。各要素は {\"title\": \"Issue化可能な1文タイトル\", \"category\": \"rules|skills|hooks|workflow|docs\", \"severity\": \"high|medium|low\", \"sp\": 1|2|3|5, \"summary\": \"問題と改善案の要約2-3文\", \"evidence\": \"根拠となるファイルパス・箇所\"} の形式。重複・同根の指摘は1件に統合する。critical には放置するとワークフローが破綻する真の問題のみを入れる。",
+    "model": "claude-sonnet-5"
+  },
+  "verdict_schema": "{\"verdict\":\"PASS|WARN|FAIL\",\"critical\":[],\"improvements\":[{\"title\":\"\",\"category\":\"rules|skills|hooks|workflow|docs\",\"severity\":\"high|medium|low\",\"sp\":3,\"summary\":\"\",\"evidence\":\"\"}],\"consensus\":\"最終合意の要点1-3文\",\"summary\":\"議論の要約1-2文\"}"
+}

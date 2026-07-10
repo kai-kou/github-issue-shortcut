@@ -1,0 +1,27 @@
+{
+  "topic": "Loop Engineering 論文（IEEE 形式）のプロジェクト適用検討",
+  "brief": "添付 PDF『Loop Engineering: The Anthropic Playbook for Designing Systems That Prompt Your Agents』（Osmani/Cherny/Steinberger ら・2026年6月）を精査し、kai-kou/claude-code-base（汎用 Claude Code 自律運用ベース）に適用できる概念・不足している要素・リスクを洗い出す。論文の核心は①ハーネスの一層上に『ループ』を置く4層スタック②1ターンの5ムーブ（Discovery/Handoff/Verification/Persistence/Scheduling）③Generator/Evaluator 分離（自己評価は必ず甘い）④4コスト（Verification debt・Comprehension rot・Cognitive surrender・Token blowout）⑤5つのアンチパターン。プロジェクトはすでに CronCreate/スキル/サブエージェント/Worktree/MCP コネクタ/PR レビューフローを持つ。何が足りていて何が足りないかを敵対的に議論し、具体的な改善提案に合意せよ。",
+  "participants": [
+    {
+      "name": "applicability-scout",
+      "model": "claude-sonnet-4-6",
+      "lens": "論文の5ムーブ×6パーツと本プロジェクトの現状実装（CLAUDE.md・skills/・hooks/・CronCreate・discussion_whiteboard 等）を1対1で照合し、『既に実装済み』『部分実装』『完全に欠落』の3分類で整理する。特に Generator/Evaluator 分離・独立した Skeptic 評価役・State File（cross-round memory）・Token cap（budget caps）・サーキットブレーカー連動の欠落有無を重点的に調べる。プロジェクトのルールファイル（docs/rules/）やスキル（.claude/skills/）も Read して現状を正確に把握した上で主張すること。"
+    },
+    {
+      "name": "skeptic-reviewer",
+      "model": "claude-sonnet-4-6",
+      "lens": "applicability-scout の分類に敵対的に反論する立場。『実はすでに実装済みではないか』『YAGNI（今必要ないのでは）』『過剰適用のリスク』を追及する。特に『本プロジェクトは単一セッション運用が基本であり、ループの複雑さが運用コスト増大を招かないか』『論文の懸念（Comprehension rot・Cognitive surrender）はこのプロジェクトでは飼い主（ユーザー）が Human-on-the-loop を維持しているため軽減されているのではないか』を論点として展開する。applicability-scout の主張のうち弱点・誇張・重複実装を具体的に指摘すること。"
+    },
+    {
+      "name": "impl-designer",
+      "model": "claude-haiku-4-5",
+      "lens": "applicability-scout と skeptic-reviewer の議論を受け、両者が合意した『実装すべき欠落』に対して具体的な実装案を提示する。対象は：①どのファイルを新設・改修するか（パス名込み）②どのスキル／フック／ルールを変更するか③実装の優先順位（今すぐ/次スプリント/長期）④想定 SP（1/2/3/5/8）。YAGNI 原則（今必要でない抽象化を入れない）を守り、最小限の変更で最大効果を出す案にすること。"
+    }
+  ],
+  "synthesizer": {
+    "name": "lead",
+    "model": "claude-sonnet-4-6",
+    "instruction": "3役の議論全文を show で読み、①今すぐ実装すべき改善（高優先・具体的）②検討すべき改善（中優先・条件付き）③不要・過剰適用（採用しない）の3段階に仕分けた提案リストを consensus として post する。最終 verdict は PASS（現状で十分）/ WARN（部分的に改善余地あり）/ FAIL（重大な欠落がある）で判定する。summary は『飼い主（ユーザー）がこの1ページを読めば全提案が理解できる』レベルの日本語で書く。"
+  },
+  "verdict_schema": "{\"verdict\":\"PASS|WARN|FAIL\",\"critical\":[],\"immediate_actions\":[],\"consider_actions\":[],\"skip_reasons\":[],\"summary\":\"\"}"
+}

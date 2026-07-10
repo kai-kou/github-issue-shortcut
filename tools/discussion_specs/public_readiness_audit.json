@@ -1,0 +1,32 @@
+{
+  "topic": "リポジトリのパブリック化準備監査（固有情報の残留検出と対処方針）",
+  "brief": "kai-kou/claude-code-base（汎用 Claude Code 自律運用ベース・現 private）をパブリック化しても問題がない状態にするため、機械スキャンインベントリ（targets 参照）と実リポジトリ（/home/user/claude-code-base・Grep/Read で直接検証可）を監査する。論点: (1) 秘密情報・個人情報・内部インフラ情報の漏えいリスク（公開ブロッカー）、(2) 元プロジェクト（kinako-mocchi・YouTube 動画制作）固有の残留のうち汎用化すべきもの vs 『プロジェクト例』として明示されており許容できるもの、(3) kai-kou/github-issue-shortcut プレースホルダーとハードコードの不整合、(4) content/discussions・docs/reviews 等の歴史記録を公開リポジトリに残すべきか、(5) git 履歴のリスクと対処（履歴書き換えは高コスト・要否判定）。各自の主張は必ずファイルパス:行番号の実証拠に基づくこと。過剰削除（ツールが壊れる・自己参照まで消す・歴史記録の価値毀損）も過小対応（固有情報の見逃し）も両方減点対象として敵対的に検証せよ。",
+  "participants": [
+    {
+      "name": "secret-hunter",
+      "model": "claude-haiku-4-5",
+      "lens": "秘密情報・認証情報・個人情報・内部インフラ情報の検出（機械的検証）。インベントリに載っていない漏えいリスクを Grep で独自に探す（トークン実値・メール実値・Slack ID 実値・アカウント ID・内部 URL・氏名等）。kinamocchi-tech.workers.dev 等の実在サブドメイン記載の公開リスクを評価する。git 履歴（git log -p の抜き取り検査）に過去の秘密が残っていないかも確認する。検出ゼロの主張には根拠（実行した検索パターン）を必ず添える。"
+    },
+    {
+      "name": "residue-auditor",
+      "model": "claude-sonnet-5",
+      "lens": "元プロジェクト（kinako-mocchi・YouTube 動画制作ドメイン）固有の残留の判定。各該当箇所を Read で確認し、(a)『プロジェクト例』と明示され汎用ベースの例示として機能している→許容、(b) 明示なく元プロジェクト前提の記述が残り転用先で誤動作・混乱を招く→汎用化必須、(c) 元プロジェクトの内部事情（監修者名・Issue 番号・キャラクター名・収益状況）で例示価値がない→削除/置換必須、の3分類で具体的に判定する。判定にはファイルパス:行番号を添える。"
+    },
+    {
+      "name": "template-checker",
+      "model": "claude-haiku-4-5",
+      "lens": "プレースホルダー一貫性の機械的検証。kai-kou/github-issue-shortcut/GitHub Issue Shortcut 等のプレースホルダー規約と kai-kou ハードコードの不整合を列挙する。scripts/bootstrap.sh・scripts/apply-to-repo.sh の置換ロジックを Read し、どのプレースホルダーが実際に置換されるか・ハードコードが bootstrap で置換漏れになるかを検証する。自己参照（本リポジトリ自身を指す README・apply-base スキル・plugin.json の kai-kou/claude-code-base）は正当であることに注意し、誤指摘しない。"
+    },
+    {
+      "name": "release-defender",
+      "model": "claude-sonnet-5",
+      "lens": "過剰対応への敵対的反論役。他者の指摘に対し (1) 削除・置換でツール/フック/CI/スキルの参照が壊れないか（Grep で参照元を検証）、(2) 自己参照や歴史記録（docs/reviews・content/discussions）は公開しても実害がなく文書価値があるのではないか、(3) git 履歴書き換えのような高コスト対処が本当に必要か、を根拠付きで反論・検証する。ただし真の漏えいリスクを庇わない（秘密情報・個人情報は無条件で除去に同意する）。"
+    }
+  ],
+  "synthesizer": {
+    "name": "lead",
+    "instruction": "全投稿を読み、対立点・合意点を整理し、修正アクションを (A) 公開ブロッカー=必須、(B) 汎用性改善=推奨、(C) 対応不要=現状維持（理由付き）の3グループに分けた実行計画を consensus として出す。各アクションにはファイルパスを明記する。最終判定: 現状のままパブリック化してよければ PASS、修正後なら公開可能なら WARN、修正しても公開に重大リスクが残るなら FAIL。critical[] には A グループ（公開ブロッカー）のみ入れる。",
+    "model": "claude-sonnet-5"
+  },
+  "verdict_schema": "{\"verdict\":\"PASS|WARN|FAIL\",\"critical\":[\"公開ブロッカーの項目\"],\"recommended\":[\"汎用性改善の項目\"],\"keep\":[\"現状維持と理由\"],\"consensus\":\"実行計画の要約\",\"summary\":\"議論の要約1-2文\"}"
+}

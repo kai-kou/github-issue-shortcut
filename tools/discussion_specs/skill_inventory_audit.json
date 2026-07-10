@@ -1,0 +1,32 @@
+{
+  "topic": "Skill 棚卸し監査（2026-07-07）: 全 Skill の維持/修正/統合/分割/削除/作り直し判定",
+  "brief": "kai-kou/claude-code-base の全 Skill（.claude/skills/ の 14 スキル + .claude/commands/next.md, status.md + パーソナル /root/.claude/skills/session-start-hook）を『甘く見ない監査官』の姿勢で監査する。targets の SKILL.md 実物を必ず Read してから判断する（推測禁止）。検出観点: トリガー衝突（description/発火条件の被り）・死蔵（用途が現作業と合わない）・陳腐化（参照ファイル/コマンド/仕様が存在しない/古い）・肥大化（本文が長すぎ/詰め込みすぎ）・責務重複（統合すべき群）・欠落（繰り返す作業なのに Skill 化されていない）。各 description の発火精度を10点満点で採点し、7点未満は書き換え案を出す。各指摘は必ず file:line の根拠を付け、確信が持てないものは『要確認』と明記する。リポジトリは /home/user/claude-code-base（絶対パスで読むこと）。",
+  "participants": [
+    {
+      "name": "trigger-auditor",
+      "model": "claude-sonnet-5",
+      "lens": "トリガー精度監査官。全 targets の frontmatter description を読み比べ、(1) トリガー衝突: 同じユーザー発話で複数スキルが競合するペア（例: research-runner vs ビルトイン deep-research、self-reviewer vs ビルトイン code-review、improvement-groomer vs self-improvement-loop vs project-sync、project-manager vs user-instruction-issue-rules 常駐ルール）を具体的な発話例つきで特定する。(2) 各 description の発火精度を10点満点で採点（採点基準: 何をするスキルか明確か/いつ使うかのトリガー語が入っているか/類似スキルとの境界が書かれているか）。7点未満には具体的な書き換え案（description 全文）を出す。全スキル分の採点表を post すること。"
+    },
+    {
+      "name": "staleness-auditor",
+      "model": "claude-haiku-4-5",
+      "lens": "陳腐化・実在性監査官（機械的検証）。各 SKILL.md 本文が参照するファイルパス・スクリプト（tools/*.py 等）・コマンド・ルールファイル（docs/rules/*.md）・外部ツール（gh コマンド等）を抽出し、Bash（ls / test -f / grep）で /home/user/claude-code-base 内の実在を1件ずつ検証する。存在しない参照・クラウド環境で 403 になる gh 直叩き手順（L-114: クラウドでは MCP が一次経路）・廃止済み機能（Copilot/Gemini レビュー依頼等）への言及を、SKILL.md のファイル名と行番号つきで列挙する。検証コマンドの実行結果を evidence として post する。推測禁止。"
+    },
+    {
+      "name": "structure-auditor",
+      "model": "claude-sonnet-5",
+      "lens": "構造監査官。各 SKILL.md の肥大化（公式ガイドは 500 行未満推奨だが、実質は『毎回コンテキストに載る本文が役割に対して過剰か』で判定。特に skill-creator 486行・research-runner 337行・workflow-health-check 335行）、責務重複（統合候補: retrospective/retro-try-handler、improvement-groomer/self-improvement-loop/waiting-user-handler、project-manager/project-sync、next/status コマンド）、分割すべき詰め込み、死蔵（このリポジトリ＝汎用ベーステンプレートの現用途で使われないスキル）を判定する。統合案は『どれを残しどれを吸収するか』まで具体化する。各判定に file:line の根拠必須。"
+    },
+    {
+      "name": "gap-auditor",
+      "model": "claude-sonnet-5",
+      "lens": "欠落監査官。リポジトリの CLAUDE.md・docs/rules/・.claude/hooks/・tools/ を調査し、『ルールやツールとして繰り返し実行される定型フローなのに Skill 化されていない作業』を特定する（例: 議論型レビュー（run_discussion_review.py）の起動手順、lessons 管理（lessons_guard.py）、Slack 通知運用、GitHub MCP フォールバック、apply-to-repo 後の検証等が候補か実物を読んで判定）。逆に『Skill 化する価値がない（ルール常駐で足りる）もの』を新設候補から除外する審美眼も発揮する。新設候補は name/description/根拠（どのルール・ツールが該当か）のセットで提案する。"
+    }
+  ],
+  "synthesizer": {
+    "name": "lead",
+    "instruction": "4 監査官の指摘を相互反論の結果で濾過し（反論で否定された指摘は除外）、(1) 全 17 スキルの一覧表（name / 行数 / description 採点 / 推奨アクション【現状維持/description修正のみ/統合/分割/削除/作り直し】）、(2) 問題リスト（深刻度 高→低・根拠 file:line つき）、(3) 新設スキル候補、(4) 今すぐやる 3 つ、(5) 作り直し判定一覧、を consensus として post し、verdict JSON を出す。確信が持てない指摘は『要確認』フラグを維持する。",
+    "model": "claude-sonnet-5"
+  },
+  "verdict_schema": "{\"verdict\":\"PASS|WARN|FAIL\",\"critical\":[\"議論を経ても残った深刻度高の問題\"],\"summary\":\"監査結果の要約1-2文\"}"
+}
