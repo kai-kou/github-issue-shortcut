@@ -212,7 +212,7 @@ Cloudflare Workers（単一 Worker）
 └── Workers Secrets: GitHub App client secret・トークン暗号鍵
 
 開発: wrangler v4（wrangler.jsonc）/ TypeScript / @cloudflare/vitest-pool-workers
-CI/CD: GitHub Actions（test → deploy）・デフォルトブランチ main
+CI/CD: GitHub Actions（test / lint）+ Workers Builds（git 連携・push で自動デプロイ・PR プレビュー URL 自動投稿）・デフォルトブランチ main
 将来: TWA（Bubblewrap）で Play 配布（M4）
 ```
 
