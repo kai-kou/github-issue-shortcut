@@ -17,6 +17,8 @@
 
 **製品名**: GitHub Issue Shortcut
 
+> 注: GitHub App の公開名（OQ-10）は商標配慮で「GitHub」を含めない候補から選定中。App 名確定時に製品名表記（本書・README 等）も合わせて見直す。
+
 **キャッチコピー案**（ユーザー選定待ち・2026-07-10 追加提案を含む）:
 
 1. 「思いついた瞬間、もう Issue になっている。」
@@ -77,7 +79,7 @@ Cloudflare Workers（単一 Worker）
 
 - **認証**: GitHub App（Issues: write の最小権限）+ フルページリダイレクトの OAuth。トークン交換・保管はサーバー側（[認証リサーチ §7](../research/2026-07-10-auth-architecture.md)）
 - **UX**: 起動即入力画面（app shell precache でサブ秒表示）+ 楽観的 UI + 失敗時下書き保全（[UX リサーチ §4–5](../research/2026-07-10-mobile-ux-pwa.md)）
-- **段階拡張**: MVP（起票最短）→ M2（shortcuts + URL パラメータ + Share Target）→ M3（スマート入力・オフラインキュー）→ M4（TWA で Play 配布）
+- **段階拡張**: MVP（起票最短）→ M2（shortcuts + URL パラメータ + Share Target）→ M3（スマート入力・オフラインキュー）→ M4（TWA で Play 配布・実施判断保留）
 
 ## 7. 夜も眠れない問題
 
@@ -121,7 +123,7 @@ Cloudflare Workers（単一 Worker）
 |---|---|---|
 | チーム | 開発者本人（オーナー / レビュー）+ Claude Code（自律スプリント実装） | AI 実行コストが主 |
 | インフラ | Cloudflare Workers + D1（無料枠で運用可・[Cloudflare リサーチ §1, §3](../research/2026-07-10-cloudflare-stack.md)） | 0 円〜 |
-| 外部登録 | GitHub App 登録（無料）・独自ドメイン（任意）・将来の Google Play 開発者登録（$25 一回・M4 時点で判断） | ほぼ 0 円 |
+| 外部登録 | GitHub App 登録（無料）・独自ドメイン（現時点で取得しない・OQ-7。TWA 実施判断時に再検討）・Google Play 開発者登録（$25 一回・M4 保留のため判断時） | ほぼ 0 円 |
 | 開発環境 | wrangler v4・Vite・vitest-pool-workers・GitHub Actions（CI/CD） | 無料 |
 | 検証機材 | Android 実機（開発者所有・KPI の実機計測に必須） | 追加費用なし |
 
