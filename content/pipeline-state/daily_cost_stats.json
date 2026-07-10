@@ -1,11 +1,11 @@
 {
   "2026-07-10": {
-    "sessions": 4,
-    "input_tokens": 1693446,
-    "output_tokens": 918217,
-    "cache_write_tokens": 9417506,
-    "cache_read_tokens": 133744259,
-    "cost_usd": 94.292518,
-    "last_updated": "2026-07-10T14:16:39+09:00"
+    "sessions": 5,
+    "input_tokens": 2261974,
+    "output_tokens": 1300875,
+    "cache_write_tokens": 16865375,
+    "cache_read_tokens": 211815105,
+    "cost_usd": 153.088735,
+    "last_updated": "2026-07-10T16:36:36+09:00"
   }
 }
