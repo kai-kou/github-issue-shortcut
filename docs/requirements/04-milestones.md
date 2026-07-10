@@ -30,13 +30,13 @@
 | タスク | 内容 | SP |
 |--------|------|----|
 | リポジトリ雛形 | Vite + React SPA + Hono API の単一 Worker 構成（`@cloudflare/vite-plugin`・wrangler v4・`wrangler.jsonc`・TypeScript・`@cloudflare/vitest-pool-workers`） | `sp:5` |
-| CI パイプライン | GitHub Actions で test → deploy（`wrangler-action@v3`）。PR にはプレビュー環境 | `sp:3` |
+| CI パイプライン | GitHub Actions で test / lint（品質ゲート・シークレット不要）。デプロイは Workers Builds（git 連携・push で自動デプロイ・PR プレビュー URL 自動投稿） | `sp:3` |
 | Cloudflare 環境 | 本番 / プレビューの Worker・D1・Secrets の設定 | `sp:2` |
 | GitHub App 登録 | permissions: Issues=write のみで登録・client id/secret を Secrets へ・コールバック URL 設定 | `sp:2` |
 
 ### Done 判定（検証可能な条件）
 
-- [ ] `main` への push で CI が test → deploy を実行し、テスト失敗時はデプロイされない
+- [ ] `main` への push で GitHub Actions のテストが通った場合のみ Workers Builds のデプロイが走る（テスト失敗時はデプロイされない）
 - [ ] 本番 URL で「Hello World」相当の SPA と Hono API（`/api/health`）が応答する
 - [ ] PR 作成でプレビュー URL が得られる
 - [ ] GitHub App が登録済みで、client id / client secret / トークン暗号鍵が Worker Secrets に設定されている

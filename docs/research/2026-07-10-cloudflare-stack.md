@@ -39,6 +39,7 @@
   - **GitHub Actions + wrangler-action@v3**（テスト・lint をゲートにした本格パイプライン向き）
   - 推奨: テストを CI ゲートにしたいので GitHub Actions を一次、プレビューは Workers Builds 併用も可。
   出典: <https://developers.cloudflare.com/workers/ci-cd/builds/configuration/> / <https://github.com/cloudflare/wrangler-action>
+  > **2026-07-10 M0 スプリント更新（キーレス構成へ変更）**: 上記の「GitHub Actions を一次」は `wrangler-action@v3`（`CLOUDFLARE_API_TOKEN` の発行・GitHub Secrets 登録が必須）を前提にしていたが、実装フェーズの事実確認で GitHub Actions からは deploy せず **Workers Builds のみでデプロイ**（ビルドトークン自動生成・キーレス）、GitHub Actions は `vitest`・lint 等の品質ゲート専任に変更した。事実確認の詳細は [`2026-07-10-cloudflare-connector-keyless.md`](2026-07-10-cloudflare-connector-keyless.md) を参照。
 - テスト: `@cloudflare/vitest-pool-workers`（workerd 内で Vitest 実行・bindings 直接アクセス・テストファイル単位のストレージ分離）。Vitest 4 系必須（v0.13.0+）。
   出典: <https://developers.cloudflare.com/workers/testing/vitest-integration/>
 - 段階的デプロイ: `wrangler versions upload/deploy` でカナリア配信（割合指定）可能。
@@ -74,7 +75,7 @@ Cloudflare Workers（単一 Worker）
 └── Secrets: GitHub App client secret・トークン暗号鍵
 
 開発: wrangler v4 + wrangler.jsonc / vitest-pool-workers / TypeScript
-CI/CD: GitHub Actions（test → deploy）+ ブランチプレビュー
+CI/CD: GitHub Actions（test / lint）+ Workers Builds（deploy・プレビュー URL・キーレス）
 将来: TWA（Bubblewrap）で Play ストア配布
 ```
 
