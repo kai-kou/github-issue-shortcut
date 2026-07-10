@@ -46,7 +46,7 @@
 
 | 課題 | 解決策 | 提供時期 |
 |---|---|---|
-| 起票が遅い | 起動即入力画面の PWA（app shell precache でサブ秒表示）・楽観的 UI・失敗時下書き保全 | MVP |
+| 起票が遅い | 起動即入力画面の PWA（app shell precache でサブ秒表示）・送信失敗時の下書き保全（楽観的 UI は M3） | MVP |
 | PAT 管理が面倒 | GitHub App 認証（Issues: write のみの最小権限・[認証リサーチ §1](../research/2026-07-10-auth-architecture.md)） | MVP |
 | 毎回の選択が面倒 | manifest shortcuts + URL パラメータ起動（リポジトリ / ラベルプリセット） | M2 以降 |
 
@@ -69,6 +69,8 @@
 ## ⑧ 主要指標
 
 [ミッションの KPI](../project-mission.md) をそのまま採用。
+
+> KPI の正本は [`../project-mission.md`](../project-mission.md)（本表は転記）。
 
 | 指標 | 目標 |
 |---|---|
