@@ -1,0 +1,27 @@
+{
+  "topic": "Andrej Karpathy Skills リポジトリを本プロジェクトに適用できるか検討",
+  "brief": "multica-ai/andrej-karpathy-skills の4原則（Think Before Coding / Simplicity First / Surgical Changes / Goal-Driven Execution）を、claude-code-base の既存ルール（CLAUDE.md・docs/rules/*.md）と照合し、①新たに取り込むべき原則・アンチパターン、②既存ルールと重複・衝突する部分、③CP-6（ユーザー介入最小化）と「不明なら質問せよ」の緊張関係への対処方法を議論し、具体的な適用提案をまとめる。\n\n## Karpathy 4 原則のサマリー\n\n1. Think Before Coding: 実装前に仮定を明示・曖昧さがあれば質問\n2. Simplicity First: リクエスト超過の機能は追加しない・過度な抽象化禁止\n3. Surgical Changes: 変更は必要最小限・既存スタイルを保つ・タスク外リファクタ禁止\n4. Goal-Driven Execution: 検証可能な成功基準を定義・テスト駆動で段階検証\n\n## 本プロジェクトの主要ルール（照合対象）\n\n- CP-1: 自律的判断と行動（「不明点は推測せず確認」だが「定義済みルールは確認なしで実行」）\n- CP-6: ユーザー介入最小化（「〇〇してよいですか？は禁止」）\n- CLAUDE.md: 「タスク外のファイルをついでに変更しない」「壊れていない箇所を要求外でリファクタしない」\n- output-verbosity-rules.md: 内部作業はサイレントに・アウトカムだけ報告\n- user-confirmation-minimization.md: 質問できる場面は A-1〜A-6 のみ",
+  "participants": [
+    {
+      "name": "applicability-reviewer",
+      "model": "claude-sonnet-4-6",
+      "lens": "Karpathy の4原則を既存 CLAUDE.md ・ docs/rules/ と照合し、①既存ルールに明文化済みで実質重複（取り込み不要）、②既存ルールにない新規視点で取り込み価値あり、③既存ルールと矛盾・衝突する部分を分類して claim/evidence として投稿する。具体的なルールファイル名・セクション名を根拠として示す。"
+    },
+    {
+      "name": "cp6-tension-reviewer",
+      "model": "claude-sonnet-4-6",
+      "lens": "Karpathy の『Think Before Coding（不明なら質問せよ）』と本プロジェクトの CP-6『〇〇してよいですか？禁止・定義済みルール範囲では確認不要』の緊張関係に着目する。この矛盾をどう解消するか、どういう境界条件で質問してよいか、既存の A-1〜A-6 境界外リストと整合できるかを claim/evidence として投稿する。"
+    },
+    {
+      "name": "impl-cost-reviewer",
+      "model": "claude-haiku-4-5",
+      "lens": "各原則を本プロジェクトに取り込む場合の実装コスト（ルール追記・フック追加・スキル改修）と効果を見積もる。特に『Surgical Changes』はすでに CLAUDE.md に類似記述があるのでその重複を検証し、新規追加が本当に必要かを claim/evidence として投稿する。"
+    }
+  ],
+  "synthesizer": {
+    "name": "lead",
+    "instruction": "3役の対立点・合意点を整理し、本プロジェクトに実際に取り込むべき提案を優先順位付きで合意として提示する。各提案について『適用先ファイル（CLAUDE.md / docs/rules/ / .claude/hooks/ など）』と『取り込みの粒度（転記そのまま / 要約 / ルール追加 / フック追加）』を具体的に示す。最終 verdict は ADOPT（全面採用）/ PARTIAL（一部採用）/ PASS（現状維持で十分）の3択。",
+    "model": "claude-sonnet-4-6"
+  },
+  "verdict_schema": "{\"verdict\":\"ADOPT|PARTIAL|PASS\",\"critical\":[],\"proposals\":[{\"priority\":1,\"target_file\":\"CLAUDE.md\",\"action\":\"追記内容の説明\"}],\"summary\":\"議論の要約1-2文\"}"
+}

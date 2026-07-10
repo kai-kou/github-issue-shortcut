@@ -1,0 +1,27 @@
+{
+  "topic": "『How Anthropic teams use Claude Code』の横断 tips を claude-code-base に適用できるか検討",
+  "brief": "Anthropic 社内 10 チームの Claude Code 活用事例集から抽出した 16 個の横断プロセス tips（対象ファイル: /home/user/claude-code-base/scratchpad_pdf_tips_digest.md セクション A）を、claude-code-base の既存ルール（CLAUDE.md・docs/rules/*.md）・スキル（.claude/skills/）・フック（.claude/hooks/）と照合し、①既に実装済みで重複（取り込み不要）、②未実装で本ベースの自律運用品質を高める新規価値（取り込むべき）、③本ベース（汎用 Claude Code 自律運用基盤）の性質に不適合、を分類して具体的な適用提案を優先順位付きでまとめる。\n\n## 重要な前提（議論で踏まえること）\n\n- 本ベースは既に高度に成熟しており、Karpathy 4 原則（Think Before Coding / Simplicity First / Surgical Changes / Goal-Driven Execution）は CLAUDE.md に取り込み済み。retrospective・self-improvement-loop・checkpoint・completion-report・self-reviewer・code-review・project-sync などのスキルが既にある。\n- 本ベースは『ルール肥大化』を機械強制で抑制している（lessons_guard.py の Hot 層上限・check_rules_sync.sh）。よって新規ルール追加は YAGNI を厳格に適用し、本当に効果があるものだけに絞る。\n- 本ベースは『内部作業サイレント・アウトカム報告』『ユーザー介入最小化（A-1〜A-6 のみ確認）』が中核。tips がこれらと衝突しないか検証する。\n- PDF tips の多くはドメイン固有（K8s/Figma/Meta Ads 等）で本ベースに不適合。メタ運用知見（digest セクション A）だけが適用候補。\n\n## 照合の着目点（未実装の可能性が高い候補）\n\n- tip 3『async/sync タスク分類の直感』: auto-accept 非同期 vs 同期監督の判断基準が明文ルール化されているか。\n- tip 14『Interrupt for simplicity（モデルは複雑解に傾く）』: Simplicity First/YAGNI と重複か、運用上の新規価値があるか。\n- tip 10『仮説/実験ログで self-improving』: 既存の lessons/analytics と重複か、実験ログという新規視点があるか。\n- tip 15『GitHub Actions で issue→自動 PR』: 既存の subscribe_pr_activity と何が違うか、本ベースに足りないか。\n- tip 4『slot machine / try-and-rollback』: checkpoint スキル・G ルールと重複か、使い捨て試行モードという新規視点があるか。\n- tip 12『visual-first（スクショ貼り付け）』: ルール化する価値があるか、ハーネスの性質上不要か。",
+  "participants": [
+    {
+      "name": "overlap-reviewer",
+      "model": "claude-sonnet-4-6",
+      "lens": "digest セクション A の 16 tips を既存 CLAUDE.md・docs/rules/・.claude/skills/・.claude/hooks/ と1件ずつ照合し、①既存実装済みで実質重複（取り込み不要）、②既存にない新規視点で取り込み価値あり、③本ベースの性質に不適合、の3分類で claim/evidence を post する。必ず具体的なファイル名・セクション名・スキル名を根拠として示す（例: 『tip4 は checkpoint スキルと G-1/G-2 で実装済み』）。曖昧な『たぶんある』は禁止で、実ファイルを Read して確認すること。"
+    },
+    {
+      "name": "gap-value-reviewer",
+      "model": "claude-sonnet-4-6",
+      "lens": "未実装と判定された tips のうち、本ベースの自律運用品質を実際に高めるものを発掘する立場。特に tip3（async/sync 分類）・tip14（interrupt for simplicity）・tip10（実験ログ self-improving）・tip15（issue→自動 PR）の新規価値を、本ベースの既存欠落（どのルール/スキルにも無い具体的ギャップ）を根拠に論じる。overlap-reviewer が『重複』と判定したものに対し、新規性が残る部分があれば rebuttal で具体的に反論する。"
+    },
+    {
+      "name": "yagni-cost-reviewer",
+      "model": "claude-haiku-4-5",
+      "lens": "取り込みの実装コスト（ルール追記・フック追加・スキル改修）と効果を見積もり、ルール肥大化リスクを厳格に評価する立場。本ベースは lessons_guard で Hot 層上限を機械強制しており、ルール追加自体がコスト。gap-value-reviewer が『取り込むべき』とした各提案に対し、(a) 本当に新規ルール/フックが必要か、それとも既存ファイルへの1行追記で足りるか、(b) 効果が実運用で測れるか、を rebuttal で検証し、過剰な提案を潰す。CLAUDE.md への追記そのままを避け『要約 or 既存ルールへの統合』を優先する。"
+    }
+  ],
+  "synthesizer": {
+    "name": "lead",
+    "instruction": "3役（overlap-reviewer / gap-value-reviewer / yagni-cost-reviewer）の対立点・合意点を整理し、本ベースに実際に取り込むべき提案を優先順位付きで合意として提示する。各提案について『適用先ファイル（CLAUDE.md / docs/rules/<name>.md / .claude/hooks/ / .claude/skills/ など）』『取り込みの粒度（既存ルールへの1行追記 / 新規ルール節 / 新規スキル / フック）』『期待効果』を具体的に示す。議論を経ても重複・不適合と確定したものは proposals に入れず、reason を summary に1行残す。最終 verdict は ADOPT（多数を新規採用）/ PARTIAL（少数を厳選採用）/ PASS（現状で十分・採用なし）の3択。",
+    "model": "claude-sonnet-4-6"
+  },
+  "verdict_schema": "{\"verdict\":\"ADOPT|PARTIAL|PASS\",\"critical\":[],\"proposals\":[{\"priority\":1,\"tip\":\"tipの番号と名称\",\"target_file\":\"適用先\",\"granularity\":\"1行追記|新規節|新規スキル|フック\",\"action\":\"取り込む内容\",\"effect\":\"期待効果\"}],\"already_covered\":[\"重複と確定した tip 番号\"],\"not_applicable\":[\"不適合と確定した tip 番号\"],\"summary\":\"議論の要約1-2文\"}"
+}

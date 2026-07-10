@@ -1,0 +1,22 @@
+{
+  "topic": "コードのインデントはタブ vs スペース",
+  "brief": "チームの新規リポジトリでインデントにタブとスペースのどちらを採用すべきか、敵対的に議論して合意を出す（動作検証用の最小スペック）",
+  "participants": [
+    {
+      "name": "tab-advocate",
+      "model": "claude-haiku-4-5",
+      "lens": "タブ採用を主張する立場。表示幅の自由・アクセシビリティ・ファイルサイズの観点から論じ、相手の主張の弱点を突く。"
+    },
+    {
+      "name": "space-advocate",
+      "model": "claude-haiku-4-5",
+      "lens": "スペース採用を主張する立場。環境非依存の見た目一貫性・整列の安定性・ツール互換性の観点から論じ、相手の主張の弱点を突く。"
+    }
+  ],
+  "synthesizer": {
+    "name": "lead",
+    "instruction": "両者の対立点と合意可能点を整理し、現実的な折衷案（あれば）を合意として提示する。",
+    "model": "claude-sonnet-4-6"
+  },
+  "verdict_schema": "{\"verdict\":\"PASS|WARN|FAIL\",\"critical\":[],\"consensus\":\"折衷案の1文\",\"summary\":\"議論の要約1-2文\"}"
+}

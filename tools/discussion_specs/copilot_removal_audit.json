@@ -1,0 +1,26 @@
+{
+  "topic": "外部 AI レビュアー（Copilot/Gemini）依頼の廃止が現行ファイルで完全に徹底され、Claude 自身の /code-review セルフレビュー（Layer 1）が唯一のレビュー経路として優先されているかの検証",
+  "brief": "飼い主決定で Copilot/Gemini への PR レビュー依頼は廃止し、レビューは Claude 自身が /code-review（Layer 1 セルフレビュー）で必ず実行する方針に統一した（SSOT: docs/rules/ai-reviewer-strategy.md）。しかし別リポジトリにこのベースを『セットアップ（適用）』した後、エージェントが PR 作成後に Copilot レビュー依頼を実行してしまう事象が再発した。対象ファイルには『依頼しない』という宣言と、過去の『依頼方法（--add-reviewer @copilot / request_copilot_review / /gemini review）』の HOW-TO 手順が同居している。会話文脈を持たない適用先リポジトリのエージェントは、宣言文を無視して具体的な手順節（トラブルシューティング・フォールバック）に倒れ、Copilot 依頼を実行しうる。この残置矛盾が本当に排除しきれているかを敵対的に検証する。判断基準: 『歴史的経緯なので実行しない』という注記が付いていても、実行可能な具体コマンド・手順が残っていれば NG（適用先エージェントは注記を読み飛ばし手順を実行しうる）。",
+  "participants": [
+    {
+      "name": "request-path-hunter",
+      "model": "sonnet",
+      "lens": "依頼経路ハンター。対象ファイルから、エージェントが『実際に実行できてしまう』Copilot/Gemini レビュー依頼・催促・再依頼の具体手順（gh pr edit --add-reviewer @copilot / mcp__github__request_copilot_review / gh api .../requested_reviewers / /gemini review 再投稿 / 25分タイムアウト待ち / 両者未応答フォールバック等）を file:line で全列挙する。『依頼しない』の宣言文が近くにあっても、HOW-TO 手順本体が残っていれば『残置リスクあり』として必ず計上する。会話文脈を持たない適用先リポジトリの新規エージェントになりきり、各ファイルを上から順に読んで『どこで Copilot 依頼に倒れうるか』を具体的に示す。検出は file:line と該当コマンド文字列を必ず添える。"
+    },
+    {
+      "name": "selfreview-priority-auditor",
+      "model": "sonnet",
+      "lens": "セルフレビュー優先監査。Claude 自身の /code-review（Layer 1）が『唯一かつ必須のレビュー経路』として一義的に書かれているかを検証する。残置した外部レビュアー手順・『片方完了でマージ可』『外部応答待ち』等の記述が、セルフレビュー単独完結の方針を相対化・弱体化していないかを指摘する。SSOT（ai-reviewer-strategy.md / pr-review-flow-summary.md）と矛盾する箇所を file:line で示す。"
+    },
+    {
+      "name": "residual-defender",
+      "model": "sonnet",
+      "lens": "残置擁護・誤検知潰し（敵対反論役）。他参加者が挙げた『残置リスク』に対し、(a) それは検出ロジック・互換情報・歴史的事実の記録に過ぎず実行指示ではない、(b) 直前の宣言・disclaimer で実行は十分に抑止されている、(c) 削除するとセッション復帰や過去 PR 互換が壊れる、のいずれかで反論を試みる。反論できないものだけが真の残置バグとして残る。round2 は対象を再読せずホワイトボードの他者投稿に対してのみ反論する。過剰指摘・誤検知を削る役割に徹する。"
+    }
+  ],
+  "synthesizer": {
+    "name": "lead",
+    "instruction": "request-path-hunter・selfreview-priority-auditor・residual-defender の対立点と合意点を整理し、残置擁護役の反論を経てもなお『適用先エージェントが Copilot/Gemini 依頼を実行しうる』と結論づけられる箇所のみを critical に入れる。各 critical は file:line + 具体的な修正方針（削除すべき手順節か、検出ロジックとして残してよいか）を明記する。セルフレビュー優先が崩れている箇所があれば別途列挙する。"
+  },
+  "verdict_schema": "{\"verdict\": \"PASS|WARN|FAIL\", \"critical\": [{\"file\": \"...\", \"line\": \"...\", \"issue\": \"...\", \"fix\": \"...\"}], \"selfreview_priority_ok\": true, \"notes\": \"...\"}"
+}
