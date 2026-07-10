@@ -6,8 +6,11 @@ function App() {
 
   useEffect(() => {
     fetch("/api/health")
-      .then((res) => res.json())
-      .then((data: { status: string }) => setApiStatus(data.status))
+      .then((res) => {
+        if (!res.ok) throw new Error(`unexpected status: ${res.status}`);
+        return res.json() as Promise<{ status: string }>;
+      })
+      .then((data) => setApiStatus(data.status))
       .catch(() => setApiStatus("unreachable"));
   }, []);
 
