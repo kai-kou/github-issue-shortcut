@@ -2,9 +2,14 @@ import { useEffect, useState } from "react";
 import "./App.css";
 import TermsOfService from "./pages/TermsOfService";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
+import { LanguageProvider, useLanguage } from "./i18n/LanguageContext";
+import { SUPPORTED_LOCALES } from "./i18n/translations";
+
+type ApiStatus = "checking" | "unreachable" | string;
 
 function Home() {
-  const [apiStatus, setApiStatus] = useState<string>("checking...");
+  const { t } = useLanguage();
+  const [apiStatus, setApiStatus] = useState<ApiStatus>("checking");
 
   useEffect(() => {
     fetch("/api/health")
@@ -16,17 +21,44 @@ function Home() {
       .catch(() => setApiStatus("unreachable"));
   }, []);
 
+  const apiStatusText =
+    apiStatus === "checking"
+      ? t.home.apiStatusChecking
+      : apiStatus === "unreachable"
+        ? t.home.apiStatusUnreachable
+        : apiStatus;
+
   return (
     <>
-      <h1>GitHub Issue Shortcut</h1>
-      <p>Hello World</p>
-      <p>API status: {apiStatus}</p>
+      <h1>{t.home.title}</h1>
+      <p>{t.home.hello}</p>
+      <p>
+        {t.home.apiStatusLabel}: {apiStatusText}
+      </p>
     </>
   );
 }
 
-function App() {
+function LanguageSwitcher() {
+  const { locale, setLocale, t } = useLanguage();
+
+  return (
+    <label>
+      {t.languageSwitcher.label}:{" "}
+      <select value={locale} onChange={(e) => setLocale(e.target.value as (typeof SUPPORTED_LOCALES)[number])}>
+        {SUPPORTED_LOCALES.map((l) => (
+          <option key={l} value={l}>
+            {l}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+function AppContent() {
   const path = window.location.pathname;
+  const { t } = useLanguage();
 
   return (
     <>
@@ -38,9 +70,20 @@ function App() {
         <Home />
       )}
       <footer>
-        <a href="/terms">利用規約</a> / <a href="/privacy">プライバシーポリシー</a>
+        <a href="/terms">{t.footer.terms}</a> / <a href="/privacy">{t.footer.privacy}</a>
+        <div>
+          <LanguageSwitcher />
+        </div>
       </footer>
     </>
+  );
+}
+
+function App() {
+  return (
+    <LanguageProvider>
+      <AppContent />
+    </LanguageProvider>
   );
 }
 
