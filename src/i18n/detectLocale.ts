@@ -5,6 +5,7 @@ const DEFAULT_LOCALE: Locale = "en";
 /** ブラウザの言語設定（`navigator.languages` 相当）から対応ロケールを選ぶ。マッチしなければ既定（en）。 */
 export function pickLocale(preferredLanguages: readonly string[]): Locale {
   for (const lang of preferredLanguages) {
+    if (!lang) continue;
     const primary = lang.split("-")[0].toLowerCase();
     const match = SUPPORTED_LOCALES.find((locale) => locale === primary);
     if (match) return match;

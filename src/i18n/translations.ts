@@ -2,6 +2,23 @@ export type Locale = "ja" | "en";
 
 export const SUPPORTED_LOCALES: readonly Locale[] = ["ja", "en"];
 
+interface Translations {
+  home: {
+    title: string;
+    hello: string;
+    apiStatusLabel: string;
+    apiStatusChecking: string;
+    apiStatusUnreachable: string;
+  };
+  footer: {
+    terms: string;
+    privacy: string;
+  };
+  languageSwitcher: {
+    label: string;
+  };
+}
+
 export const translations = {
   ja: {
     home: {
@@ -35,6 +52,6 @@ export const translations = {
       label: "Language",
     },
   },
-} as const satisfies Record<Locale, unknown>;
+} as const satisfies Record<Locale, Translations>;
 
-export type Translations = (typeof translations)[Locale];
+export type { Translations };

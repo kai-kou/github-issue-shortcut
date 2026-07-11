@@ -5,8 +5,12 @@ import { isSupportedLocale, pickLocale } from "./detectLocale";
 const STORAGE_KEY = "issue-shortcut:locale";
 
 function detectInitialLocale(): Locale {
-  const stored = localStorage.getItem(STORAGE_KEY);
-  if (isSupportedLocale(stored)) return stored;
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (isSupportedLocale(stored)) return stored;
+  } catch {
+    // localStorage 不可（プライベートブラウジング等）。ブラウザ言語検出にフォールバック。
+  }
   return pickLocale(navigator.languages ?? [navigator.language]);
 }
 
@@ -19,11 +23,19 @@ interface LanguageContextValue {
 const LanguageContext = createContext<LanguageContextValue | null>(null);
 
 export function LanguageProvider({ children }: { children: ReactNode }) {
-  const [locale, setLocale] = useState<Locale>(detectInitialLocale);
+  const [locale, setLocaleState] = useState<Locale>(detectInitialLocale);
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, locale);
+    try {
+      localStorage.setItem(STORAGE_KEY, locale);
+    } catch {
+      // localStorage 不可（プライベートブラウジング等）。永続化なしで継続。
+    }
   }, [locale]);
+
+  const setLocale = (next: Locale) => {
+    if (isSupportedLocale(next)) setLocaleState(next);
+  };
 
   return (
     <LanguageContext.Provider value={{ locale, t: translations[locale], setLocale }}>
