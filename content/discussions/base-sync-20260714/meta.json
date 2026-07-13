@@ -1,0 +1,12 @@
+{
+  "id": "base-sync-20260714",
+  "topic": "claude-code-base ac5659c 再同期差分の妥当性レビュー",
+  "brief": "ブランチ claude/sync-claude-code-base-bmh8al の差分（origin/main..HEAD・106 files）が、ベース同期として安全・完全・過不足ないかを敵対的相互レビューで検証する。観点: ハーネス配線の整合 / CLAUDE.md 手動マージと孤立ファイル / プロジェクト固有ファイルの保護",
+  "participants": [
+    "harness_auditor",
+    "docs_consistency",
+    "project_guard"
+  ],
+  "created_at": "2026-07-14T08:14:06+09:00",
+  "updated_at": "2026-07-14T08:14:06+09:00"
+}
