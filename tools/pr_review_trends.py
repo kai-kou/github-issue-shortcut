@@ -9,7 +9,7 @@
 
 severity / AI レビュアー判定ロジックは analyze_pr_review_comments.py を import 再利用（SSOT）。
 
-## 指標設計（専門チーム @kinako レビュー反映・Issue #2905）
+## 指標設計（専門チーム @reviewer_a レビュー反映・Issue #2905）
 
 セルフレビューの「効き」を正しく測るため、全指標を **PR のマージ週でバケット化** し、
 分母は **週内マージ全 PR 数**（指摘ゼロ PR も含む）とする。コメントの created_at では
@@ -29,7 +29,7 @@ Usage:
     python3 tools/pr_review_trends.py --weeks 16 --all    # 集計対象を直近 16 週に
     python3 tools/pr_review_trends.py --self-test         # 内蔵フィクスチャで検証
 
-実行タイミング: 毎週月曜 07:00 スロット ⑤.7（docs/rules/hourly-routing-details.md）
+実行タイミング: 毎週月曜 07:00 スロット ⑤.7（{プロジェクト定義: hourly-routing 相当}）
 Exit code: 0 = 正常 / 1 = 失敗
 """
 
@@ -100,7 +100,7 @@ def _segment_of(title: str) -> str:
     """PR タイトルからセグメントを判定（content=動画制作 / maintenance=保守）。
 
     自動生成・保守系 PR（[daily] state 更新・[wip] 圧縮・docs/fix 等）はレビュー指摘が
-    ほぼ付かないため、混在させると指摘ゼロ率が水増しされる（@kinako 交絡指摘）。
+    ほぼ付かないため、混在させると指摘ゼロ率が水増しされる（@reviewer_a 交絡指摘）。
     """
     t = (title or "").lstrip()
     if t.startswith("[V"):
@@ -192,7 +192,7 @@ def aggregate_week(merged: "list[dict]", ai_index: dict) -> dict:
         } if prs_merged else {},
         "severity": dict(severity),
         # 修正数 proxy: AI 指摘が付いて（=修正を要し）マージされた PR 数。
-        # 厳密な resolved thread 数は GraphQL が必要なため後続フェーズ（@kinako 助言）。
+        # 厳密な resolved thread 数は GraphQL が必要なため後続フェーズ（@reviewer_a 助言）。
         "fixes_proxy": with_ai,
         "content": {
             "prs_merged": content_merged,

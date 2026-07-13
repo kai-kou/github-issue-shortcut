@@ -108,7 +108,8 @@
     "UserPromptSubmit": [
       { "hooks": [
         { "type": "command", "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/user-prompt-submit-guard.sh" },
-        { "type": "command", "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/prompt-structuring.sh" }
+        { "type": "command", "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/prompt-structuring.sh" },
+        { "type": "command", "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/orchestrator-directive.sh" }
       ] }
     ],
     "PermissionRequest": [

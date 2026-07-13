@@ -1,6 +1,6 @@
 ---
 name: project-manager
-description: GitHub プロジェクト（Milestones・Projects V2・Issues・Labels）を管理する。タスク作成・ステータス更新・マイルストーン反映・新規指示の Issue 化を行う。「タスクを作って」「Issue にして」「進捗を更新して」「マイルストーンに反映して」と依頼された時に使用する。
+description: GitHub プロジェクト（Milestones・Projects V2・Issues・Labels）を管理する。タスク作成・ステータス更新・マイルストーン反映・新規指示の Issue 化を行う。「タスクを作って」「Issue にして」「進捗を更新して」「マイルストーンに反映して」と依頼された時に使用する。能動的なタスク運用（作る/進める）が目的。放置された Issue/PR の受動的な衛生掃除が目的なら project-sync を使う。
 effort: medium
 ---
 

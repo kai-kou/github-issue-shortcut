@@ -77,9 +77,47 @@ class GhUnavailableError(RuntimeError):
     """
 
 
-REPO = "kai-kou/github-issue-shortcut"
+def _repo_from_git_remote() -> str | None:
+    """git remote origin（GitHub URL）から owner/repo を導出する。
+
+    配布テンプレート提供元である本リポジトリ自身は bootstrap.sh を自分に適用しない
+    （適用すると下流の apply-base 取り込み時にプレースホルダごと失われるため）。
+    本リポジトリ自身に対して運用ルーティンを回すケース（R-1・Issue #213）では
+    プレースホルダが未置換のまま残るため、その場合のみ git から動的に補う。
+    """
+    try:
+        url = subprocess.run(
+            ["git", "config", "--get", "remote.origin.url"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=True,
+        ).stdout.strip()
+    except (subprocess.CalledProcessError, OSError, subprocess.TimeoutExpired):
+        return None
+    m = re.search(r"github\.com[:/]([^/]+)/(.+?)(?:\.git)?/?$", url)
+    if not m:
+        # scheduled trigger 実行時はローカル git プロキシ経由の remote になり github.com を
+        # 含まない（例: http://local_proxy@127.0.0.1:{port}/git/{owner}/{repo}）。
+        # /git/{owner}/{repo} パス構造をフォールバックとして拾う（Issue #220）。
+        m = re.search(r"/git/([^/]+)/(.+?)(?:\.git)?/?$", url)
+    if not m:
+        return None
+    owner, repo_name = m.group(1), m.group(2)
+    if "__" in owner or "__" in repo_name:  # 未置換プレースホルダの remote（テスト用等）
+        return None
+    return f"{owner}/{repo_name}"
+
+
+_REPO_PLACEHOLDER = "kai-kou/github-issue-shortcut"
 # owner / name を REPO から動的導出する（GraphQL クエリ等でハードコードしない）。
 # bootstrap.sh が REPO の kai-kou/github-issue-shortcut を置換すれば OWNER/REPO_NAME も追従する。
+if "__" in _REPO_PLACEHOLDER:
+    # プレースホルダ未置換（本リポジトリの自己ホスト実行等） → git remote から動的補完
+    REPO = _repo_from_git_remote() or _REPO_PLACEHOLDER
+else:
+    # bootstrap.sh 済み（下流リポジトリ） → git 呼び出し不要、既存の決定論的動作を維持
+    REPO = _REPO_PLACEHOLDER
 OWNER, _, REPO_NAME = REPO.partition("/")
 # 形式不正（owner / name のどちらか欠落・bootstrap 未実行のプレースホルダ残存）のまま
 # GitHub API を叩くと別リポジトリを参照したり取得失敗を 0 件扱いして誤判定するため、

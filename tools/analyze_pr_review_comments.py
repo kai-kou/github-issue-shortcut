@@ -14,7 +14,7 @@ Usage:
     python3 tools/analyze_pr_review_comments.py --input /tmp/c.json  # 取得済みファイルを使用
     python3 tools/analyze_pr_review_comments.py --json             # 統計 JSON を stdout 出力
 
-実行タイミング: 毎週月曜の 07:00 スロット ⑤.7（docs/rules/hourly-routing.md・週次化 #2900）
+実行タイミング: 毎週月曜の 07:00 スロット ⑤.7（{プロジェクト定義: hourly-routing 相当}・週次化 #2900）
 Exit code: 0 = 正常 / 1 = 取得・解析失敗
 """
 

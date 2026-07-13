@@ -7,21 +7,9 @@
 
 ---
 
-## 0. なぜ必要か（ユーザー実体験の根本原因・2026-06-04）
+## 0. なぜ必要か（ユーザー実体験の根本原因・2026-06-04・要約）
 
-ユーザーから明示の指摘:
-
-> 「『ユーザーの対応が必要です』の Slack メンションを精査・カテゴライズ・トリアージして、**本当に対応を求めるものだけ** に厳選してほしい。」
-> 「最後のコメント（`--activate-schedule` が save_meta ValueError で停止）が届いても **どう対処すればいいか分からず放置** してしまう。こういうケースの根本原因を特定して再発防止して。」
-
-精査の結果、`@mention`（要対応扱い）通知が放置される **2 大根本原因** を特定した。
-
-| # | 根本原因 | 具体例 | 対策 |
-|---|---------|--------|------|
-| **RC-1** | **障害（バグ・エラー・失敗）起因の通知を @mention している** | 「`--activate-schedule` が save_meta ValueError で停止（Issue #2483・type:bug）」を「ユーザーのアクションが必要です」として送信 | 障害は L-077 専門チーム調査プロトコルで **Claude が自律修正** すべき案件。`@mention` しない（§2 トリアージで B 区分に落とす） |
-| **RC-2** | **@mention に「ユーザーが取るべき具体的アクション」が無い**（技術状況のダンプだけ） | 「重複検出ロジックが原因。Issue 再オープン済み。」← ユーザーは何をすればいいか分からない | A 区分通知には「あなたが取るべき具体アクション + 取らない場合の結果」を必須化（§3） |
-
-> **本質**: ユーザーが放置するのは怠慢ではなく、「**自分がやるべきこと**」が通知に書かれていない（しかも本来 Claude が直すべき障害）から。ユーザーが行動できない通知は **通知設計の欠陥** である。
+`@mention`（要対応扱い）通知が放置される根本原因は2つ: **RC-1**（障害・バグ起因の通知を @mention してしまう。本来 Claude が自律修正すべき案件）と **RC-2**（@mention に「ユーザーが取るべき具体的アクション」が書かれておらず、状況ダンプだけになっている）。ユーザーが行動できない通知は通知設計の欠陥である。経緯全文は `user-notification-triage-detail.md` §0 を参照。
 
 ---
 
@@ -87,16 +75,22 @@ python3 tools/triage_notification.py --self-test
 
 ---
 
-## 4. 通知経路ごとの実装
+## 4. 通知経路ごとの実装（要約）
 
-| 経路 | 実装 | トリアージ挙動 |
-|------|------|--------------|
-| `slack_notify.py waiting` | トリアージゲート組込済 | A 区分が1件もなければ `@mention` を抑制し、メインチャンネルへ「🤖 自律処理項目（要対応ではない）」として FYI 降格（記録は残すが ping しない）。`--force-mention` で上書き可 |
-| `collect_production_progress.py`（daily-progress 要対応） | トリアージ組込済 | `status:waiting-user`/`status:blocked` を A/B/C/D 分類。A 区分のみ「要対応」として `@mention`。A 区分ゼロなら `--no-mention` で日次進捗を情報提供のみ（毎日 ping しない） |
-| `slack_notify.py daily-progress` | `--no-mention` 対応済 | 真の要対応ゼロのとき `@mention` を付けない |
-| `comment-approval`（comment-responder） | 優先度ゲート（実装済み） | `priority:critical` / `high`（ブランド毀損リスクが高い区分・プロジェクト例: 誤情報指摘・批判）の個別通知のみ `@mention`。`medium`/`low`（軽微な区分・プロジェクト例: 要望・好意的・FAQ）とバッチダイジェストは `@mention` なし FYI（ドラフトは Issue に残り自動投稿はしない）。品質ゲート通過区分は自律投稿（承認不要・プロジェクトで定義） |
-| `approval`（PR 作成前承認） | **非推奨**（CP-6 で PR 自律化済み） | 新規利用しない。PR 作成・マージはユーザー承認不要 |
-| `publish` | FYI イベント分離（実装済み） | 完了報告系イベント（プロジェクト例: 配信完了 / スケジュール済み / 定例レポート）は `@mention` しない（`_PUBLISH_FYI_EVENTS`）。確認・節目アクション系イベント（プロジェクト例: 限定公開 / 公開前確認 / 本公開・A-2 相当）は `@mention` を維持 |
+`slack_notify.py`（waiting / daily-progress）・`collect_production_progress.py`・`comment-approval`・`publish` の各経路に機械トリアージ（§2）が組み込み済み。共通挙動: A 区分ゼロなら `@mention` を抑制し FYI 降格する（`--force-mention`/`--no-mention` で上書き可）。`approval`（PR 作成前承認）は CP-6 で PR 自律化済みのため非推奨・新規利用しない。経路別の詳細実装表は `user-notification-triage-detail.md` §4 を参照。
+
+### 4.1 日次進捗レポートの構成
+
+日次進捗報告は、ユーザーが手元を離れていても状況を把握できるようにする FYI（情報提供）が基本。
+
+| セクション | 内容 |
+|-----------|------|
+| 完了サマリー | 当日マージした PR・クローズした Issue・done_sp |
+| 進行中 | `status:in-progress` の Issue（担当セッション） |
+| 要対応（A 区分のみ） | §2 の機械トリアージで A 区分に分類された項目のみ |
+| 衛生指標 | オープン Issue / PR 数・Orphan・stale 件数（CP-3） |
+
+`@mention` は §1〜§2 の判定と同一（A 区分が1件以上ある日のみ付与。B/C/D 区分は要対応に混ぜない）。**真の要対応がゼロの日は `@mention` しない**（毎日 ping しない）。実装はプロジェクト定義の進捗収集スクリプト + `tools/slack_notify.py daily-progress`。
 
 ---
 
@@ -116,17 +110,9 @@ python3 tools/triage_notification.py --self-test
 
 ---
 
-## 6. 専門チーム（曖昧時のエスカレーション・オブザーバー）
+## 6. 専門チーム（曖昧時のエスカレーション・要約）
 
-機械トリアージで A/B 判定が曖昧（境界キーワードが弱い・新種の通知）な場合のみ、Agent Teams で多角検証する。
-
-| 役割 | subagent | 観点 |
-|------|----------|------|
-| 分類監査 | general-purpose（haiku） | A-1〜A-6 該当性・障害起因かの再確認 |
-| ユーザー視点 | 初心者目線チェック役（Lv1） | 「この通知、自分が何をすればいいか分かる？」 |
-| 自律可否 | general-purpose（sonnet） | クラウド実行・ツール改修で自己解決できないか（§ user-confirmation-minimization.md §4） |
-
-通常は機械トリアージで完結する（コスト最小）。専門チーム起動は新種通知の分類ルール追加時に限る。
+機械トリアージで A/B 判定が曖昧（境界キーワードが弱い・新種の通知）な場合のみ、Agent Teams で多角検証する（分類監査・ユーザー視点・自律可否の3役）。通常は機械トリアージで完結する（コスト最小）。専門チーム起動は新種通知の分類ルール追加時に限る。役割の詳細は `user-notification-triage-detail.md` §6 を参照。
 
 ---
 
@@ -147,5 +133,5 @@ python3 tools/triage_notification.py --self-test
 | `docs/rules/user-confirmation-minimization.md` | A/B/C/D 分類・A-1〜A-6 既約境界外の SSOT（本ファイルは通知レイヤー実装） |
 | `docs/rules/problem-investigation-protocol.md` | 障害起因の自己解決プロトコル（RC-1 の動線） |
 | `docs/rules/slack-notification-rules.md` | Slack 通知のチャンネル分離・セットアップ |
-| `docs/rules/daily-progress-rules.md` | 日次進捗報告（要対応のトリアージを本ファイルに従う） |
 | `tools/triage_notification.py` | 機械トリアージ分類器（本ファイルのロジック実装） |
+| `docs/rules/user-notification-triage-detail.md` | §0 背景ナラティブ・§4 経路別実装表・§6 専門チーム詳細（Hot 層棚卸しで移設・Issue #146） |

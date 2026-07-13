@@ -61,7 +61,7 @@ PROGRESS_LOG = (
     / "content" / "pipeline-state" / "research_progress.jsonl"
 )
 
-# 進捗ログの監視側（SKILL.md / hourly-routing-details.md）が前提とする終端状態。
+# 進捗ログの監視側（SKILL.md / {プロジェクト定義: hourly-routing 相当}）が前提とする終端状態。
 # API 生値を必ずこの語彙に正規化してから記録する（#2348 Copilot 指摘・L-080 再発防止）。
 #   completed         → done
 #   failed/cancelled  → failed
@@ -220,7 +220,7 @@ def _poll_interaction(interaction_id: str, api_key: str, research_id: str = "?")
         # 防御的型チェック: 文字列以外が返っても .lower() で落ちないようにする（PR #2403 Gemini 指摘）。
         status_val = resp.get("status") or resp.get("state")
         state = status_val.lower() if isinstance(status_val, str) else ""
-        # 監視側（SKILL.md / hourly-routing）が解釈できる語彙に正規化して記録する
+        # 監視側（SKILL.md / {プロジェクト定義: hourly-routing 相当}）が解釈できる語彙に正規化して記録する
         if state == "completed":
             _log_progress(research_id, interaction_id, "done", elapsed)
             return resp

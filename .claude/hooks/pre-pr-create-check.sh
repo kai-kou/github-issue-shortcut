@@ -5,6 +5,10 @@ set -euo pipefail
 # Bash ツールで gh pr create が実行される前に自動チェック。
 # 未コミット・未push のファイルがあれば PR 作成をブロックする。
 
+HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/hook_block.sh
+source "$HOOK_DIR/lib/hook_block.sh"
+
 input=$(cat)
 
 # ツール名を取得（printf を使い、バックスラッシュを含む入力でも echo のエスケープ解釈に依存しない）
@@ -58,9 +62,10 @@ if [ "$tool_name" = "Bash" ] && printf '%s\n' "$command" | grep -qE 'poll_pr_rev
 
   if [ -n "$errors" ]; then
     correct_usage="正しい形式: bash tools/poll_pr_reviews.sh {owner}/{repo} {pr_number} /tmp/pr_review_{pr_number}.json"
-    jq -n --arg e "$errors" --arg u "$correct_usage" \
-      '{"systemMessage": ("[pre-tool-use-validate] poll_pr_reviews.sh の引数が不正です。\n\n" + $e + "\n" + $u)}'
-    exit 2
+    hook_block "[pre-tool-use-validate] poll_pr_reviews.sh の引数が不正です。
+
+${errors}
+${correct_usage}"
   fi
 
   exit 0
@@ -123,15 +128,17 @@ if [ -n "$current_branch" ]; then
 fi
 
 if [ -n "$errors" ]; then
-  jq -n --arg e "$errors" \
-    '{"systemMessage": ("[pre-pr-create-check] PR作成をブロックしました。未コミット・未pushの変更があります。\n\n" + $e + "先にすべての変更をコミット＆pushしてから PR 作成（gh pr create / mcp__github__create_pull_request）を再実行してください。\n手順: git add <ファイル> → git commit → git push -u origin <ブランチ名>")}'
-  exit 2
+  hook_block "[pre-pr-create-check] PR作成をブロックしました。未コミット・未pushの変更があります。
+
+${errors}先にすべての変更をコミット＆pushしてから PR 作成（gh pr create / mcp__github__create_pull_request）を再実行してください。
+手順: git add <ファイル> → git commit → git push -u origin <ブランチ名>"
 fi
 
 # 5. セルフレビュー機械チェック（docs/rules/self-review-checklist.md・Lv3）
 # Error 検出時のみブロック。チェッカー自体の異常（python 不在等・exit>1）ではブロックしない。
 # サブディレクトリから gh pr create が実行されてもスキップされないようリポジトリルートで実行する
 repo_root=$(git rev-parse --show-toplevel 2>/dev/null || echo ".")
+check_output=""
 if [ -f "$repo_root/tools/self_review_check.py" ]; then
   cd "$repo_root" || exit 0
   check_exit=0
@@ -142,9 +149,11 @@ if [ -f "$repo_root/tools/self_review_check.py" ]; then
     check_output=$(python3 tools/self_review_check.py 2>&1) || check_exit=$?
   fi
   if [ "$check_exit" -eq 1 ]; then
-    jq -n --arg o "$check_output" \
-      '{"systemMessage": ("[pre-pr-create-check] セルフレビュー機械チェックで Error を検出したため PR 作成をブロックしました。\n\n" + $o + "\n\nError を修正してから PR 作成を再実行してください（チェックシート: docs/rules/self-review-checklist.md）。")}'
-    exit 2
+    hook_block "[pre-pr-create-check] セルフレビュー機械チェックで Error を検出したため PR 作成をブロックしました。
+
+${check_output}
+
+Error を修正してから PR 作成を再実行してください（チェックシート: docs/rules/self-review-checklist.md）。"
   fi
 fi
 
@@ -153,6 +162,21 @@ fi
 # クラウドセッションではビルトインの /code-review スラッシュコマンドを headless で起動できないため、
 # フレッシュ文脈サブエージェント（事前文脈なしで PR 差分を敵対的にレビュー）で Layer 1 を代替する。
 # 詳細は docs/rules/ai-reviewer-strategy.md。
-jq -n '{"systemMessage": "[pre-pr-create-check] Layer 0 機械ゲート通過。PR 作成後に Layer 1 セルフレビュー（FAIR・全PR必須）を必ず実行してください。対話セッションでは /code-review --comment、クラウドセッションではフレッシュ文脈サブエージェントで PR 差分をレビュー。これはブロックではありません（docs/rules/ai-reviewer-strategy.md）。"}'
+#
+# 出力チャネル（Issue #211・#202 同型修正）:
+#   systemMessage はユーザー表示専用で Claude には届かない（公式仕様）。Claude に届けたい
+#   内容（Layer 1 実行指示 + self_review_check の Warning）は PreToolUse が公式サポートする
+#   hookSpecificOutput.additionalContext で注入する（ツール結果の隣に挿入される）。
+#   exit 0（Warning のみ）のとき check_output を破棄していた旧実装の配管バグもここで解消。
+_ctx="[pre-pr-create-check] Layer 0 機械ゲート通過。PR 作成後に Layer 1 セルフレビュー（FAIR・全PR必須）を必ず実行してください。対話セッションでは /code-review --comment、クラウドセッションではフレッシュ文脈サブエージェントで PR 差分をレビュー。これはブロックではありません（docs/rules/ai-reviewer-strategy.md）。"
+if printf '%s' "$check_output" | grep -q 'Warning'; then
+  _ctx="${_ctx}
+セルフレビュー Warning（非ブロック・対応要否を判断すること）:
+${check_output}"
+fi
+jq -n --arg ctx "$_ctx" '{
+  "systemMessage": "[pre-pr-create-check] Layer 0 機械ゲート通過（Layer 1 リマインダーと Warning は Claude のコンテキストに注入済み）。",
+  "hookSpecificOutput": {"hookEventName": "PreToolUse", "additionalContext": $ctx}
+}'
 
 exit 0
