@@ -4,8 +4,8 @@
 - 議題ID: `base-sync-20260714`
 - 論点: ブランチ claude/sync-claude-code-base-bmh8al の差分（origin/main..HEAD・106 files）が、ベース同期として安全・完全・過不足ないかを敵対的相互レビューで検証する。観点: ハーネス配線の整合 / CLAUDE.md 手動マージと孤立ファイル / プロジェクト固有ファイルの保護
 - 参加者: `harness_auditor`, `docs_consistency`, `project_guard`
-- 投稿数: 3
-- 更新: 2026-07-14T08:18:32+09:00
+- 投稿数: 8
+- 更新: 2026-07-14T08:22:45+09:00
 
 > このファイルは `tools/discussion_whiteboard.py render` が自動生成する。直接編集せず `post` で追記すること（同時書き込み破損防止）。
 
@@ -136,3 +136,155 @@ env var 名の記述、`gh secret list` という API パス名の記述、`secr
 ### 結論
 
 critical: 0 件 / major: 0 件 / minor: 1 件（`public_readiness_audit.json` の同期対象妥当性・pre-existing・non-blocking）+ 1 件の申し送り事項（injected context の CLAUDE.md スナップショットが古い＝レビュー環境側の note であり PR 自体の欠陥ではない）。UPDATE NOTES の3項目の手動手順は全て正しく実施済み。
+
+## ラウンド 2
+
+### `harness_auditor` — 譲歩
+<sub>2026-07-14T08:19:37+09:00</sub>
+
+## harness_auditor — Round 2（ハーネス実行時の実害有無レンズでの妥当性検証）
+
+### 1. project_guard「modules.yaml project.name drift（minor）」→ 同意（minor 判定を実行時観点から追認）
+
+- Round 1 で settings.json の全 12 登録フック + ルーター配下 6 スクリプト + lib の配線を精査したが、
+  **フック実行パス上に modules.yaml を読むものは存在しない**。settings.json の hooks が起動するのは
+  `.claude/hooks/*.sh` のみで、その参照連鎖（router → pre-git-push-check / pre-pr-create-check /
+  stop-* 各種 → lib/hook_block.sh）に modules.yaml への依存はゼロ。
+- したがって `project.name` の表示名 drift は **セッション起動〜停止のどのフックイベントでも評価されず、
+  ハーネス実行時の実害は確定的にゼロ**。project_guard 自身の「どのツールも実行時に参照しない」確認とも
+  整合する。minor（non-blocking・後続 Issue で merge_modules_yaml.py に project: 引き継ぎ追加）が妥当。
+  major への格上げ根拠は私のレンズからは無し。
+
+### 2. docs_consistency「public_readiness_audit.json 同期妥当性（minor）」→ 同意（さらに弱い実害と評価）
+
+- `tools/discussion_specs/*.json` は **どのフックイベントにも配線されていない**（Round 1 の
+  settings.json 精査で SessionStart / UserPromptSubmit / PreToolUse / PostToolUse / Stop 等の
+  全イベントを確認済み。discussion spec を読むエントリは皆無）。
+- この spec が評価されるのは、discussion-review スキル / run_discussion_review.py を
+  **明示的に `--spec` 指定で起動したときのみ**。存在しないパス `/home/user/claude-code-base` を
+  前提にした spec は、その明示起動時に file-not-found で fail-fast するだけで、サイレントな
+  誤動作・他フックへの波及は構造上起こりえない（自動発火経路なし）。
+- よって実行時リスクは「明示的に間違った spec を選んだときの即時エラー」に限定され、
+  pre-existing でもあることから **minor どころか cosmetic 寄り**。non-blocking 判定に同意。
+  棚卸し Issue（ベース自己参照 spec の同期除外）も妥当な恒久対策と考える。
+
+### 結論
+
+両 minor 指摘とも、ハーネス実行時実害の観点で **格上げ不要・non-blocking のまま確定** を支持する。
+本ブランチのマージブロッカーは 3 者のレンズを通じてゼロ。
+
+### `docs_consistency` — 反論
+<sub>2026-07-14T08:20:05+09:00</sub>
+
+## docs_consistency — Round 2（rebuttal / 一部 concession）
+
+### 1. project_guard の「modules.yaml `project.name` drift（minor）」への応答 — **Issue 化に賛成、ただし起票先はベース側**
+
+ドキュメント整合の観点から Issue 化に値すると判断する（賛成）。理由と重要な補足:
+
+- 賛成理由: この drift は「一度直せば終わり」ではなく **再適用のたびに必ず再発する構造的なもの**（apply-to-repo.sh が modules.yaml を無条件上書き・merge_modules_yaml.py の引き継ぎ対象が enabled:false のみ）。実行時参照ゼロでも、modules.yaml は「このリポジトリのモジュール構成の自己記述ドキュメント」であり、表示名が CLAUDE.md（「GitHub Issue Shortcut」）と恒常的に食い違う状態は docs-consistency 上、放置すべきでない。
+- **補足（起票先の指定が本質）**: `tools/merge_modules_yaml.py` 自体が **ベース同期対象ファイル**（round 1 で確認済み: tools/ はベース clone とファイル集合が完全一致＝本ファイルもベース由来）。下流（本リポジトリ）で merge_modules_yaml.py にパッチを当てても **次回の再適用で上書きされて消える**。よって恒久対策 Issue は kai-kou/claude-code-base 側に起票し、`project:` セクション引き継ぎ実装 + UPDATE NOTES へのエントリ追記（記載ルール上、下流挙動が変わる変更は追記対象）までをスコープにすべき。下流側には追跡用の参照 Issue のみで足りる。
+- project_guard の「実害なし・ブロッカーではない」判定には同意（concession 不要・同一結論）。
+
+### 2. harness_auditor の「全項目問題なし」への検証 — 概ね支持、ただし 2 点
+
+**(a) [nit・記録の正確性] 集計の自己矛盾**: 「settings.json に直接登録されていない **5スクリプト**」と書きながら、直後に列挙されているのは pre-git-push-check / pre-pr-create-check / stop-git-check / stop-pr-check / stop-slack-notify / stop-completion-report-check の **6 ファイル**。私の round 1 の実測（.claude/hooks/ = 18 .sh + lib/）とは「直接登録 12 + ルーター配下 6 = 18」で整合するので、**結論は正しく数詞のみ誤記**。ホワイトボードは合意形成の記録になるため、round 2 で「6」に訂正することを求める（severity: nit）。
+
+**(b) [open question・要追加検証] settings.json 退避ファイルの扱いが両者とも未検証**: harness_auditor の検証は「settings.json の hooks 配列 vs 実ファイル」に限定されており、apply-to-repo.sh（本 PR で +215 行の大幅拡張）が生成しうる **退避・バックアップファイル**（例: `settings.json.bak` / `settings.json.base-backup` / `.claude/settings.json.orig` 類）が `.claude/` 直下にコミット混入していないかは、私の round 1（rules/hooks/skills のみ列挙）でも harness_auditor の投稿でも確認記録がない。106 ファイルの diff のうち私が確認したのは stat 末尾 60 行のみで、前半にこの種のファイルが含まれる可能性を否定する証拠を双方持っていない。**harness_auditor に `git diff origin/main..HEAD --name-only -- .claude/` の全件列挙（settings 退避ファイル・orchestrator-directive.txt 等の有無確認）を round 2 で要請する**。存在しなければ「検証済み・問題なし」に格上げでよい（現状は未検証項目であり「問題なし」とは別物）。
+
+**(c) CLAUDE.md フック表の粒度について**: 私の round 1 で表と実ファイル 18 本の全対応を確認済み。ルーター配下ファイルを `/` まとめ表記する粒度は、harness_auditor が確認した settings.json の配線構造（router 経由ディスパッチ）と正確に対応しており、粒度の問題はない（見落としなし・支持）。
+
+### 3. 自分の round 1 への追記なし
+
+round 1 の判定（critical 0 / major 0 / minor 1）は維持。上記 (b) の結果次第で再評価する。
+
+### `project_guard` — 反論
+<sub>2026-07-14T08:20:13+09:00</sub>
+
+## project_guard — Round 2（rebuttal / 部分的 concession）
+
+### 1. docs_consistency の minor「public_readiness_audit.json は下流で実行不能な spec」への応答 — 判定は支持、ただし対処方法に反論
+
+**concession（実害判定に同意）**: プロジェクト保護の観点でも実害なしの判定は正しい。根拠:
+- 当該 JSON は **不活性データ**（自動実行されるフック・スケジュールに配線されていない）。実行には
+  `run_discussion_review.py --spec` での明示指名が必要で、その場合も `--targets` のファイル不在で
+  即時 fail-fast する（サイレントに誤動作してアプリ資産へ波及する経路がない）。
+- 私の Round 1 の秘密情報 grep でも当該ファイルに漏洩相当の内容はなし。cosmetic・non-blocking に同意。
+
+**rebuttal（「同期対象から外すべきか」の実装方向に異議）**: 「下流（本リポジトリ）で削除して同期対象から
+外す」対処は **推奨しない**。理由は私が Round 1 で指摘した `project.name` drift と同一メカニズム:
+`apply-to-repo.sh` は modules.yaml とモジュール資産をベース最新版で上書きし、下流側の削除は
+`merge_modules_yaml.py` の引き継ぎ対象（enabled:false のみ）に含まれない。しかも今回の同期で
+`agent-teams` モジュールの `tools:` 列挙に `discussion_specs/public_readiness_audit.json` が **明示追加**
+された（Round 1 §3 で確認済み）ため、下流で消しても **次回再同期で必ず復活** する。恒久対処は
+**ベース側**（kai-kou/claude-code-base）で「ベース自己参照専用 spec を配布対象から外す/別ディレクトリへ
+隔離する」しかない。棚卸し Issue を起票するなら **宛先はベースリポジトリ**（または apply-base スキルの
+除外リスト拡張）と明記すべき。本 PR での対応は不要（現状維持が正しい）という結論は docs_consistency と一致。
+
+### 2. harness_auditor の検証で拾えていないプロジェクト固有リスク — minor 1 件を追加提起
+
+harness_auditor の 4 項目（配線一致・順序・構文・symlink 同期）は網羅的で異議なし。ただし同レンズが
+「配線が正しいか」に留まり「**その配線が何を許可するか**」を評価していない点を補完する:
+
+- **[minor・watch item] `permission-request-auto-allow.sh`（本 PR 新規）は `.claude/` 配下の
+  Read/Write/Edit/NotebookEdit を自動許可する。** `.claude/` 配下には `settings.json`（フック・権限の
+  配線そのもの）が含まれるため、字義どおりなら「権限設定ファイル自体の編集を無確認で許可する」
+  自己書き換え面が開く。アプリ資産（src/ 等）はスコープ外であり、かつ main 直 push 禁止 +
+  PR レビューという既存ゲートは維持されるので critical ではないが、`settings.json` /
+  `settings.local.json` を auto-allow の **除外パターン** にできないかは検討価値がある
+  （ベース側改善候補。本 PR のブロッカーではない）。なお私は対象ファイルを再読していないため、
+  同フックが既に settings 系を除外している可能性は否定しない — Round 3 または後続 Issue で
+  harness_auditor に除外有無の確認を委ねたい。
+
+### 3. 自分の Round 1 指摘の維持
+
+- modules.yaml `project.name` drift（minor）は両者から反論なし。維持する。恒久対策の宛先は
+  §1 と同じくベース側（`merge_modules_yaml.py` の `project:` セクション引き継ぎ）で、
+  public_readiness_audit の棚卸しと **同一 Issue に束ねられる**（どちらも「apply-to-repo の
+  上書きが下流カスタマイズ/下流不要資産を保存しない」という同根の問題）。
+- docs_consistency の申し送り「injected context の CLAUDE.md が旧版」は、私の Round 1 §2
+  （ディスク上の CLAUDE.md はプロジェクト名・ペルソナ維持のうえ最新化済み）と整合。支持する。
+
+**総合**: 判定変更なし（critical 0 / major 0）。minor 合意 2 件（project.name drift・
+public_readiness_audit 棚卸し→ともにベース側 Issue に束ねて起票を推奨）+ 新規 watch item 1 件
+（auto-allow の settings 系除外有無の確認）。本 PR 自体はプロジェクト保護レンズで承認可能。
+
+## ラウンド 3
+
+### `lead` — 合意
+<sub>2026-07-14T08:22:45+09:00</sub>
+
+## lead — 合意整理（Round 1〜2 の収束点）
+
+### 合意事項
+1. **マージブロッカーはゼロ**（critical 0 / major 0）。3 レンズ（ハーネス配線・ドキュメント整合・プロジェクト保護)全てで本ブランチのベース同期は安全・完全と判定。
+2. UPDATE NOTES（2026-07-10 以降）の手動手順 3 件（#227 gh auth status / #199 native-fallback 参照 / #203 daily-progress-rules 削除）は全て実施済みを 2 名が独立確認。
+3. minor 2 件はいずれも **ベース側（kai-kou/claude-code-base）起票が正しい宛先** で収束（下流パッチは再同期で消える・復活するため）:
+   - modules.yaml `project.name` drift（merge_modules_yaml.py の project: セクション引き継ぎ追加）
+   - public_readiness_audit.json（ベース自己参照 spec）の配布対象見直し
+4. Round 2 の open question 2 件は lead が実測で解消:
+   - (docs_consistency→harness_auditor) `.claude/` 配下の退避ファイル混入: `git diff origin/main..HEAD --name-only -- .claude/` 全 39 件を列挙し、settings 退避・バックアップ類の混入 **なし** を確認（`.pre-base.bak` はコミット前に削除済み）。
+   - (project_guard) permission-request-auto-allow.sh の settings 系除外: 実装を確認し **除外なし**（`.claude/` 配下全パスを allow）。base の設計どおりだが、settings.json 除外はベース側改善候補として Issue に含める。
+5. harness_auditor Round 1 の「5スクリプト」は「6スクリプト」の誤記（nit・結論に影響なし。本記述をもって訂正記録とする）。
+
+### 対処
+- 本 PR: このままマージ可。
+- ベース側改善 3 点（project.name 引き継ぎ / 自己参照 spec の配布見直し / auto-allow の settings 除外検討）を kai-kou/claude-code-base に 1 Issue で起票する。
+
+### `lead` — 判定
+<sub>2026-07-14T08:22:45+09:00</sub>
+
+{
+  "verdict": "approve",
+  "critical": [],
+  "major": [],
+  "minor": [
+    "modules.yaml project.name が再適用のたびに repo slug へ巻き戻る（恒久対策はベース側 merge_modules_yaml.py の project: 引き継ぎ）",
+    "tools/discussion_specs/public_readiness_audit.json はベース自己参照 spec で下流では実行不能（配布対象の見直しはベース側）",
+    "permission-request-auto-allow.sh が .claude/settings.json を除外していない（ベース側改善候補・watch）"
+  ],
+  "actions": [
+    "本ブランチはマージ可（ブロッカーなし）",
+    "ベース側改善 3 点を kai-kou/claude-code-base へ 1 Issue で起票"
+  ]
+}
