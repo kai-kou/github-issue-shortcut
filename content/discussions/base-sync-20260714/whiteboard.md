@@ -5,7 +5,7 @@
 - 論点: ブランチ claude/sync-claude-code-base-bmh8al の差分（origin/main..HEAD・106 files）が、ベース同期として安全・完全・過不足ないかを敵対的相互レビューで検証する。観点: ハーネス配線の整合 / CLAUDE.md 手動マージと孤立ファイル / プロジェクト固有ファイルの保護
 - 参加者: `harness_auditor`, `docs_consistency`, `project_guard`
 - 投稿数: 8
-- 更新: 2026-07-14T08:22:45+09:00
+- 更新: 2026-07-14T08:24:20+09:00
 
 > このファイルは `tools/discussion_whiteboard.py render` が自動生成する。直接編集せず `post` で追記すること（同時書き込み破損防止）。
 
@@ -125,11 +125,11 @@ env var 名の記述、`gh secret list` という API パス名の記述、`secr
 - スキル表（14行）= `.claude/skills/` の14ディレクトリと完全一致。
 - フック表（18行、一部 `/` で複数ファイルまとめ表記）= `.claude/hooks/` の18ファイルと完全一致（`orchestrator-directive.sh`・`permission-request-auto-allow.sh`・`stop-git-check.sh`/`stop-pr-check.sh`/`stop-slack-notify.sh` も含め全て記載あり）。
 - 必読ルール表（13行）= `.claude/rules/` の13 symlink と完全一致。`check_rules_sync.sh` も `[OK]`。
-- **注記（minor・PR起因の不具合ではない）**: 本セッション冒頭のシステムリマインダーに埋め込まれた CLAUDE.md スナップショットは、本 PR コミット前の**古い版**（フック表に `orchestrator-directive.sh` 等が欠落・discussion-review スキル未掲載）だった。実ファイル（ディスク上の `CLAUDE.md`）は完全に最新化されている。レビュアーが injected context のみを見て「表が古い」と誤判定しないよう申し送り。
+- **注記（minor・PR起因の不具合ではない）**: 本セッション冒頭のシステムリマインダーに埋め込まれた CLAUDE.md スナップショットは、本 PR コミット前の **古い版**（フック表に `orchestrator-directive.sh` 等が欠落・discussion-review スキル未掲載）だった。実ファイル（ディスク上の `CLAUDE.md`）は完全に最新化されている。レビュアーが injected context のみを見て「表が古い」と誤判定しないよう申し送り。
 
 ### 4. プレースホルダー・元ドメイン残滓 — 新規導入分に問題なし、既存 minor 1件
 
-- `{{...}}` 形式の未置換プレースホルダーを全リポジトリ grep → 本 PR 差分には**ゼロ**。ヒットした2件はどちらも無関係: `docs/rules/agent-constitution.md`（意図的なプロジェクト別カスタマイズ雛形・本 diff 対象外）、`tools/finalize_broker_migration.py`（Python f-string の `{{key}}` エスケープであり実プレースホルダーではない・false positive）。
+- `{{...}}` 形式の未置換プレースホルダーを全リポジトリ grep → 本 PR 差分には **ゼロ**。ヒットした2件はどちらも無関係: `docs/rules/agent-constitution.md`（意図的なプロジェクト別カスタマイズ雛形・本 diff 対象外）、`tools/finalize_broker_migration.py`（Python f-string の `{{key}}` エスケープであり実プレースホルダーではない・false positive）。
 - 同期された `docs/rules/*.md` 内の「動画制作/YouTube」ドメイン記述は、該当箇所全てに `⚠️ 出自プロジェクト（動画制作）の実例` 等の明示ラベルが付されており、汎用ベースの意図的な例示（ベースの設計方針どおり）。本 PR で新規導入されたものではなく、既存の一貫した表記。
 - **minor（本 PR 起因ではないが本 PR が touch した既存ファイル）**: `tools/discussion_specs/public_readiness_audit.json`（本 PR で8行変更＝サニタイズ済み）は、内容が丸ごと「`kai-kou/claude-code-base`（ベースリポジトリ自身）のパブリック化監査」用スペックで、`/home/user/claude-code-base` という本リポジトリに存在しないパスを前提にしている。github-issue-shortcut では実行不能な spec がそのまま同期されている。origin/main 時点で既に存在していた（本 PR での新規混入ではない）ため本 PR のブロッカーではないが、恒久的には「ベース自己参照専用の discussion spec は下流に同期しない」棚卸し Issue が望ましい（cosmetic・non-blocking）。
 
