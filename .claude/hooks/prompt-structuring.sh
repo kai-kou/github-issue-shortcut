@@ -76,6 +76,8 @@ case "$_trimmed" in
 esac
 
 # システム/バックグラウンド注入（既知タグ・既知マーカーのみ・厳格化）
+# 🔁 同期義務: このタグ・マーカーリストは orchestrator-directive.sh のスキップ条件と
+#    逐語同期を保つこと（片方だけ更新する L-094 型 desync 禁止）。
 # ハーネスが差し込む非ユーザー入力（system-reminder・task-notification・Stop hook feedback・
 # local-command・github-webhook-activity 由来）は整形対象にしない。
 # 注: 任意の '<' 始まりを一律スキップすると「<T> の型を実装して」等の正当な指示まで誤除外するため、

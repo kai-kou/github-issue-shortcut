@@ -43,7 +43,7 @@
 | 24 | `WorktreeCreate` | git worktree 作成時 | ⬜ 未採用 |
 | 25 | `WorktreeRemove` | git worktree 削除時 | ⬜ 未採用 |
 | 26 | `PreCompact` | 圧縮開始前（matcher: manual/auto）。exit 2 で圧縮ブロック可 | ✅ **採用（pre-compact.sh・#23）** |
-| 27 | `PostCompact` | 圧縮完了後（matcher: manual/auto）。decision 制御なし | ✅ 採用（post-compact.sh） |
+| 27 | `PostCompact` | 圧縮完了後（matcher: manual/auto）。decision 制御なし。**stdout 注入・additionalContext とも非対応（side-effect 専用・2026-07-12 再フェッチ確認）** | ✅ 採用（post-compact.sh・出力は stderr ログのみ） |
 | 28 | `Elicitation` | 入力要求ダイアログ時 | ⬜ 未採用 |
 | 29 | `ElicitationResult` | 入力要求の結果確定時 | ⬜ 未採用 |
 | 30 | `SessionEnd` | セッション終了時（matcher: clear/resume/logout/prompt_input_exit/bypass_permissions_disabled/other）。decision 制御なし | ⬜ **未採用（後述）** |
@@ -61,13 +61,27 @@
 - `SessionStart`
 
 これら以外のフックで Claude に情報を渡したい場合は、`hookSpecificOutput.additionalContext`
-（Claude 向け）を JSON で返す。`systemMessage` はユーザー向け表示。
+（Claude 向け）を JSON で返す。`systemMessage` は **ユーザー向け表示専用で Claude には届かない**
+（Claude に行動させたい内容を `systemMessage` に書くのは #202 同型の「意図とチャネルの不一致」バグ）。
+
+`hookSpecificOutput.additionalContext` を公式サポートするのは次の **11 イベントのみ**
+（2026-07-12 公式ドキュメント再フェッチで確認・Issue #211）:
+`SessionStart` / `Setup` / `SubagentStart` / `UserPromptSubmit` / `UserPromptExpansion` /
+`PreToolUse` / `PostToolUse` / `PostToolUseFailure` / `PostToolBatch`（ツール結果の隣に挿入）/
+`Stop` / `SubagentStop`（ターン終了時に注入）。
+**`PreCompact` / `PostCompact` はどちらも非対応**（side-effect 専用。Claude に読ませる出力は書けない）。
+
+> **⚠️ `exit 2` と stdout JSON は排他（Issue #142）**: ブロック用に `exit 2` するフックが stdout に
+> `systemMessage` 等の JSON を出しても無視される（"Don't mix them: Claude Code ignores JSON when you
+> exit 2"）。ブロック理由を Claude に届けるには **stderr にプレーンテキストで出力してから `exit 2`**
+> する（`.claude/hooks/lib/hook_block.sh` の `hook_block "理由"` を使う）。JSON 構造化判定
+> （`permissionDecision` 等）を使う場合は `exit 0` + stdout JSON の組み合わせにする。
 
 ## 3. #23 で新規採用したフックと役割整理
 
-### UserPromptSubmit（user-prompt-submit-guard.sh + prompt-structuring.sh）
-UserPromptSubmit には 2 フックを配線する（settings.json で guard → structuring の順）。stdout は
-両方ともコンテキストに注入されるが、役割を分離している:
+### UserPromptSubmit（user-prompt-submit-guard.sh + prompt-structuring.sh + orchestrator-directive.sh）
+UserPromptSubmit には 3 フックを配線する（settings.json で guard → structuring → orchestrator-directive
+の順）。stdout は全てコンテキストに注入されるが、役割を分離している:
 
 - **user-prompt-submit-guard.sh**（安全助言）: ユーザー入力の高リスクパターン（main 直 push / rm -rf /
   .env・秘密情報 / フック無効化 / settings.local.json への env 書き込み）を検出し、関連ガードレールを
@@ -78,12 +92,17 @@ UserPromptSubmit には 2 フックを配線する（settings.json で guard →
   （"can't replace the prompt"）のため、stdout 注入で近似する workaround。トグル
   `CLAUDE_PROMPT_STRUCTURING=auto|off|always`（既定 auto）。**高リスク入力を検出したら本フックの注入を
   完全抑制** し guard の助言だけを残す（二重バナー防止）。詳細 SSOT は `docs/rules/prompt-structuring-rules.md`
+- **orchestrator-directive.sh**（高コストモデル検出時のオーケストレーター指示・Issue #184）: セッションが
+  高コストモデル（Opus/Fable 系）で動作しているとき、「専門チームを組成してタスクを遂行せよ」という
+  ディレクティブを注入する。トグル `CLAUDE_ORCHESTRATOR_DIRECTIVE=auto|off|always`（既定 auto）。
+  **高リスク入力を検出したら本フックの注入も抑制** し guard の助言だけを残す（二重バナー防止）
 
 ### PreCompact（pre-compact.sh）と PostCompact（post-compact.sh）の役割分担
 - **PreCompact**: 圧縮が始まる *前* に未コミット変更を WIP コミット＆push（L-100 の一次防御）。
   圧縮処理中の不具合や圧縮後の SessionStart クリーンアップで作業が消える前に、最も早く確定させる
-- **PostCompact**: 圧縮 *後* のルール再確認リマインダー + symlink 同期 + 二次的な WIP セーフティネット。
-  PreCompact が確定済みなら working tree は clean になり二重コミットは発生しない
+- **PostCompact**: 圧縮 *後* の symlink 同期 + 二次的な WIP セーフティネット。
+  PreCompact が確定済みなら working tree は clean になり二重コミットは発生しない。
+  ルール再確認リマインダーは SessionStart が担当（PostCompact は stdout 注入非対応・Issue #211）
 
 ## 4. 未採用イベントの採否理由（明示）
 

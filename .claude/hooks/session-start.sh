@@ -268,7 +268,15 @@ unset _ctx_file _ctx_gen
 # ready_to_merge のみ通知（マージは冪等）。他ステータスは hourly プリフライトに任せる。
 _pr_check="${PROJECT_DIR}/tools/check_pending_pr_reviews.py"
 if [ -f "$_pr_check" ] && command -v gh &>/dev/null && [ -n "${GH_TOKEN:-}" ]; then
-  _pr_result=$(timeout 30s python3 "$_pr_check" --actionable-only --json 2>/dev/null || echo "[]")
+  # set -e 下では `var=$(cmd)` 単体が失敗すると即座にスクリプトが終了するため、
+  # if の条件式（set -e が免除される文脈）で終了コードを判定する。
+  if _pr_result=$(timeout 30s python3 "$_pr_check" --actionable-only --json 2>/dev/null); then
+    _pr_exit=0
+  else
+    _pr_exit=$?
+    printf '\n⚠ PR レビュー待機チェック取得失敗（exit %s・gh 403 等・L-114）。0 件と混同しないこと。クラウドでは mcp__github__list_pull_requests で直接確認する。\n' "$_pr_exit"
+    _pr_result="[]"
+  fi
   _rtm=$(echo "$_pr_result" | python3 -c "
 import json,sys
 try:
@@ -286,7 +294,7 @@ for pr in json.load(sys.stdin):
 " 2>/dev/null || true
     printf '\n'
   fi
-  unset _pr_result _rtm _rtm_count
+  unset _pr_result _pr_exit _rtm _rtm_count
 fi
 unset _pr_check
 

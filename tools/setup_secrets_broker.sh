@@ -39,7 +39,7 @@ if [ -z "$REPO" ]; then
   echo "リポジトリを自動検出できませんでした。env SECRETS_BROKER_REPO か GITHUB_REPOSITORY を設定してください（誤ったプロジェクトの Worker 上書き防止）" >&2
   exit 1
 fi
-# SLUG（repo 名）から各リソース名を導出（kinako-mocchi では従来名と完全一致＝挙動不変）
+# SLUG（repo 名）から各リソース名を導出（元プロジェクトでは従来名と完全一致＝挙動不変）
 SLUG="${REPO##*/}"
 STORE_NAME="$SLUG"
 SECRET_BUNDLE_NAME="${SLUG//-/_}_bundle"

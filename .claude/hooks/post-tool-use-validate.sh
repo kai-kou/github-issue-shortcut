@@ -13,10 +13,14 @@
 # プロジェクト固有のバリデーションを追加する例:
 #   1. stdin から tool_name / file_path を取得
 #   2. 対象ファイル（例: *.schema.json）なら python3 tools/validate_xxx.py で検証
-#   3. Error 検出時は systemMessage を出力して exit 2 でブロック
+#   3. Error 検出時は hook_block "理由" でブロック（stderr 出力 + exit 2）
 #
 # 入力 (stdin JSON): { "tool_name": "...", "tool_input": { "file_path": "..." }, ... }
-# 出力: ブロックする場合のみ {"systemMessage": "..."} を stdout に出して exit 2
+# 出力: ブロックする場合のみブロック理由を stderr に出して exit 2（hook_block 参照）
+
+HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/hook_block.sh
+source "$HOOK_DIR/lib/hook_block.sh"
 
 input=$(cat 2>/dev/null || true)
 HOOK_PROFILE="${HOOK_PROFILE:-standard}"
@@ -27,12 +31,9 @@ HOOK_PROFILE="${HOOK_PROFILE:-standard}"
 #   file_path=$(echo "$input" | jq -r '.tool_input.file_path // ""')
 #   if [[ "$file_path" == *.schema.json ]]; then
 #     if ! python3 "$(dirname "$0")/../../tools/validate_schema.py" "$file_path" 2>/dev/null; then
-#       echo '{"systemMessage":"[validate] スキーマ検証に失敗しました。修正してください。"}'
-#       exit 2
+#       hook_block "[validate] スキーマ検証に失敗しました。修正してください。"
 #     fi
 #   fi
-
-HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # --- lessons-core.md（Hot 層）サイズ上限の機械強制（Lv3・lessons-management.md §4）---
 # lessons-core.md を Write/Edit した直後に lessons_guard.py check を実行し、
@@ -44,8 +45,7 @@ if [[ "$file_path" == *docs/rules/lessons-core.md ]]; then
   if [[ -f "$REPO_ROOT/tools/lessons_guard.py" ]] \
      && command -v python3 >/dev/null 2>&1 \
      && ! python3 "$REPO_ROOT/tools/lessons_guard.py" check >/dev/null 2>&1; then
-    echo '{"systemMessage":"[lessons_guard] lessons-core.md が Hot 層の上限（350 行 / 15 エントリ）を超過しています。昇格済みエントリを prune（python3 tools/lessons_guard.py prune --apply）するか Warm 層（docs/rules/lessons/<category>.md）へ降格して解消してください（lessons-management.md §3/§4）。"}'
-    exit 2
+    hook_block "[lessons_guard] lessons-core.md が Hot 層の上限（350 行 / 15 エントリ）を超過しています。昇格済みエントリを prune（python3 tools/lessons_guard.py prune --apply）するか Warm 層（docs/rules/lessons/<category>.md）へ降格して解消してください（lessons-management.md §3/§4）。"
   fi
 fi
 

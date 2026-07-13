@@ -46,8 +46,14 @@ import sys
 import urllib.error
 import urllib.request
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from repo_slug import resolve_repo_slug  # noqa: E402
 
 SLACK_API_BASE = "https://slack.com/api"
+# Slack 通知内の Issue リンク生成用（正本: tools/repo_slug.py・#215）。
+_REPO_SLUG = resolve_repo_slug("kai-kou/github-issue-shortcut")
 
 # publish の FYI イベント（ユーザー操作不要の完了報告）→ @mention しない。
 # unlisted / pre-publish / public / shorts-public は確認・節目アクションのため @mention を維持する。
@@ -326,12 +332,8 @@ def build_pr_blocks(pr_url: str, pr_title: str, branch: str, outcome: str = "") 
 
 
 def _load_triage():
-    """tools/triage_notification.py を import する（同ディレクトリ・依存なし）"""
-    try:
-        from triage_notification import triage_items, classify_item  # type: ignore
-    except ImportError:
-        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-        from triage_notification import triage_items, classify_item  # type: ignore
+    """tools/triage_notification.py を import する（同ディレクトリ・sys.path はモジュール読み込み時に追加済み）"""
+    from triage_notification import triage_items, classify_item  # type: ignore
     return triage_items, classify_item
 
 
@@ -1007,7 +1009,7 @@ def main():
         else:
             # 個別モード
             priority_emoji = {"critical": "🔴", "high": "🟠", "medium": "🟡", "low": "🟢"}.get(priority, "🟡")
-            issue_link = f" (<https://github.com/kai-kou/github-issue-shortcut/issues/{issue_num}|#{issue_num}>)" if issue_num else ""
+            issue_link = f" (<https://github.com/{_REPO_SLUG}/issues/{issue_num}|#{issue_num}>)" if issue_num else ""
             blocks = [
                 {"type": "header", "text": {"type": "plain_text", "text": f"📬 コメント返信承認依頼（{platform_name}）"}},
                 {"type": "section", "text": {"type": "mrkdwn", "text": f"{priority_emoji} *カテゴリ*: {category_name}{issue_link}"}},

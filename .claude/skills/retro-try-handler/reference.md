@@ -129,7 +129,10 @@ mcp__github__add_issue_comment(owner, repo, issue_number={N}, body="""
 - {ファイルパス 1}
 次回セッションで対応します。
 """)
-mcp__github__issue_write(method="update", issue_number={N}, labels=[現ラベル + "done_type:D-plan"])
+# ⚠️ issue_write の labels は全置換（マージではない）。事前に issue_read(get_labels) 等で
+# 現在のラベル一覧を取得し、status:waiting-claude を含む既存ラベルを落とさないフルリストに
+# "done_type:D-plan" を加えて渡すこと（CP-4 ロックを誤って外さないため）。
+mcp__github__issue_write(method="update", issue_number={N}, labels=[現在の全ラベル + "done_type:D-plan"])
 ```
 
 ### C-5: tool-update カテゴリ（Claude Code / Anthropic SDK 新機能）

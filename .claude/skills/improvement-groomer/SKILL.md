@@ -22,7 +22,7 @@ model: inherit
 
 ## 2 層構成
 
-project-sync スキルと同じ「コード（重い処理）＋ Claude（判断）」の 2 層で動く。
+「コード（重い処理）＋ Claude（判断）」の 2 層で動く（`project-sync` は #127 で MCP 直接実行モデルへ移行済みのためコード層を持たない。本スキルの `triage_improvements.py` はそれとは別に存続する集計専用スクリプト）。
 
 - **`tools/triage_improvements.py`（コード・副作用なし）**: 全 `type:improvement` を取得 → 集計・カテゴリ分類・重複検出・priority/sp 欠損検出・Epic 候補抽出 → JSON / Markdown レポート出力。**Issue を変更しない（読み取り専用）**
 - **本 SKILL.md（Claude の判断）**: レポートを読み、@owner と連携して優先度を補完し、重複クローズ・Epic 統合を実行する

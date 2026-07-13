@@ -99,28 +99,7 @@
 - {何ができたら完了とするか}
 ```
 
-### 作成コマンド例
-
-```bash
-mcp__github__issue_write（create アクション）またはローカル:
-gh issue create \
-  --title "docs: ユーザー指示のIssue化ルール追加" \
-  --body "$(cat <<'EOF'
-## ユーザー指示
-ユーザー指示を受けた際にIssue化するか判断してほしい。...
-
-## 対応方針
-- docs/rules/user-instruction-issue-rules.md を新規作成
-- .claude/rules/ にシンボリックリンクを追加
-- CLAUDE.md に参照を追記
-
-## 完了条件
-- ユーザー指示を受けたとき Claude が自律的にIssueを作成して追跡できる
-EOF
-  )" \
-  --label "type:docs,status:in-progress" \
-  -R kai-kou/github-issue-shortcut
-```
+作成は `mcp__github__issue_write`（create アクション。クラウド一次経路・L-114）または `gh issue create --label "type:docs,status:in-progress"` を使う。実例は `user-instruction-issue-rules-detail.md` を参照。
 
 ---
 
@@ -135,6 +114,6 @@ EOF
 
 ## スケジュールタスク・自律実行との関係
 
-スケジュールタスク（hourly-routing.md）や自律実行パイプラインが起動した場合は、
+スケジュールタスク（`{プロジェクト定義: hourly-routing 相当}`）や自律実行パイプラインが起動した場合は、
 各パイプラインスキル（SKILL.md）内の Issue 管理フローに従うため、本ルールは **適用しない** 。
 本ルールは **ユーザーが直接発した指示** に対してのみ適用する。
