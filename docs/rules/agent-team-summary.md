@@ -9,14 +9,14 @@
 | モード | 実体 | エージェント間の議論 | 既定で使う場面 |
 |--------|------|------------------|--------------|
 | **役割分担型 fan-out** | `Agent` ツールの並列サブエージェント（メインが集計） | なし | 内部の自動調査・速度/コスト優先。障害調査（`problem-investigation-protocol.md` Step 3 の自動起動）・定型チェック |
-| **議論型（claude -p ネイティブ Agent Teams）** | `claude -p` lead + サブエージェント + 共有ホワイトボード（`tools/run_discussion_review.py` / `tools/discussion_whiteboard.py`） | あり（ホワイトボード経由で相互に反論・検証） | **ユーザーが明示的に「専門チームを組成して」と指示したとき**・過剰指摘削減が要るレビュー |
+| **議論型（ネイティブ Agent Teams）** | `discussion-review` スキル: メインが lead、参加者は name 付き background `Agent` + `SendMessage` 再開 + 共有ホワイトボード（`tools/discussion_whiteboard.py`） | あり（ホワイトボード経由で相互に反論・検証） | **ユーザーが明示的に「専門チームを組成して」と指示したとき**・過剰指摘削減が要るレビュー |
 
 ### 振り分けルール（SSOT・飼い主決定）
 
-- **ユーザーが明示的に「専門チームを組成して」「専門チームで」「チームで議論して」等と指示したら、議論型（`claude -p`）を既定とする。** fan-out で代替してよいのは、ユーザーがコスト/速度優先を明示した場合か、対象が議論に値しない軽微なタスクのときだけ（理由を 1 行述べる）。
-- 議論型を実行する前に `docs/rules/discussion-whiteboard-rules.md` を Read し、`python3 tools/run_discussion_review.py --id <議題ID> --spec <スペック> --targets "<対象1>,<対象2>（複数時はカンマ区切り）" --rounds 2` で起動する（`--targets` は内部で `split(",")` 解析。スペース区切りはファイル不在エラーになる）。
+- **ユーザーが明示的に「専門チームを組成して」「専門チームで」「チームで議論して」等と指示したら、議論型（`discussion-review` スキル）を既定とする。** fan-out で代替してよいのは、ユーザーがコスト/速度優先を明示した場合か、対象が議論に値しない軽微なタスクのときだけ（理由を 1 行述べる）。
+- 議論型を実行する前に `docs/rules/discussion-whiteboard-rules.md` を Read し、`discussion-review` スキル（`.claude/skills/discussion-review/SKILL.md`）の手順で実行する。spec 形式は旧経路と共通（`tools/discussion_specs/`）。
 - **障害検出時の内部自動調査**（`problem-investigation-protocol.md` Step 3）は従来どおり fan-out を既定とする（速度/コスト優先・ユーザー明示指示ではないため）。
-- claude -p 失敗時（EXIT≠0・verdict 抽出不可）は fan-out へ自動退避し、退避をログに残す（サイレントフォールバック禁止）。
+- フォールバック連鎖: ネイティブ失敗 → 旧経路 `python3 tools/run_discussion_review.py --id <議題ID> --spec <スペック> --targets "<対象1>,<対象2>（カンマ区切り）" --rounds 2`（claude -p 駆動）→ それも失敗（EXIT≠0・verdict 抽出不可）なら fan-out へ退避。各段とも退避をログに残す（サイレントフォールバック禁止）。
 
 ## モデル選択（コスト最適化）
 

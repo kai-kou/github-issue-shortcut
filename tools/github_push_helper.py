@@ -34,8 +34,12 @@ import sys
 import urllib.error
 import urllib.parse
 import urllib.request
+from pathlib import Path
 
-DEFAULT_REPO = "kai-kou/github-issue-shortcut"
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from repo_slug import resolve_repo_slug  # noqa: E402
+
+DEFAULT_REPO = resolve_repo_slug("kai-kou/github-issue-shortcut")
 API_ROOT = "https://api.github.com"
 
 

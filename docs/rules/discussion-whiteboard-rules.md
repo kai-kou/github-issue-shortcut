@@ -69,7 +69,8 @@ content/discussions/<id>/
 
 ## 3. 議論の進行（標準フロー）
 
-`tools/run_discussion_review.py`（WF主導オーケストレーター）が `claude -p` でこれを駆動する。
+**`discussion-review` スキル（ネイティブ Agent Teams・既定）** がメインセッション主導でこれを駆動する
+（旧経路 `tools/run_discussion_review.py` = claude -p 駆動はフォールバック・§4）。
 
 ```
 init（議題作成）
@@ -88,19 +89,29 @@ init（議題作成）
 
 ---
 
-## 4. 実行基盤（claude -p 経由・実機検証済み）
+## 4. 実行基盤（ネイティブ Agent Teams が既定・実機検証済み 2026-07-11）
 
-- ハーネスのメインセッションには `Workflow`/`TeamCreate`/`SendMessage` が **非露出** だが、
-  **Bash から `claude -p` サブプロセスを起動すると使える**（`run_deep_research_workflow.py` と同経路）。
-- 公式 Dynamic Workflows の `.js` は **API 非公開** かつ「**スクリプト自体は fs/shell に触れない**（エージェントが
-  読み書きする）」制約があるため、手書き `.js` は採らず、`claude -p` の lead に **ラウンド進行を指示** して
-  Workflow/Agent ツールを内部活用させる（= WF主導の実体）。
+### 4.1 既定: ネイティブ経路（`discussion-review` スキル）
+
+- メインセッションが lead 進行役を兼ね、参加者を **name 付き background Agent** で起動する
+  （チーム作成手続き不要・1 セッションに単一の暗黙チーム）。`SendMessage` は deferred ツールとして
+  露出しており、ToolSearch でロードして **完了済み参加者の名前宛て再開**（ラウンド進行の合図）に使う。
+  手順詳細は `.claude/skills/discussion-review/SKILL.md`。
+- **配達制約（V-5・実測）**: SendMessage の配達は受信側の「次のツールラウンド」のみ。受信側が
+  ターン終了済みだと **サブエージェント発のメッセージは消失する**（送信結果は success を返すため
+  送達保証と混同しない）。よって議論の永続化は **ホワイトボード（artifact）に寄せ**、SendMessage は
+  進行合図に限定する。参加者同士の直接往復は同時稼働中のみ。
+- 共有タスクボード（TaskCreate 等）はサブエージェント側から利用不可（V-6）。設計に使わない。
+
+### 4.2 フォールバック: claude -p 経路（`run_discussion_review.py`）
+
+ネイティブ経路が成立しない場合（Agent/SendMessage 不可等）のみ使う（サイレント退避禁止・理由をログ）:
+
+- Bash から `claude -p` サブプロセスを起動し、子セッションの lead に Workflow/Agent ツールで
+  ラウンド進行させる（`run_deep_research_workflow.py` と同経路）。
 - ⚠️ **`claude -p` は cwd=リポジトリで起動しない**。子セッションの SessionStart フック
   （`git clean -fd` / `git checkout`）が未コミットの作業を破壊するため（L-100 と同根）。
   `run_discussion_review.py` は **cwd=一時ディレクトリ** で起動し、リポジトリへは **絶対パス** で読み書きさせる。
-- Agent Teams の peer-to-peer は headless で **lead 早期終了・teammate 早期離脱の競合** が出る（実機確認）。
-  そのため議論の永続化は **メッセージではなくホワイトボード（artifact）に寄せる**。SendMessage は
-  「更新したから反論して」等の生シグナルの補助に留める。
 
 ---
 
@@ -122,9 +133,11 @@ init（議題作成）
 
 ## 5. ガードレール
 
-1. **フォールバック**: 議論型レビューが失敗（EXIT≠0・verdict 抽出不可）したら、**既存の fan-out レビュー
-   経路へ自動退避** する（`dynamic-workflows-rules.md` §5-1 と同方針）。サイレントフォールバック禁止（ログに残す）。
-2. **予算**: `claude -p` は lead + サブエージェント分のトークンを消費する。サブスク経路（既定・追加 $ ゼロ）を
+1. **フォールバック連鎖**: ネイティブ議論型が失敗 → claude -p 経路（§4.2）→ それも失敗
+   （EXIT≠0・verdict 抽出不可）したら **既存の fan-out レビュー経路へ退避** する
+   （`dynamic-workflows-rules.md` §5-1 と同方針）。各段ともサイレントフォールバック禁止（ログに残す）。
+2. **予算**: ネイティブ経路はメインセッションの課金に一本化される（参加者の最終出力を 1 行サマリーに
+   限定してコンテキスト消費を抑える）。claude -p フォールバック時はサブスク経路（既定・追加 $ ゼロ）を
    使い、API 従量経路時は `--max-budget-usd` で上限を付ける（`DISCUSSION_USE_SUBSCRIPTION=0` で従量モード）。
 3. **監修ゲート**: プロジェクト定義のキャラクター/専門家オブザーバーを参加者に含める場合、設定逸脱・技術誤りの
    指摘は **自動ゲート扱い** にする（CLAUDE.md サブエージェントルール準拠）。
@@ -137,7 +150,10 @@ init（議題作成）
 
 ## 6. スキルからの使い方
 
-各スキルは「議論スペック JSON」を用意し、ドライバーに渡す:
+各スキルは「議論スペック JSON」を用意し、**`discussion-review` スキル（ネイティブ・既定）** に
+spec・targets・rounds を渡して実行する（手順は `.claude/skills/discussion-review/SKILL.md`）。
+
+フォールバック（ネイティブ不成立時のみ・理由をログ）:
 
 ```bash
 python3 tools/run_discussion_review.py \
@@ -146,7 +162,7 @@ python3 tools/run_discussion_review.py \
   --targets "<対象パス,...>" --rounds 2
 ```
 
-スペック形式は `tools/run_discussion_review.py` の docstring と
+スペック形式は両経路で共通。`tools/run_discussion_review.py` の docstring と
 `tools/discussion_specs/example_debate.json`（最小例・タブ vs スペース討論で動作検証可能）を参照。
 
 ---
@@ -155,8 +171,10 @@ python3 tools/run_discussion_review.py \
 
 | ドキュメント | 関係 |
 |------------|------|
+| `.claude/skills/discussion-review/SKILL.md` | ネイティブ議論型の実行手順（既定経路） |
 | `tools/discussion_whiteboard.py` | ホワイトボード基盤（init/post/render/list/show・--self-test） |
-| `tools/run_discussion_review.py` | WF主導オーケストレーター（claude -p で議論を駆動） |
+| `tools/run_discussion_review.py` | claude -p 駆動オーケストレーター（フォールバック経路） |
 | `tools/discussion_specs/example_debate.json` | 最小スペック例（動作検証用） |
+| `docs/proposals/native-agent-teams-migration.md` | ネイティブ移行の経緯・実機検証（V-1〜V-6） |
 | `docs/rules/dynamic-workflows-rules.md` | WF主導の土台・ガードレール |
 | `docs/rules/agent-team.md` | 役割分担型 fan-out（議論型と使い分ける既存並列プリミティブ） |

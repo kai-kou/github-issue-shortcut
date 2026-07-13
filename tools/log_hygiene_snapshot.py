@@ -28,7 +28,10 @@ import sys
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
-GH_REPO = "kai-kou/github-issue-shortcut"
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from repo_slug import resolve_repo_slug  # noqa: E402
+
+GH_REPO = resolve_repo_slug("kai-kou/github-issue-shortcut")
 JST = timezone(timedelta(hours=9))
 
 REPO_ROOT = Path(__file__).resolve().parent.parent

@@ -6,8 +6,9 @@
 #   - PreCompact（本スクリプト）: 圧縮が始まる *前* に未コミット変更を WIP コミット＆push する。
 #     圧縮処理中の不具合や、圧縮後の SessionStart クリーンアップ（git reset/checkout/clean）で
 #     作業が失われる前に、最も早いタイミングで作業を確定させる（L-100 の一次防御）。
-#   - PostCompact（post-compact.sh）: 圧縮 *後* のルール再確認リマインダー + symlink 同期 +
-#     二次的な WIP セーフティネット。PreCompact が確定済みなら working tree は clean になる。
+#   - PostCompact（post-compact.sh）: 圧縮 *後* の symlink 同期 + 二次的な WIP セーフティネット。
+#     PreCompact が確定済みなら working tree は clean になる。ルール再確認リマインダーは
+#     SessionStart が担当（PostCompact は stdout 注入非対応・Issue #211）。
 #
 # 出力: PreCompact の stdout はコンテキストに注入されない
 #       （注入されるのは UserPromptSubmit / UserPromptExpansion / SessionStart のみ）。

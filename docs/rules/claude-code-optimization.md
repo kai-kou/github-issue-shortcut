@@ -243,32 +243,12 @@ response = client.beta.messages.create(
 
 ## フック（Hooks）最新仕様
 
-### 利用可能なフックイベント一覧（16 種類・v2.1.105+）
+> **フックイベント名の実在性・採否決定・件数（公式 31 イベント）・stdout 注入対象・`exit 2`/JSON 排他性
+> （Issue #142 再発防止）の唯一の正本（SSOT）は `docs/rules/hook-events-reference.md`。**
+> 本ファイルには重複記載しない（旧テーブルは二重管理で件数表記が食い違う desync を招いたため撤去・Issue #149）。
+> 本プロジェクトで実装済みのフックスクリプト一覧は `CLAUDE.md` 「ハーネス（`.claude/hooks/`）」表を参照。
 
-| イベント | タイミング | 本プロジェクトでの利用状況 |
-|---------|-----------|------------------------|
-| `SessionStart` | セッション開始時 | ✅ 利用中（session-start.sh, session-start-slack.sh） |
-| `Stop` | セッション終了時 | ✅ 利用中（stop-git-check.sh, stop-pr-check.sh, stop-slack-notify.sh） |
-| `PreToolUse` | ツール実行前 | ✅ 利用中（git push, PR 作成, 画像生成, コメント投稿の検証） |
-| `PostToolUse` | ツール実行成功後 | ✅ 利用中（台本 JSON バリデーション） |
-| `PostToolUseFailure` | ツール実行失敗後 | ✅ 利用中（プロキシ環境エラー検出） |
-| `PreCompact` | **コンテキスト圧縮前**（v2.1.105 新設） | ⬜ 未利用（将来: 圧縮前の追加コミット・品質ゲート検証） |
-| `PostCompact` | コンテキスト圧縮後 | ✅ 利用中（自動コミット + ルール同期） |
-| `PermissionRequest` | パーミッション要求時 | ✅ 利用中（.claude/ 配下の自動許可） |
-| `UserPromptSubmit` | ユーザー入力送信時 | ⬜ 未利用（将来: 入力バリデーション） |
-| `SubagentStart` | サブエージェント開始時 | ⬜ 未利用（将来: サブエージェント実行ログ） |
-| `SubagentStop` | サブエージェント終了時 | ⬜ 未利用（将来: 実行結果のログ記録） |
-| `TaskCreated` | タスク作成時 | ⬜ 未利用 |
-| `TaskCompleted` | タスク完了時 | ⬜ 未利用 |
-| `WorktreeCreate` | ワークツリー作成時 | ⬜ 未利用 |
-| `WorktreeRemove` | ワークツリー削除時 | ⬜ 未利用 |
-| `InstructionsLoaded` | CLAUDE.md 読み込み時 | ⬜ 未利用（圧縮後の再読み込み検知） |
-
-### フック新フィールド・新イベント（2026-06-05 公式ドキュメント検証・知識反映）
-
-> 以下は公式 [hooks docs](https://code.claude.com/docs/en/hooks) で確認した追加機能。**いずれも導入は挙動変更を伴うため未適用（提案扱い・本ファイル末尾「未適用の改善提案」参照）**。本節は仕様の記録のみ。
-
-**SessionStart フックの構造化出力フィールド**:
+**SessionStart フックの構造化出力フィールド**（実用メモ・hook-events-reference.md に未収録の詳細）:
 
 | フィールド | 効果 | 本プロジェクトでの活用案 |
 |-----------|------|----------------------|
@@ -278,27 +258,7 @@ response = client.beta.messages.create(
 
 **Stop / SubagentStop フックの `additionalContext`**: 品質ゲート結果・CI 状態・テスト結果を次ターンに注入できる（`stop-pr-check.sh` 等の補完）。
 
-**新フックイベント（公式追加・本プロジェクト未利用・一部要確認）**:
-
-| イベント | タイミング | 活用案 | 確度 |
-|---------|-----------|--------|------|
-| `SessionEnd` | セッション終了（clear/logout 等）。`SessionStart` と対 | パイプライン実行時間・コスト記録 | 公式記載 |
-| `StopFailure` | API エラー（rate_limit 等）でターン終了。ログ専用 | `error_type` 検知 → Slack 通知でエラー可視化 | 公式記載 |
-| `UserPromptExpansion` | スラッシュコマンド展開前。コマンド名/引数でマッチ | スロット外パイプライン起動のログ記録 | 公式記載 |
-| `MessageDisplay` | アシスタント応答表示時（10秒）。テキスト変換・フィルタ | 台本生成中の `voicevox_style` 無効値リアルタイム警告 | 要確認 |
-| `PostToolBatch` / `CwdChanged` | 並列ツールバッチ解決後 / cwd 変更時 | バッチ後検証・env 再ロード | 要確認 |
-
-**新フックタイプ（`command` 型以外）**: `type: "prompt"`（Claude が YES/NO 判定）/ `type: "mcp_tool"`（MCP ツール呼び出し）/ `type: "http"`（HTTP POST）。既存はシェル `command` 型のみ。導入は CC-BUG-16（フック肥大化）リスクを考慮し統合を先行すること（提案扱い）。
-
-### フックの出力と制御
-
-| 終了コード | 効果 |
-|-----------|------|
-| `exit 0` | 許可（正常続行） |
-| `exit 2` | ブロック（ツール実行を阻止 / PreCompact では圧縮をブロック） |
-| JSON 出力 | 構造化判定（`allow`, `deny`, `block` レスポンス） |
-
-#### PreCompact フックの設計パターン（v2.1.105+）
+### PreCompact フックの設計パターン（v2.1.105+）
 
 ```bash
 #!/bin/bash
@@ -335,28 +295,16 @@ fi
 exit 0
 ```
 
-> **現在の方針**: `PostCompact` + `Stop` フックで自動コミットを実施しているため、`PreCompact` は当面未実装。ただし、パイプライン内で「圧縮が品質ゲート中断を引き起こす」ケースが頻発した場合は実装を検討する。
+> **現状**: `PreCompact`（pre-compact.sh）は圧縮前の未コミット変更 WIP コミット & push（L-100 一次防御）として実装済み。`PostCompact` + `Stop` フックが二次防御を担う（`docs/rules/session-compression-rules.md` 参照）。上記コード例は当時の設計パターンの記録であり、実装は `.claude/hooks/pre-compact.sh` を正とする。
 > **実装時の絶対制約**: trigger='auto' は無条件で通過（exit 0）。これを守らないとコンテキスト上限到達時に API エラーが表面化してリクエスト失敗が起きる（プロジェクト技術監修役レビュー 2026-04-18）。
 
-### フック活用の拡張候補
+### フック活用候補（旧提案・実装状況の記録）
 
-#### 1. SubagentStart/SubagentStop ログ（推奨度: 中）
+以下 3 件は提案当時は未実装だったが、現在はいずれも実装済み（CLAUDE.md ハーネス表参照）。
 
-パイプライン実行中のサブエージェント起動を記録し、デバッグ・パフォーマンス分析に活用する。
-
-```bash
-# .claude/hooks/subagent-log.sh
-#!/bin/bash
-echo "$(date +%Y-%m-%dT%H:%M:%S) [SubagentStart] $TOOL_INPUT" >> /tmp/subagent_log.txt
-```
-
-#### 2. UserPromptSubmit バリデーション（推奨度: 低）
-
-ユーザー入力にスケジュールタスクの時刻情報が含まれている場合、自動でルーティングテーブルを参照する。現時点では優先度低。
-
-#### 3. PreCompact フック実装（推奨度: 中・将来対応）
-
-圧縮前にパイプライン状態を Git にコミットし、CC-BUG-14（圧縮後の API エラー 400）リスクを軽減する。詳細は上記「PreCompact フックの設計パターン」参照。
+1. **SubagentStart/SubagentStop ログ** → `subagent-stop.sh` として実装済み（サブエージェント異常終了の自己修正フィードバック）
+2. **UserPromptSubmit バリデーション** → `user-prompt-submit-guard.sh` / `prompt-structuring.sh` / `orchestrator-directive.sh` として実装済み
+3. **PreCompact フック** → `pre-compact.sh` として実装済み（上記参照）
 
 ## Agent Teams（実験的機能） — `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS`
 

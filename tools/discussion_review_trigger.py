@@ -1,9 +1,15 @@
 #!/usr/bin/env python3
-"""discussion_review_trigger.py — Layer 2 議論型レビューの自動トリガー。
+"""discussion_review_trigger.py — Layer 2 議論型レビューの自動トリガー（判定器）。
 
-PR の差分行数またはラベルに基づいて Layer 2 レビュー（run_discussion_review.py +
-discussion_specs/code_review.json）を自動起動する。
+PR の差分行数またはラベルに基づいて Layer 2 議論型レビューの要否を判定する。
 pr-review-watcher スキルが PR 作成後に呼び出す（Issue #97）。
+
+既定（ネイティブ経路・Issue #193）: トリガー該当時は「実行プラン JSON」を stdout に出力して
+終了する。呼び出し元のエージェントがこのプランを使って discussion-review スキル
+（ネイティブ Agent Teams）を実行する。本スクリプトはサブプロセスを起動しない。
+
+--legacy 指定時（フォールバック）: 旧経路（run_discussion_review.py = claude -p 駆動）を
+サブプロセスとして直接起動する。ネイティブ経路が成立しない場合のみ使う。
 
 トリガー条件:
   - 差分行数（追加 + 削除）が TRIGGER_DIFF_LINES（300行）以上
@@ -100,6 +106,8 @@ def main() -> None:
                         help="カンマ区切りのラベル名一覧。省略時は gh CLI で取得を試みる")
     parser.add_argument("--changed-files", default="",
                         help="カンマ区切りの変更ファイルパス一覧。省略時は gh CLI で取得を試みる")
+    parser.add_argument("--legacy", action="store_true",
+                        help="旧経路（run_discussion_review.py = claude -p）を直接起動する（フォールバック用）")
     args = parser.parse_args()
 
     # 引数で直接提供された場合はそれを使う（クラウド環境）
@@ -127,7 +135,8 @@ def main() -> None:
         print(f"ℹ️ Layer 2 レビュー不要: {reason}")
         sys.exit(0)
 
-    print(f"🔍 Layer 2 レビュー起動: {reason}")
+    # 実行プラン JSON（stdout）と混ざらないよう、進捗ログは stderr へ出す
+    print(f"🔍 Layer 2 レビュー起動: {reason}", file=sys.stderr)
 
     if args.dry_run:
         print("(dry-run: 実行しません)")
@@ -136,8 +145,31 @@ def main() -> None:
     # 変更ファイルのうちリポジトリに存在するものだけターゲットに含める
     existing = [f for f in changed_files if (REPO_ROOT / f).exists()]
     targets = ",".join(existing) if existing else ""
-    target_args = ["--targets", targets] if targets else []
 
+    if not args.legacy:
+        # ネイティブ経路（既定・Issue #193）: 実行プランを出力し、呼び出し元エージェントが
+        # discussion-review スキル（ネイティブ Agent Teams）でこのプランを実行する。
+        plan = {
+            "action": "run_native_discussion_review",
+            "skill": "discussion-review",
+            "id": f"pr-{args.pr}",
+            "spec": str(SPEC_PATH),
+            "targets": existing,
+            "rounds": 2,
+            "reason": reason,
+            "fallback_command": (
+                f"python3 tools/discussion_review_trigger.py --pr {args.pr} "
+                f"--diff-lines {diff_lines} --labels \"{','.join(sorted(labels))}\" "
+                f"--changed-files \"{','.join(changed_files)}\" --legacy"
+            ),
+        }
+        print(json.dumps(plan, ensure_ascii=False, indent=2))
+        print("▶ 上記プランに従い discussion-review スキル（ネイティブ）で Layer 2 を実行してください。",
+              file=sys.stderr)
+        sys.exit(0)
+
+    # --legacy: 旧経路（claude -p 駆動）をサブプロセス起動（フォールバック）
+    target_args = ["--targets", targets] if targets else []
     rc = subprocess.call(
         [
             sys.executable,

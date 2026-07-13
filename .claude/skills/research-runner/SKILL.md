@@ -1,6 +1,6 @@
 ---
 name: research-runner
-description: Deep Research を完全自動実行するスキル。ネイティブ `/deep-research`（クラウド環境でも直接実行可能・Opus orchestrator）を主エンジン、Gemini Deep Research Max を第2、DIY（Sonnet 5 + WebSearch）を最終フォールバックとして、`content/research/{ID}_prompt.md` から `content/research/{ID}_deep_research.{md,json}` を自動生成し、品質ゲート・PR 作成・AIレビュー・自動マージまでを担う。「リサーチ自動化して」「ディープリサーチして」「research-runner」と依頼された時に使用する。
+description: Deep Research を完全自動実行するスキル。ネイティブ `/deep-research`（クラウド環境でも直接実行可能・Opus orchestrator）を主エンジン、Gemini Deep Research Max を第2、DIY（Sonnet 5 + WebSearch）を最終フォールバックとして、`content/research/{ID}_prompt.md` から `content/research/{ID}_deep_research.{md,json}` を自動生成し、品質ゲート・PR 作成・AIレビュー・自動マージまでを担う。「リサーチ自動化して」「ディープリサーチして」「research-runner」と依頼された時に使用する。「ディープリサーチして」の既定エンジンは本スキルであり、ビルトインの deep-research や素の WebSearch へ直行しない。
 model: sonnet
 effort: high
 disallowed-tools: AskUserQuestion
@@ -47,6 +47,8 @@ Deep Research の完全自動化スキル。ユーザーの手動ディープリ
 | コスト | **既定=サブスク週次枠経路（追加 $ ゼロ）**: セッション認証（Claude Code Max サブスク）をそのまま使用し（`DEEP_RESEARCH_USE_SUBSCRIPTION=1` 既定）、`/deep-research` は週次クォータの枠内で実行され追加課金なし。`DEEP_RESEARCH_USE_SUBSCRIPTION=0` で従来の API 従量経路（1本上限 `--max-budget-usd`・当月累計 `$40` 超で Gemini フォールバック・月 `$50` ブレーカー）に戻せる（Step 3a の直接呼び出しはセッションの既存認証をそのまま使うため、この課金分岐自体が発生しない） |
 | モデル | 公式仕様は「ワークフロー内の各エージェントはセッションのモデルを使用（スクリプトが明示的に別モデルへ routing しない限り）」。**Opus 固定は本プロジェクトの選択**（Step 3b が `--model claude-opus-4-8` を明示指定）であり、Anthropic 側が `/deep-research` を Opus に固定している仕様ではない。Step 3a（直接呼び出し）はそのときのセッションモデルに従う点に注意 |
 | 想定時間 | 本番では 30〜50分/本（wall-clock）。Step 3a はネイティブの Workflow バックグラウンド実行 + 完了通知に従う。Step 3b は必ず `run_in_background` + heartbeat で監視する |
+
+> **claude -p の位置づけ**: Step 3b の `claude -p` は Web ギャップ代替ではなく、コンテキスト隔離・90 分タイムアウト・レート枠検出（EXIT=6）が本質的に必要な **設計上の一次経路**（`isolation-by-design`）。分類とフォールバック標準形の SSOT は `docs/rules/native-fallback-rules.md`。
 
 ## 起動条件（自律起動・対話起動）
 

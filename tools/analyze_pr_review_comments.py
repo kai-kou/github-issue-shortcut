@@ -14,7 +14,7 @@ Usage:
     python3 tools/analyze_pr_review_comments.py --input /tmp/c.json  # 取得済みファイルを使用
     python3 tools/analyze_pr_review_comments.py --json             # 統計 JSON を stdout 出力
 
-実行タイミング: 毎週月曜の 07:00 スロット ⑤.7（docs/rules/hourly-routing.md・週次化 #2900）
+実行タイミング: 毎週月曜の 07:00 スロット ⑤.7（{プロジェクト定義: hourly-routing 相当}・週次化 #2900）
 Exit code: 0 = 正常 / 1 = 取得・解析失敗
 """
 
@@ -27,8 +27,11 @@ from collections import Counter, defaultdict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from repo_slug import resolve_repo_slug  # noqa: E402
+
 JST = timezone(timedelta(hours=9))
-REPO = "kai-kou/github-issue-shortcut"
+REPO = resolve_repo_slug("kai-kou/github-issue-shortcut")
 ANALYSIS_DIR = Path(__file__).resolve().parent.parent / "docs" / "analysis"
 
 # AI レビュアーのログイン名部分一致パターン（小文字・lower 比較）。

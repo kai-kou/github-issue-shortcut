@@ -1,5 +1,5 @@
 ---
-description: 次にやるべきタスクを優先度順に自律判定して実行する（PR レビュー対応 → 進行中 Issue 再開 → waiting-claude Issue → プロジェクト固有バックログ）
+description: 次にやるべきタスクを優先度順に自律判定して実行する（PR レビュー対応 → 進行中 Issue 再開 → waiting-claude Issue → プロジェクト固有バックログ）。読み取り専用の現状把握だけなら /status、Issue 作成・ステータス更新など個別の書き込み操作なら project-manager を使う。
 ---
 
 # /next — 次にやるべきタスクを特定

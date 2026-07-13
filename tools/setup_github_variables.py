@@ -27,10 +27,13 @@ import json
 import os
 import subprocess
 import sys
+from pathlib import Path
 
-from tools.mask_secrets import mask_value
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from mask_secrets import mask_value  # noqa: E402
+from repo_slug import resolve_repo_slug  # noqa: E402
 
-REPO = "kai-kou/github-issue-shortcut"
+REPO = resolve_repo_slug("kai-kou/github-issue-shortcut")
 
 # 汎用ベースのコア管理変数（slack-notify / ai-reviewer モジュール）。
 # プロジェクト固有の変数（YouTube / VOICEVOX / X / Bluesky / R2 等）は

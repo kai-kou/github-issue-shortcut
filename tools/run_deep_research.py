@@ -99,10 +99,17 @@ class RunResult:
 def _repo_slug() -> str:
     """対象リポジトリ slug（owner/repo）を返す。
 
-    クラウド/CI では `GITHUB_REPOSITORY` が設定済み。未設定時は雛形プレースホルダ
-    `kai-kou/github-issue-shortcut` を返す（プロジェクト適用時に bootstrap で置換する）。
+    bootstrap 済み（プレースホルダ解決済み）ならその値を最優先でそのまま返す（下流
+    リポジトリの既定動作）。未解決（本リポジトリ自身への自己ホスト実行等・#215）の
+    場合のみ `GITHUB_REPOSITORY` → git remote → 雛形プレースホルダ `kai-kou/github-issue-shortcut`
+    のまま、の順で解決する（優先順位の実装は tools/repo_slug.py が正本）。
     """
-    return os.environ.get("GITHUB_REPOSITORY") or "kai-kou/github-issue-shortcut"
+    from pathlib import Path
+
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from repo_slug import resolve_repo_slug
+
+    return resolve_repo_slug("kai-kou/github-issue-shortcut")
 
 
 def _extract_prompt_from_issue_body(body: str) -> str | None:

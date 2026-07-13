@@ -17,8 +17,8 @@
 #   }
 #
 # 出力 (stdout JSON):
-#   { "additionalContext": "..." }   ← オーケストレータのコンテキストに注入される
-#   空文字でもよい（フィードバック不要時）
+#   { "hookSpecificOutput": { "hookEventName": "SubagentStop", "additionalContext": "..." } }
+#   ← additionalContext がオーケストレータのコンテキストに注入される（空文字でもよい・フィードバック不要時）
 #
 # 注記:
 #   /usage コマンドは headless(-p)モードでは動作しないため、本フックでは使用しない（P-11・#2672）。
@@ -81,11 +81,13 @@ EOF
 )
 
 # JSON 出力: jq or python3 で安全にシリアライズ（手動エスケープは改行崩れのリスクがある）
+# hookSpecificOutput ネスト構造が必須（公式仕様・docs/rules/hook-events-reference.md §2・Issue #143）。
+# post-tool-use-failure.sh と同形式に揃える。
 if command -v jq &>/dev/null; then
-  printf '%s' "$FEEDBACK" | jq -Rs '{"additionalContext": .}'
+  printf '%s' "$FEEDBACK" | jq -Rs '{"hookSpecificOutput": {"hookEventName": "SubagentStop", "additionalContext": .}}'
 else
   printf '%s' "$FEEDBACK" | python3 -c "
 import json, sys
-print(json.dumps({'additionalContext': sys.stdin.read()}))
+print(json.dumps({'hookSpecificOutput': {'hookEventName': 'SubagentStop', 'additionalContext': sys.stdin.read()}}))
 "
 fi

@@ -1,6 +1,13 @@
 #!/usr/bin/env python3
 """run_discussion_review.py — 「議論型レビュー」WF主導オーケストレーター。
 
+## 凍結（Phase 3・Issue #195・2026-07-13）
+
+ネイティブ議論型（`.claude/skills/discussion-review/SKILL.md`）が安定運用の目安
+（議論型実行 5 件・フォールバック発動 0 件）を満たしたため、本スクリプトは **新規開発を凍結**。
+既定経路はネイティブに一本化済みで、本スクリプトは「ネイティブが成立しない場合の手動フォールバック」
+としてのみ存置する。削除は行わない（`docs/proposals/native-agent-teams-migration.md` §5 Phase 3 参照）。
+
 専門チームに **役割分担型 fan-out ではなく、敵対的相互レビュー（議論）** をさせ、
 各エージェントが共有ホワイトボード（tools/discussion_whiteboard.py）に自由記載し、
 議論の整理 + 履歴を git 管理できるようにする。

@@ -65,7 +65,7 @@ git checkout -b claude/retro-try-handler-{session_id}
 
 ### ルールファイル読み込み
 
-`docs/rules/self-review-checklist.md`（過去のレビュー学習内容。旧 `self-review-learnings.md` は存在しないため参照しない）を `docs/rules/` から Read する。
+`docs/rules/self-review-checklist.md`（過去のレビュー学習内容。旧ファイル名は廃止済みのため参照しない）を `docs/rules/` から Read する。
 
 ---
 

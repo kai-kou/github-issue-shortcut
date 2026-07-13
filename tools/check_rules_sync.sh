@@ -35,6 +35,7 @@ ESSENTIAL_RULES=(
   "lessons-core.md"
   "pr-review-flow-summary.md"
   "session-compression-rules.md"
+  "session-concurrency-rules.md"
   "session-safety-rules.md"
   "session-sprint-rules.md"
   "user-confirmation-minimization.md"
@@ -45,6 +46,7 @@ ESSENTIAL_RULES=(
 # Warm 降格済み（既定では Hot 層に常駐させない）:
 #   - progress-reporting-rules.md: 制作系の長時間処理を行うときに該当パイプラインスキルが冒頭で Read する
 #   - session-concurrency-rules.md: Scheduled Tasks（マルチセッション並行運用）を使うプロジェクトのみ symlink する
+#     → 本リポジトリは R-1 ルーティン（docs/routines.md）の稼働開始に伴い Hot 化済み（E-B #20・PR #176）
 #   - ai-reviewer-strategy.md: Warm 降格済み（#88）。現行 FAIR 構成の要点は圧縮版 + pr-review-flow-summary.md に記載
 #   - autonomous-operation-policy.md: Warm 降格済み（#89）。user-confirmation-minimization.md / core-principles.md と大幅重複
 #   - session-sprint-rules-detail.md: session-sprint-rules.md の詳細版（Warm 専用・#90）

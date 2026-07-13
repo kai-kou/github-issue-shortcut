@@ -14,6 +14,10 @@
 
 set -euo pipefail
 
+HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/hook_block.sh
+source "$HOOK_DIR/lib/hook_block.sh"
+
 # 完了報告（マージ）信号: 「マージ完了」を示す表現に限定する。
 # （単独の "squash" は "squash merge 予定" 等の未完了文脈を誤検知するため含めない。
 #  英語の "squash merged" は [Mm]erged が拾う・日本語の "squash でマージしました" は マージしました が拾う）
@@ -86,8 +90,7 @@ last_text=$(tail -n 400 "$transcript" 2>/dev/null | jq -rs '
 if [[ -z "$last_text" ]]; then exit 0; fi
 
 if [[ "$(classify_text "$last_text")" == "nudge" ]]; then
-  jq -Rn '{"systemMessage": "📋 完了報告フォーマット確認: 直前の報告が「PR マージの詳細」中心になっているにゃ。ユーザーがチャットを遡らずに済むよう、**先頭に「ご依頼（最初に頼まれたことの再掲）→ アウトカム（何ができるようになったか）」** を置いて報告し直してにゃ。PR 番号・マージ・レビュー対応は補足に回すか省略する（SSOT: docs/rules/completion-report-rules.md）。"}'
-  exit 2
+  hook_block "📋 完了報告フォーマット確認: 直前の報告が「PR マージの詳細」中心になっているにゃ。ユーザーがチャットを遡らずに済むよう、**先頭に「ご依頼（最初に頼まれたことの再掲）→ アウトカム（何ができるようになったか）」** を置いて報告し直してにゃ。PR 番号・マージ・レビュー対応は補足に回すか省略する（SSOT: docs/rules/completion-report-rules.md）。"
 fi
 
 exit 0

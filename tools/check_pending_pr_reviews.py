@@ -66,6 +66,10 @@ import re
 import subprocess
 import sys
 from datetime import datetime, timezone
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from repo_slug import repo_from_git_remote as _repo_from_git_remote  # noqa: E402
 
 
 class GhUnavailableError(RuntimeError):
@@ -77,9 +81,20 @@ class GhUnavailableError(RuntimeError):
     """
 
 
-REPO = "kai-kou/github-issue-shortcut"
+# owner/repo 解決ロジックの正本は tools/repo_slug.py（#215）。
+# 本リポジトリ自身（bootstrap 未適用）に対して運用ルーティンを回すケース（R-1・#213/#220）では
+# プレースホルダが未置換のまま残るため、その場合のみ _repo_from_git_remote() で動的に補う。
+
+
+_REPO_PLACEHOLDER = "kai-kou/github-issue-shortcut"
 # owner / name を REPO から動的導出する（GraphQL クエリ等でハードコードしない）。
 # bootstrap.sh が REPO の kai-kou/github-issue-shortcut を置換すれば OWNER/REPO_NAME も追従する。
+if "__" in _REPO_PLACEHOLDER:
+    # プレースホルダ未置換（本リポジトリの自己ホスト実行等） → git remote から動的補完
+    REPO = _repo_from_git_remote() or _REPO_PLACEHOLDER
+else:
+    # bootstrap.sh 済み（下流リポジトリ） → git 呼び出し不要、既存の決定論的動作を維持
+    REPO = _REPO_PLACEHOLDER
 OWNER, _, REPO_NAME = REPO.partition("/")
 # 形式不正（owner / name のどちらか欠落・bootstrap 未実行のプレースホルダ残存）のまま
 # GitHub API を叩くと別リポジトリを参照したり取得失敗を 0 件扱いして誤判定するため、

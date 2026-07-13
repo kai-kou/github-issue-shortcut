@@ -9,7 +9,7 @@
 #   2. scripts/bootstrap.sh を実行する（プレースホルダ置換 + 無効モジュールの除去）
 
 project:
-  name: "GitHub Issue Shortcut"
+  name: "github-issue-shortcut"
   repo: "kai-kou/github-issue-shortcut"          # owner/repo（gh / tools が参照）
   timezone: ""                   # 例: "Asia/Tokyo"。空なら UTC（session-start の PROJECT_TZ）
 
@@ -138,7 +138,7 @@ modules:
   # ── Agent Teams / サブエージェント ────────────────────
   agent-teams:
     enabled: true
-    description: "サブエージェント・Agent Teams 活用ガイド・憲法・議論型レビュー（claude -p + ホワイトボード）"
+    description: "サブエージェント・Agent Teams 活用ガイド・憲法・議論型レビュー（ネイティブ Agent Teams + ホワイトボード。claude -p 経路はフォールバック）"
     rules:
       - agent-team.md
       - agent-team-summary.md
@@ -146,10 +146,34 @@ modules:
       - token-optimization-rules.md
       - claude-code-optimization.md
       - discussion-whiteboard-rules.md
+    skills:
+      - discussion-review
     tools:
       - discussion_whiteboard.py
       - run_discussion_review.py
+      - discussion_review_trigger.py
       - discussion_specs/example_debate.json
+      - discussion_specs/code_review.json
+      - discussion_specs/claude_only_review.json
+      - discussion_specs/copilot_removal_audit.json
+      - discussion_specs/karpathy_adoption.json
+      - discussion_specs/loop_engineering_analysis.json
+      - discussion_specs/pdf_anthropic_teams_adoption.json
+      - discussion_specs/prompt_structuring_design.json
+      - discussion_specs/public_readiness_audit.json
+      - discussion_specs/skill_inventory_audit.json
+      - discussion_specs/sp_estimation_redesign.json
+      - discussion_specs/workflow_base_audit.json
+
+  # ── ネイティブ優先フォールバック（CLI/Web リリースギャップ対応）──
+  native-fallback:
+    enabled: true
+    description: "Web 未提供機能の native-first 判定と claude -p フォールバック共通機構（probe・安全ラッパー・capability 台帳）"
+    rules:
+      - native-fallback-rules.md
+    tools:
+      - native_fallback.py
+      - native_capabilities.json
 
   # ── 外部連携（任意・opt-out しやすい）─────────────────
   slack-notify:

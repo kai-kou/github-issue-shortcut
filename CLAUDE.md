@@ -87,22 +87,28 @@ GitHub Issue Shortcut
 | `datetime-rules.md` | 日時表記の JST 統一（表示・記録は JST / API・内部計算用 UTC は維持） |
 | `lessons-core.md` | クラウド環境のクリティカル教訓（Hot 層） |
 | `agent-team-summary.md` | サブエージェント・Agent Teams 活用 |
+| `session-concurrency-rules.md` | マルチセッション競合防止（本リポジトリはスプリント定期ルーティン稼働のため Hot 化済み・下記参照） |
+
+上記のうち 7 ファイル（`core-principles` / `datetime-rules` / `session-compression-rules` /
+`session-concurrency-rules` / `user-confirmation-minimization` / `user-instruction-issue-rules` /
+`user-notification-triage`）は、詳細・プロジェクト例を同名 `-detail.md`（Warm 層・`docs/rules/` のみ）に
+分離済み。該当ファイルの本文が「詳細は `X-detail.md` を参照」と示す箇所のみ、必要時に Read する
+（他の Hot ファイルに `-detail.md` は存在しない）。
 
 タスク依存ルール（必要時に Read）: `docs/rules/` の
 `progress-reporting-rules.md`（制作系の長時間処理時に該当パイプラインスキルが冒頭で Read）/
-`session-concurrency-rules.md`（Scheduled Tasks 利用時のみ・下記参照）/
 `autonomous-operation-policy.md`（Warm 降格・#89）/
 `ai-reviewer-strategy.md`（FAIR 構成詳細・Warm 降格・#88）/
 `session-safety-rules-detail.md`（タイムアウト・確認ケース詳細・Warm 降格・#91）/
 `session-sprint-rules-detail.md`（PO 権限・メトリクス実装・較正手順・Warm 降格・#90）/
 `problem-investigation-protocol.md` / `harness-escalation.md` / `lessons-management.md` /
 `pr-review-flow.md` / `claude-code-optimization.md` / `token-optimization-rules.md` /
-`github-mcp-fallback-patterns.md` / `slack-notification-rules.md` /
+`github-mcp-fallback-patterns.md` / `native-fallback-rules.md`（Web 未提供機能の claude -p フォールバック標準形）/ `slack-notification-rules.md` /
 `security-posture-controls.md` / `sandbox-rules.md` / `env-vars.md` ほか。
 
-> **`session-concurrency-rules.md` の Hot 化（E-B #20）**: マルチセッション並行運用（Scheduled Tasks）を
-> 使うプロジェクトのみ、`tools/check_rules_sync.sh` の `ESSENTIAL_RULES` に追記して
-> `./tools/check_rules_sync.sh --fix` で常駐 symlink を復活させる。単一セッション運用では Warm のままでよい。
+> **`session-concurrency-rules.md` の Hot 化可否（E-B #20）**: マルチセッション並行運用（Scheduled Tasks）を
+> 使わないプロジェクトでは Warm のままでよい（`tools/check_rules_sync.sh` の `ESSENTIAL_RULES` から外して
+> `--fix` を実行）。本リポジトリはスプリント定期ルーティン（`docs/routines/sprint-session.md`）稼働のため Hot 化済み。
 
 ## Git / PR 運用ルール
 
@@ -130,7 +136,7 @@ GitHub Issue Shortcut
 
 > 🔴 **クラウド実行環境（`CLAUDE_CODE_REMOTE=true`）では、`gh` の repo スコープ操作（REST + GraphQL）が egress プロキシに 403 でブロックされる。** repo スコープの GitHub 操作（Issue・PR・レビュー・マージ・repo メタデータ・ファイル取得）は **公式 GitHub MCP（`mcp__github__*`）を一次経路** とする。実機検証マトリクスと代替表は SSOT `docs/rules/github-mcp-fallback-patterns.md` を参照（L-114）。
 
-- クラウドで生存するのは: `gh api user` / `gh api rate_limit` / `gh auth status` と **git 操作**（`git clone https://...` / `git fetch/pull/push`・git プロキシは別系統）のみ。
+- クラウドで生存するのは: `gh api user` / `gh api rate_limit` と **git 操作**（`git clone https://...` / `git fetch/pull/push`・git プロキシは別系統）のみ（`gh auth status` は exit 0 でも失敗表示・認証判定に使わない）。
 - クラウドで 403 になる（= MCP へ切替）: `gh issue/pr list`・`gh repo view`・`gh api repos/{o}/{r}/...`・`gh api graphql`・`gh repo clone` に加え、**2026-07-02 実測で `gh search` 全般・非 repo REST（`gh api users/{u}`・`notifications` 等）・Actions パス（`gh variable/secret list`・`gh run/workflow list`）も 403 化**。urllib で `api.github.com` を直叩きしても同じプロキシを通るため **同じ 403**（フォールバックにならない）。GitHub Variables は MCP にも等価ツールがなく、env は Claude.ai 環境設定 / secrets-broker で供給する（`github-mcp-fallback-patterns.md` §2.4）。
 - ローカル実行（`gh` が直接 GitHub に到達できる環境）では従来どおり: repo 指定に `-R kai-kou/github-issue-shortcut`、`gh pr create` に `--head {現在のブランチ}` `--base main` を付与する。
 
@@ -158,6 +164,7 @@ GitHub Issue Shortcut
 | `apply-base` | 自然文「claude-code-base を反映して／適用して」で、ベースのルール・スキル・ハーネス一式を現在のリポジトリへ適用・再同期（`gh` 経由・private 対応・冪等） |
 | `research-runner` | ディープリサーチの完全自動化（`/deep-research` 直接実行・Opus orchestrator → Gemini → DIY） |
 | `pr-review-watcher` | PR の AI レビュー監視・指摘対応・自動マージ |
+| `discussion-review` | 議論型レビュー（敵対的相互レビュー）のネイティブ実行（name 付き Agent + SendMessage + ホワイトボード）。「専門チームを組成して」の既定経路 |
 | `self-reviewer` | PR 作成前のセルフレビュー |
 | `project-manager` | Issue / ラベル / マイルストーン管理 |
 | `project-sync` | リポジトリ衛生（Stale Issue・Orphan PR） |
@@ -196,13 +203,16 @@ frontmatter は公式仕様（`name` / `description` 必須・`model` / `tools` 
 | `session-start.sh` | env 伝搬・gh 準備・GitHub Variables ロード・作業ツリー整備・状態注入 |
 | `user-prompt-submit-guard.sh` | 高リスク入力（main 直 push・rm -rf・.env 等）検出時にガードレールを助言注入（非ブロッキング） |
 | `prompt-structuring.sh` | ユーザーの生指示（タスク依頼）を着手前に作業スペックへ展開させる構造化ディレクティブを注入（非ブロッキング・`docs/rules/prompt-structuring-rules.md`）。トグル `CLAUDE_PROMPT_STRUCTURING=auto\|off\|always`（既定 auto）。`/`・`!`・システム通知・高リスク入力・純粋な質問では無発火 |
+| `orchestrator-directive.sh` | 高コストモデル（Opus/Fable 系）検出時に「オーケストレーターとして専門チームを組成せよ」を自動注入（非ブロッキング）。トグル `CLAUDE_ORCHESTRATOR_DIRECTIVE=auto\|off\|always`（既定 auto）・判定正規表現 `CLAUDE_HIGH_COST_MODEL_RE`（既定 `opus\|fable`）。注入本文は `.claude/orchestrator-directive.txt` で全文差し替え可（4KB 上限） |
+| `permission-request-auto-allow.sh` | `.claude/` 配下ファイルの Read/Write/Edit/NotebookEdit を自動許可（PermissionRequest フック） |
 | `pre-tool-use-router.sh` | main 直 push ブロック・PR 作成前チェック・.env アクセスブロック |
-| `pre-git-push-check.sh` / `pre-pr-create-check.sh` | Lv3 ハードコンストレイント |
+| `pre-git-push-check.sh` / `pre-pr-create-check.sh` | Lv3 ハードコンストレイント（`pre-tool-use-router.sh` 経由でディスパッチ） |
 | `post-tool-use-validate.sh` | 成果物バリデーションの拡張ポイント（既定 no-op） |
 | `post-tool-use-failure.sh` | gh プロキシ起因エラーの検知・修正案内 |
 | `pre-compact.sh` | 圧縮開始前の未コミット自動保存（L-100 一次防御） |
-| `post-compact.sh` | 圧縮後の未コミット自動保存・ルール再確認 |
+| `post-compact.sh` | 圧縮後の未コミット自動保存・symlink 同期（出力は stderr ログのみ。ルール再確認リマインダーは SessionStart が担当） |
 | `stop-router.sh` | 終了時の未コミット/未 PR チェック・WIP 自動コミット・完了報告フォーマットチェックを集約実行 |
+| `stop-git-check.sh` / `stop-pr-check.sh` / `stop-slack-notify.sh` | 未コミット変更検知・push 済み未 PR ブランチ検知・Slack 完了通知（`stop-router.sh` 経由でディスパッチ） |
 | `stop-completion-report-check.sh` | 完了報告が「ご依頼再掲→アウトカム中心」でない（PR マージ詳細が主役）ときに是正リマインド（`stop-router.sh` 経由） |
 | `subagent-stop.sh` | サブエージェント異常終了の自己修正フィードバック |
 

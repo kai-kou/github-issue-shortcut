@@ -24,6 +24,22 @@ from pathlib import Path
 MAX_MB = float(os.environ.get("SELF_REVIEW_MAX_MB", "5"))
 CONFLICT_MARKERS = ("<<<<<<< ", "=======", ">>>>>>> ")
 
+# base-update-notes 追記リマインド（Issue #211）の検出スコープ。
+# apply-to-repo.sh の同期（cp -a）はファイル削除・リネームを下流へ伝播しないため、
+# 削除/リネーム（D/R）は下流に孤立ファイルを残す最高確度の「下流手動対応」シグナル。
+# スコープは apply-to-repo.sh の SYNC_PATHS + docs/rules/ 全体（Warm 層含む）。
+UPDATE_NOTES = "docs/base-update-notes.md"
+DESTRUCTIVE_SCOPE = (
+    "docs/rules/", ".claude/rules/", ".claude/hooks/", ".claude/skills/",
+    ".claude/agents/", ".claude/output-styles/", ".claude/commands/",
+    ".claude-plugin/", "tools/", "scripts/", "modules.yaml", ".mcp.json",
+)
+# 配線ファイル: 変更ステータスを問わず下流の手動判断（マージ・モジュール選択・
+# フック登録）が要りやすいファイル。CLAUDE.md は PROTECT_PATHS（同期対象外）のため
+# base 側の変更が下流へ自動伝播しない唯一級のファイルで、新規 Hot ルールの配線も
+# ここに現れる（新規追加 A の代理シグナル）。
+WIRING_FILES = ("modules.yaml", ".claude/settings.json", "CLAUDE.md")
+
 # CJK Markdown チェッカー（同ディレクトリの check_cjk_markdown.py）を再利用する。
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 try:
@@ -96,6 +112,45 @@ def changed_files() -> list[str]:
     return out
 
 
+def update_notes_reminder(files: list[str]) -> str | None:
+    """下流影響の破壊的シグナルがあるのに base-update-notes.md 追記が無ければ文言を返す。
+
+    検出ロジック（content/discussions/base-fork-review-211 の合意・Warning 一本）:
+      - D/R（削除・リネーム）: DESTRUCTIVE_SCOPE 全域で拾う（range diff 1 本のみ）
+      - 配線ファイル（WIRING_FILES）: ステータス不問の名前照合
+      - .claude/rules/ への追加（新規 Hot 化 symlink）
+    単純な内容修正（M）は自動同期で下流に届くため対象外（誤検知抑制の要）。
+    base-update-notes.md を持たないリポジトリ（下流フォーク）ではスキップする。
+    """
+    if not Path(UPDATE_NOTES).is_file():
+        return None
+    if UPDATE_NOTES in files:
+        return None
+    impacted: list[str] = []
+    r = sh(["git", "diff", "--name-status", f"origin/{default_branch()}...HEAD"])
+    if r.returncode == 0:
+        for line in r.stdout.splitlines():
+            parts = line.split("\t")
+            if len(parts) < 2:
+                continue
+            st, old = parts[0][:1], parts[1]  # R100 → R / リネームは旧パスで判定
+            if st in ("D", "R") and old.startswith(DESTRUCTIVE_SCOPE):
+                impacted.append(f"{st}:{old}")
+            elif st == "A" and old.startswith(".claude/rules/"):
+                impacted.append(f"A:{old}")
+    impacted += [f"変更:{f}" for f in files if f in WIRING_FILES]
+    if not impacted:
+        return None
+    shown = ", ".join(impacted[:10]) + ("…" if len(impacted) > 10 else "")
+    return (
+        "下流影響シグナル（削除/リネーム・配線ファイル変更）を検出しましたが "
+        f"{UPDATE_NOTES} に追記がありません: {shown}"
+        " → 下流で手動対応（削除追従・settings/CLAUDE.md 配線・モジュール判断）が必要なら"
+        "同一 PR でエントリを追記してください（不要な変更なら無視して構いません。"
+        "特にファイル削除は同期が下流へ伝播しないため追記必須）"
+    )
+
+
 def main() -> int:
     if not Path(".git").exists() and sh(["git", "rev-parse", "--git-dir"]).returncode != 0:
         return 2
@@ -151,6 +206,11 @@ def main() -> int:
                         warnings.append(entry)
             except Exception as e:  # noqa: BLE001
                 warnings.append(f"危険パターン検査でエラー: {f}: {e}")
+
+    # base-update-notes 追記リマインド（Issue #211・Warning 一本。Error 化は実測後に再検討）
+    note_warn = update_notes_reminder(files)
+    if note_warn:
+        warnings.append(note_warn)
 
     # 月次コストテレメトリの feature PR 混入チェック（#106 回帰検知）
     # cost_monthly は専用 PR（commit_cost_telemetry.py）でのみ main に永続化する。

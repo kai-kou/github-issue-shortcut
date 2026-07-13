@@ -85,27 +85,13 @@ def project_dir() -> Path:
 
 
 def get_repo_slug() -> str | None:
-    """git remote から owner/repo を導出する。kai-kou/github-issue-shortcut 等の未置換でも頑健に。"""
-    env = os.environ.get("GITHUB_REPOSITORY")
-    if env and "/" in env and "__" not in env:
-        return env
-    try:
-        url = _run(["git", "remote", "get-url", "origin"], timeout=10,
-                   cwd=str(project_dir())).stdout.strip()
-    except Exception:
-        return None
-    if not url:
-        return None
-    url = url.rstrip("/")
-    if url.endswith(".git"):
-        url = url[:-4]
-    parts = [p for p in url.replace(":", "/").split("/") if p]
-    if len(parts) < 2:
-        return None
-    owner, repo = parts[-2], parts[-1]
-    if "__" in owner or "__" in repo:  # 未置換プレースホルダ
-        return None
-    return f"{owner}/{repo}"
+    """git remote から owner/repo を導出する（正本: tools/repo_slug.py・#215）。
+
+    kai-kou/github-issue-shortcut 等の未置換でも頑健に。GITHUB_REPOSITORY 環境変数を優先する。
+    """
+    from repo_slug import has_placeholder, resolve_repo_slug
+    resolved = resolve_repo_slug("kai-kou/github-issue-shortcut", env_vars=("GITHUB_REPOSITORY",))
+    return None if has_placeholder(resolved) else resolved
 
 
 # ──────────────────────────────────────────────────────────

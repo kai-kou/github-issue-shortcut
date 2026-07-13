@@ -68,11 +68,11 @@ if printf '%s' "$_lc" | grep -qE 'settings\.local\.json'; then
   _add "⚠️ [guard] .claude/settings.local.json に環境変数を書かないこと（クラウドでセッション間に消える・CLAUDE.md）。env は Claude.ai 環境設定 / secrets-broker で供給する（クラウドの gh variable set は 403・docs/rules/env-vars.md）。"
 fi
 
-# 6. 「専門チームを組成して」等の明示指示 → claude -p 議論型を既定に（fan-out 誤選択の防止）
+# 6. 「専門チームを組成して」等の明示指示 → ネイティブ議論型（discussion-review スキル）を既定に（fan-out 誤選択の防止）
 # 注: 小文字化済み・日本語はそのまま比較する。「専門チーム/エージェントチーム」+「組成/編成/組ん/組む/議論/レビュー」の同時出現で発火。
 if printf '%s' "$_prompt" | grep -qE '(専門チーム|エージェントチーム|チームで議論)' \
    && printf '%s' "$_prompt" | grep -qE '(組成|編成|組ん|組む|議論|レビュー|起動|立ち上げ|作成|作っ|作る|構築)'; then
-  _add "🧭 [guard] 「専門チーム」の明示指示。既定は議論型（claude -p ネイティブ Agent Teams = tools/run_discussion_review.py）を選ぶこと。役割分担型 fan-out（Agent 並列）にするのはコスト/速度優先の明示か軽微タスクのときだけ（理由を1行述べる）。SSOT: agent-team-summary.md「2 協調モードと振り分け」/ discussion-whiteboard-rules.md。"
+  _add "🧭 [guard] 「専門チーム」の明示指示。既定は議論型（ネイティブ Agent Teams = discussion-review スキル。claude -p の run_discussion_review.py はフォールバック）を選ぶこと。役割分担型 fan-out（Agent 並列）にするのはコスト/速度優先の明示か軽微タスクのときだけ（理由を1行述べる）。SSOT: agent-team-summary.md「2 協調モードと振り分け」/ discussion-whiteboard-rules.md。"
 fi
 
 if [ -n "$_advice" ]; then

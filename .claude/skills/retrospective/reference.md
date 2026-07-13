@@ -68,7 +68,7 @@ KPT（Keep/Problem/Try）を以下の形式で出力してください。
 - SKILL.md / CLAUDE.md に記載されていない新ルールが発見されたか
 - ドキュメント（docs/rules/*.md）と実装の乖離はあるか
 - 追加・修正すべきバリデーション・フック・品質ゲートはあるか
-- self-review-learnings.md への追記候補はあるか
+- self-review-checklist.md への追記候補はあるか
 - 新たなエラーパターン（P-XX）として登録すべき指摘があるか
 ```
 

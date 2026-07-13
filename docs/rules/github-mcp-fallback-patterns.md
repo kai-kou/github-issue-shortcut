@@ -5,38 +5,41 @@
 > egress プロキシが repo スコープ操作を 403 でブロックする** という別問題である（2026-06-30 実機検証・Issue #121）。
 > さらに **2026-07-02 の再検証（Issue #133）で、旧検証では生存していた `gh search` 系・非 repo REST・
 > GitHub Actions パス（variables/secrets/runs/workflows）も 403 化** したことを確認した（ブロック範囲は拡大傾向）。
+> **2026-07-13 再検証（Issue #227・GitHub タスク実行モード）: 403 対象カテゴリは 2026-07-02 と同一**（拡大なし・解除なし）。
+> プロキシの 403 メッセージ文言のみ変化（§1 の該当行に注記）。
 
 ## 0. 結論（最重要・常駐）
 
 クラウド実行環境（`CLAUDE_CODE_REMOTE=true`）では、**GitHub の読み書きは公式 GitHub MCP
 （`mcp__github__*`）が唯一の実働経路** である。`gh` CLI は存在する（`gh --version` は通る）が、
-`gh api user`・`gh api rate_limit`・`gh auth status` を除く **ほぼ全ての gh コマンドが egress
-プロキシにブロックされる**。
+`gh api user`・`gh api rate_limit` を除く **ほぼ全ての gh コマンドが egress
+プロキシにブロックされる**。なお `gh auth status` はブロック（403）はされず exit 0 で完走するが、
+stderr に「GH_TOKEN invalid」の失敗表示が出るため、**認証可否の判定には使わない**（2026-07-13 再確認）。
 
 - ❌ **repo スコープ REST**: `gh api repos/{o}/{r}/...` → 403「GitHub access is not enabled for this session. An org admin must connect the Claude GitHub App for this organization.」
-- ❌ **GraphQL 全般**: `gh issue/pr list`・`gh repo view`・`gh label list`・`gh release list`・`gh api graphql`（および `--json` を伴う高レベル gh コマンド）→ 403「GraphQL proxying is not enabled.」
+- ❌ **GraphQL 全般**: `gh issue/pr list`・`gh repo view`・`gh label list`・`gh release list`・`gh api graphql`（および `--json` を伴う高レベル gh コマンド）→ 403。2026-07-13 現在の文言は「This GraphQL query is not enabled for this session — only the pinned set of PR-review operations is served」（旧文言は「GraphQL proxying is not enabled.」・§1）
 - ❌ **search 系（2026-07-02 に 403 化）**: `gh search repos/issues/code/prs`・`gh api search/...` → 403「This GitHub API path is not available: sessions are bound to their configured repositories.」（旧検証の「search API は通る」は失効）
 - ❌ **非 repo REST（2026-07-02 に 403 化）**: `gh api users/{u}`・`gh api notifications`・`gh api user/repos` → 同上 403（生存は `gh api user` と `gh api rate_limit` のみ）
-- ❌ **GitHub Actions パス（2026-07-02 に 403 化）**: `gh variable list/set`・`gh secret list`・`gh run list`・`gh workflow list`・`gh api repos/{o}/{r}/actions/...` → 403「Access to this GitHub Actions path is not permitted through this proxy.」
+- ❌ **GitHub Actions パス（2026-07-02 に 403 化）**: `gh variable list/set`・`gh secret list`・`gh api repos/{o}/{r}/actions/...` → 403「Access to this GitHub Actions path is not permitted through this proxy.」（`gh run list`・`gh workflow list` は 2026-07-13 時点で repo REST 系文言「connect the Claude GitHub App」の 403 に変化。結果は同じ・§1）
 - ❌ **urllib 直叩きフォールバックは効かない**: `urllib.request` で `api.github.com` を呼んでも **同一プロキシを通るため同じ 403**（GraphQL・repos・actions/variables いずれも）。「urllib で代替」は誤り。
 - ✅ **公式 MCP**: `mcp__github__*` は repo スコープ操作（Issue・PR・レビュー・マージ・ファイル取得・スレッド解決・search・Actions runs/workflows 等）が動作する。ただし **Actions variables/secrets の等価ツールは MCP に存在しない**（§2.4）。
 - ✅ **git 操作は別系統で生存**: `git clone https://github.com/...`・`git fetch/pull/push`（origin）は git プロキシ経由で動作する。
 
-## 1. 実機検証マトリクス（cloud_default・2026-07-02・Issue #133。旧: 2026-06-30・Issue #121）
+## 1. 実機検証マトリクス（2026-07-13・Issue #227（GitHub タスク実行モード）。旧: 2026-07-02・Issue #133 / 2026-06-30・Issue #121）
 
 | 操作 | 結果 | 備考 |
 |------|------|------|
 | `gh --version` | ✅ | 2.45.0 が存在 |
-| `gh auth status` | ✅ exit 0 | 前提チェックは誤爆しない |
+| `gh auth status` | ⚠ exit 0 | ただし stderr に「Failed to log in ... The token in GH_TOKEN is invalid」と失敗表示（2026-07-13）。**認証可否の判定に使わない**（git ls-remote / MCP で実到達を確認する・apply-base SKILL.md 注記と同じ） |
 | `gh api user`（認証ユーザー） | ✅ | 生存する数少ない REST |
 | `gh api rate_limit` | ✅ | 同上 |
 | `gh api users/{u}`・`notifications`・`user/repos` | ❌ 403 | **2026-07-02 に 403 化**「sessions are bound to their configured repositories」 |
 | `gh search repos/issues/code/prs`・`gh api search/...` | ❌ 403 | **2026-07-02 に 403 化**（旧検証では ✅ だった） |
 | `gh api repos/{o}/{r}`（repo REST 全般） | ❌ 403 | 「connect the Claude GitHub App」 |
-| `gh issue list/view`・`gh pr list`・`gh repo view`・`gh label list`・`gh release list`・`gh gist list`・`gh status` | ❌ 403 | 「GraphQL proxying is not enabled」 |
-| `gh api graphql -f query=...` | ❌ 403 | GraphQL |
-| `gh variable list`・`gh secret list`・`gh api repos/{o}/{r}/actions/variables` | ❌ 403 | **2026-07-02 に 403 化**「Access to this GitHub Actions path is not permitted through this proxy」 |
-| `gh run list`・`gh workflow list` | ❌ 403 | Actions パス（同上） |
+| `gh issue list/view`・`gh pr list/view/checks/diff`・`gh repo view`・`gh label list`・`gh release list`・`gh gist list`・`gh status` | ❌ 403 | GraphQL 系。2026-07-13 のメッセージは「This GraphQL query is not enabled for this session — only the pinned set of PR-review operations is served」（ハーネス内部の PR レビュー用固定クエリのみ許可。gh の発行するクエリはいずれも非該当で 403 のまま） |
+| `gh api graphql -f query=...` | ❌ 403 | GraphQL（同上） |
+| `gh variable list`・`gh secret list`・`gh api repos/{o}/{r}/actions/variables` | ❌ 403 | **2026-07-02 に 403 化**「Access to this GitHub Actions path is not permitted through this proxy」（2026-07-13 も同文言） |
+| `gh run list`・`gh workflow list` | ❌ 403 | 2026-07-13 のメッセージは repo REST 系（「connect the Claude GitHub App」）に変化。結果は 403 のまま |
 | urllib → `api.github.com/...`（graphql・repos・actions/variables） | ❌ 403 | 同一プロキシを通るため gh と同じ結果 |
 | `gh repo clone {o}/{r}` | ❌ exit 1 | 内部で API 解決を伴うため失敗 |
 | `git clone https://github.com/{o}/{r}.git` | ✅ | git プロキシ経由 |
@@ -45,6 +48,10 @@
 | `mcp__github__list_issues` / `issue_write` / `pull_request_read` / `get_file_contents` | ✅ | repo スコープも動作 |
 | `mcp__github__search_issues` / `search_code` / `search_pull_requests` | ✅ | search の MCP 代替（`repo:` 修飾でスコープ内に限定すること） |
 | `mcp__github__actions_list` / `actions_get` / `get_job_logs` | ✅ | Actions runs/workflows の MCP 代替 |
+
+> **2026-07-13 再検証で ✅ を実測確認した MCP ツール**: `get_me` / `list_issues` / `list_pull_requests` /
+> `actions_list` / `search_issues`（repo スコープ指定）/ `list_releases` / `get_label` / `issue_write`（create）/
+> `create_pull_request` / `merge_pull_request`。gh 側の 403 カテゴリ・git 生存（`git ls-remote`・`fetch`・`push`）も同日再確認済み。
 
 ## 2. コマンド別 代替パターン（gh → MCP）
 
@@ -138,6 +145,26 @@ GitHub GraphQL の `issues(labels:)` 引数に渡るため「A または B」（
 gh CLI の `--limit 1000` のような大きな上限指定はできないため、対象が 100 件を超えうる場合は
 `perPage=100` を明示し、応答の `pageInfo.hasNextPage`/`endCursor` を見て `after` で追加ページを取得する
 （本リポジトリ規模では通常 1 ページで足りるが、件数が多いプロジェクトでは省略しないこと）。
+
+### 2.5 gh→MCP 全面移行の残ギャップ（2026-07-13 調査・Issue #227）
+
+MCP は Issue・PR・レビュー・マージ・ファイル・search・Actions（read + workflow_dispatch）を実用上カバーするが、
+以下は **セッション提供の MCP に等価ツールが存在しない**（= gh からの単純移行が不可能。ローカル gh・別経路・機能断念のいずれか）。
+
+| 領域 | gh（ローカル）ではできる | セッション提供 MCP の状況 |
+|------|----------------------|------------------------|
+| Actions Variables / Secrets | `gh variable/secret list/set` | ❌ なし（§2.4。クラウドでは読み書きとも不能） |
+| ラベル管理（作成・編集・削除・一覧） | `gh label create/edit/delete/list` | ❌ 書き込み系なし。read も `get_label`（単体取得）のみで一覧不可（§2 の代替手順参照） |
+| マイルストーン | `gh api repos/{o}/{r}/milestones` | ❌ 作成・一覧ツールなし（`issue_write` の `milestone` 番号指定のみ可） |
+| Release の作成・編集 | `gh release create/edit` | ❌ read のみ（`list_releases` / `get_latest_release` / `get_release_by_tag`） |
+| Gist / Notifications / Discussions / Projects V2 | `gh gist` / `gh api notifications` 等 | ❌ セッション版に未提供。上流 github-mcp-server には gists / notifications / discussions / projects（`projects_list/get/write`・2026-01-28 changelog）の各 toolset が実装済みだが、クラウドセッションに配備される公式 MCP はそのサブセット |
+| 任意 API 呼び出し | `gh api {path}` / `gh api graphql` | ❌ 生 REST / GraphQL ツールなし。定義済みツールの範囲のみ |
+
+**構造的制約（全面移行が不可能な理由）**: MCP ツールを呼べるのは **Claude のメインセッション（とサブエージェント）だけ**。
+フック（`session-start.sh`・`stop-pr-check.sh` 等）・`tools/*.py`・シェルスクリプトの **内部からは MCP を呼べない**。
+したがって「gh 主体のスクリプトを全て MCP に移行」は構造的に成立せず、現行の二段構え
+（スクリプトは gh 失敗を `gh_unavailable` で明示 → 呼び出し元の Claude が MCP で直接操作・§4）が正しい終着形。
+ローカル実行では gh が全機能動作するため、**gh 経路の削除ではなく「クラウド = MCP 一次経路 / ローカル = gh」の併存を維持する**。
 
 ## 3. git 操作（クラウドで生存）
 

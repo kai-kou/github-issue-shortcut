@@ -91,6 +91,7 @@
 | ☐ | ドキュメントと実装（コード/SKILL.md）の乖離がないか（変更したら参照元も更新） | 目視 | 116 件（L-094） |
 | ☐ | gh コマンドは `-R kai-kou/github-issue-shortcut` 統一（`--repo` 不可） | **機械** | CLAUDE.md 規約 |
 | ☐ | 既存 SSOT との重複定義を作っていないか（要約を置くなら SSOT 参照を併記） | 目視 | L-095 |
+| ☐ | 配布対象ドキュメント（`docs/rules/` `.claude/skills/`）の新規記述で Issue/PR 番号を **単独の論拠** にしていないか（番号は下流リポジトリでは別 Issue を誤指しする。恒久的に意味が通る説明を本文に書き、番号は出典補足に留める） | 目視 | Issue #211（下流誤リンク） |
 | ☐ | CJK 強調記法の前後半角スペース（`python3 tools/check_cjk_markdown.py --fix --changed` で自動整形） | **機械** | CLAUDE.md 規約（旧「目視」ですり抜け頻発 → 機械化） |
 
 ## 5. Remotion / TypeScript（`remotion/`）
@@ -117,4 +118,4 @@
 1. PR マージ後、self-reviewer スキル Step F-1〜F-4（AI レビュー指摘の学習）を実行する
 2. 同種指摘が 2 回以上 → 本シートに行を追加 + 機械化可能なら `self_review_check.py` にチェックを追加（**同一 PR で**）
 3. 同種指摘が 3 回以上 → Lv3 フック / Lv4 CI への昇格を検討（`docs/rules/harness-escalation.md`）
-4. **週次定期再分析（自動スケジュール済み・Issue #2870/#2900）**: 毎週月曜の 07:00 スロット ⑤.7 で `python3 tools/analyze_pr_review_comments.py --report` を実行し、前週比デルタ（カテゴリ +10 件/週以上・新出カテゴリ・機械化済みカテゴリの増加）を確認して本シート + チェッカーを更新する。週 ~90 PR ペースのため週次でないと同種指摘が頻発する。手順詳細は プロジェクト定義のスケジューリング詳細ファイル（出自プロジェクトでは `docs/rules/hourly-routing-details.md` ⑤.7 等）、分類ルールの正本は同ツールの `CATEGORY_RULES`
+4. **週次定期再分析（自動スケジュール済み・Issue #2870/#2900）**: 毎週月曜の 07:00 スロット ⑤.7 で `python3 tools/analyze_pr_review_comments.py --report` を実行し、前週比デルタ（カテゴリ +10 件/週以上・新出カテゴリ・機械化済みカテゴリの増加）を確認して本シート + チェッカーを更新する。週 ~90 PR ペースのため週次でないと同種指摘が頻発する。手順詳細は プロジェクト定義のスケジューリング詳細ファイル（例: `{プロジェクト定義: hourly-routing 相当}` ⑤.7 等）、分類ルールの正本は同ツールの `CATEGORY_RULES`

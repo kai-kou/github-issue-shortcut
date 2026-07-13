@@ -11,7 +11,7 @@
 |-------|------|--------|-----------|
 | **Layer 0 機械ゲート** | `self_review_check.py`（`scan_dangerous_patterns.py` 含む）/ `check_cjk_markdown.py` / lint / test | ゼロ | ✅ 全 PR 必須 |
 | **Layer 1 CCR セルフレビュー（主軸）** | **`/code-review` スキル**（対話セッション内の新規文脈レビュー）を **必ず実行**。差分を「第三者の PR」として読み直し自己修正盲点 64.5% を回避。`--comment` で指摘を PR に記録、`--fix` で作業ツリーに反映可 | ゼロ（サブスク枠内） | ✅ **全 PR 必須（依頼ではなく自己実行）** |
-| **Layer 2 敵対的多観点議論** | `run_discussion_review.py` + `discussion_specs/code_review.json`（4 観点・敵対 rebuttal）。`tools/discussion_review_trigger.py` で自動起動 | ゼロ | ✅ 条件付き必須（diff ≥300行 または `type:security`/`type:breaking-change` ラベル時）|
+| **Layer 2 敵対的多観点議論** | **`discussion-review` スキル（ネイティブ Agent Teams・既定）** + `discussion_specs/code_review.json`（4 観点・敵対 rebuttal）。`tools/discussion_review_trigger.py` が要否判定と実行プラン出力（`--legacy` で旧 claude -p 経路へフォールバック） | ゼロ | ✅ 条件付き必須（diff ≥300行 または `type:security`/`type:breaking-change` ラベル時）|
 | **Layer 3 外部独立レビュー** | `anthropics/claude-code-security-review` Action / `/ultrareview` 等。**Copilot・Gemini は使わない。** 高リスク差分のみ任意で起動（手動・非ブロッキング） | 従量（高リスク時のみ） | ⚪ 任意（高リスク差分のみ・外部 AI レビュアー依頼は除く） |
 | ~~Copilot~~ | レビュー依頼を廃止（本タスク） | — | ❌ 不使用 |
 | ~~Gemini Code Assist~~ | 2026-07-17 廃止済み | — | ❌ 停止 |

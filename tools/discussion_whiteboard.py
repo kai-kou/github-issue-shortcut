@@ -26,7 +26,7 @@
 ## 使い方
 
   python3 tools/discussion_whiteboard.py init V188-thumb \
-      --topic "V188 サムネ案" --participants "seo,visual,kinako" --brief "どれがCTRを取れるか"
+      --topic "V188 サムネ案" --participants "seo,visual,reviewer_a" --brief "どれがCTRを取れるか"
   python3 tools/discussion_whiteboard.py post V188-thumb \
       --author seo --round 1 --kind claim --body "案Aはキーワード前置で強い..."
   python3 tools/discussion_whiteboard.py render V188-thumb

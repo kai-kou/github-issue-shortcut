@@ -234,6 +234,22 @@ gh variable list -R kai-kou/github-issue-shortcut --json name,value
 
 Claude.ai 環境変数に同名の変数が設定されている場合、GitHub Variables の値は上書きされない。
 
+### secrets-broker 移行パイプラインの実行順序（オプトイン・非該当プロジェクトはスキップ）
+
+`infra/secrets-broker/` は **Cloudflare Worker 経由で秘密情報を配布したいプロジェクトだけが使う opt-in
+機能**。本ベースリポジトリ自体は Cloudflare broker を稼働させていない（`SECRETS_BROKER_URL` /
+`SECRETS_BROKER_TOKEN` 未設定）ため、以下のパイプラインを自動実行するスキル・スケジュールは
+**意図的に持たない**。導入するプロジェクトは手動 or 自プロジェクトのスケジュールタスクで下記順に呼び出す。
+
+```
+tools/setup_secrets_broker.sh      # Worker デプロイ + bundle 投入（Phase 0-1）
+  → tools/verify_broker_migration.py --gate   # parity ゲート確認（Phase 2・READY 必須）
+  → tools/finalize_broker_migration.py        # 生キー削除・カナリア→ドレイン（Phase 3）
+  → tools/sync_broker_drift.sh                 # 以後の定期実行（broker 未同期キーの回収）
+```
+
+各ツールの詳細・Phase 表・ゲート条件は `infra/secrets-broker/README.md`（正本）を参照。
+
 ## 秘匿情報の取り扱いルール（P-12・2026-06-06）
 
 GitHub Repository Variables にはトークン・API キー・Cookie など機密性の高い値が多数含まれる。

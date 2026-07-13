@@ -31,42 +31,9 @@
 
 ---
 
-## 2. 実装パターン（新規コードはこれに従う）
+## 2. 実装パターン（新規コードはこれに従う・要約）
 
-### Python
-
-```python
-from datetime import datetime, timezone, timedelta
-
-JST = timezone(timedelta(hours=9))  # 日本は DST がないため固定オフセットで正確
-
-# 表示・記録用
-now = datetime.now(JST).strftime("%Y-%m-%d %H:%M JST")
-
-# 機械処理用（API・内部計算）は従来どおり UTC
-now_utc = datetime.now(timezone.utc)
-```
-
-- `datetime.utcnow()` / `datetime.now()`（TZ なし）を **表示・記録用途で使わない**（コンテナのローカル TZ に依存して不定になる）。
-- `self-review-checklist.md` は TZ 未指定の `datetime.now()` をコードの問題として検出する。
-
-### シェル
-
-```bash
-# 表示・記録用（コミットメッセージ・ログ）。動的に生成するシェルのタイムスタンプは
-# %Z（実行時の TZ 略称）を使う。リテラル "JST" を直書きすると PROJECT_TZ を
-# 上書きしたとき「JST と書いてあるのに実体は別 TZ」の嘘表記になるため。
-# 既定（PROJECT_TZ 未設定）では Asia/Tokyo なので %Z は "JST" を出す。
-timestamp=$(TZ="${PROJECT_TZ:-Asia/Tokyo}" date '+%Y-%m-%d %H:%M %Z')
-day=$(TZ="${PROJECT_TZ:-Asia/Tokyo}" date '+%Y-%m-%d')
-
-# 機械処理用（GitHub API 等）は UTC のまま
-rereview_ts=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-```
-
-- ハーネス（hooks）の既定 TZ は `Asia/Tokyo`（`PROJECT_TZ` で上書き可能）。`TZ="${PROJECT_TZ:-Asia/Tokyo}"` の形を使う。
-- **動的なシェル `date` のタイムスタンプはリテラル `JST` を直書きせず `%Z` を使う**（上記コメント参照・Issue #79）。Python は固定の `JST` 定数（`timezone(timedelta(hours=9))`）を使うためリテラル `JST` 表記で正しい（定数が +9 固定なので嘘にならない）。プロセス・ドキュメントのテンプレートで「このプロジェクトの既定＝JST」を説明する文中の `JST` 表記も可。
-- `${PROJECT_TZ:-UTC}` のように **UTC を既定にしない**。
+Python は `datetime.now(timezone(timedelta(hours=9)))` で表示・記録用の JST を得て、機械処理用（API・内部計算）は従来どおり `datetime.now(timezone.utc)` を使う。`datetime.utcnow()` / TZ 未指定の `datetime.now()` は表示・記録用途で使わない。シェルは表示・記録用に `TZ="${PROJECT_TZ:-Asia/Tokyo}" date '+%Y-%m-%d %H:%M %Z'`（リテラル `JST` 直書きは禁止・`%Z` を使う・Issue #79）、機械処理用は `date -u +"%Y-%m-%dT%H:%M:%SZ"` のまま。コード例全文は `datetime-rules-detail.md` を参照。
 
 ---
 
@@ -99,3 +66,4 @@ rereview_ts=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 | `docs/rules/self-review-checklist.md` | TZ 未指定 `datetime.now()` の検出 |
 | `tools/check_datetime_tz.py` | 表示・記録系の TZ 未指定 `datetime` 残存を検出する機械チェック（Issue #80） |
 | `tools/generate_project_context.py` | スナップショット時刻（JST） |
+| `docs/rules/datetime-rules-detail.md` | §2 実装パターン全文（Python/シェルコード例・Hot 層棚卸しで移設・Issue #146） |

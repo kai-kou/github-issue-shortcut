@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
-"""loop_state_manager.py — ループ状態の機械可読 JSON を GitHub Variables に読み書きする。
+"""loop_state_manager.py — ループ状態の機械可読 JSON を GitHub Variables に読み書きする（ローカル専用）。
 
-checkpoint スキルが Issue コメント（人間可読テキスト）に加えてこのツールを呼び出すことで、
-次セッションのエージェントが状態を自動読み込みできる構造化 JSON を永続化する。
+ローカル環境（gh CLI が GitHub Variables に到達できる環境）専用。クラウド実行環境では
+`gh variable get/set` が Actions パスとして egress プロキシに 403 でブロックされ常に失敗する
+（Issue #133・L-114）。クラウドでは checkpoint スキルが Step 3 の Issue コメント末尾に
+機械可読 JSON ブロックを直接埋め込む方式（GitHub Variables 不使用）に統一済み（Issue #161）。
 ループ工学の State File / cross-session memory パターンの実装（Issue #99）。
 
 Usage:

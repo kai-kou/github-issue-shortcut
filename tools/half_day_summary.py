@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-半日アウトカムサマリー生成スクリプト for きなこもっちーのテック深掘り（Issue #2597）
+半日アウトカムサマリー生成スクリプト（Issue #2597）
 
 セッション単位の Slack 通知（session-start / session-stop）を廃止した代替として、
 「半日〜1日に1回」ユーザーがワークフローの自律稼働とPR消化を把握するための
@@ -27,7 +27,10 @@ import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-REPO = "kai-kou/github-issue-shortcut"
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from repo_slug import resolve_repo_slug  # noqa: E402
+
+REPO = resolve_repo_slug("kai-kou/github-issue-shortcut")
 PROJECT_DIR = Path(__file__).resolve().parent.parent
 JST = timezone(timedelta(hours=9))
 
@@ -42,8 +45,8 @@ def _run(cmd: list, timeout: int = 20) -> str:
         result = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", timeout=timeout)
         if result.returncode == 0:
             return result.stdout.strip()
-        print(f"[warn] {' '.join(cmd[:4])}... failed: {result.stderr.strip()[:160]}"
-              "（クラウドの gh は 403・L-114。該当集計は欠損扱い）", file=sys.stderr)
+        hint = "（クラウドの gh は 403・L-114。該当集計は欠損扱い）" if cmd[:1] == ["gh"] else "（該当集計は欠損扱い）"
+        print(f"[warn] {' '.join(cmd[:4])}... failed: {result.stderr.strip()[:160]}" + hint, file=sys.stderr)
     except (subprocess.TimeoutExpired, OSError, FileNotFoundError) as e:
         print(f"[warn] {' '.join(cmd[:4])}... error: {e}", file=sys.stderr)
     return ""

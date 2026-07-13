@@ -1,6 +1,6 @@
 ---
 name: retrospective
-description: 各ワークフロー実行後に Agent Teams（3役割の並列サブエージェント）でレトロスペクティブを実施し、KPT（Keep/Problem/Try）を生成・Try アイテムを GitHub Issue 化する。各パイプライン（プロジェクト定義）の最終ステップから自動呼び出しされ、「レトロスペクティブして」「/retrospective」で手動実行も可能。
+description: 各ワークフロー実行後に Agent Teams（3役割の並列サブエージェント）でレトロスペクティブを実施し、KPT（Keep/Problem/Try）を生成・Try アイテムを GitHub Issue 化する。各パイプライン（プロジェクト定義）の最終ステップから自動呼び出しされ、「レトロスペクティブして」「/retrospective」で手動実行も可能。KPT 生成・Try の Issue 化までが役割で、生成済み Try Issue の実装は retro-try-handler が担う。
 effort: medium
 ---
 
@@ -203,5 +203,5 @@ mcp__github__list_issues(owner, repo, state="OPEN", labels=["type:retro-try"])  
 |-----------|------|
 | 各パイプライン（プロジェクト定義） | 各工程の完了後に本スキルを呼び出す |
 | `retro-try-handler` | 本スキルが起票した `type:retro-try` Issue を実装・PR 化する |
-| `self-reviewer` | Try に `self-review-learnings.md` 追記候補が含まれる場合、対応する Try Issue を作成 |
+| `self-reviewer` | Try に `self-review-checklist.md` 追記候補が含まれる場合、対応する Try Issue を作成 |
 | `project-manager` | Try Issue の Projects V2 への登録が必要な場合に参照 |

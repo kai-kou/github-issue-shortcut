@@ -6,6 +6,10 @@ set -euo pipefail
 # main ブランチへの直接 push を物理的にブロックする。
 # 許可されるブランチ: content/*, claude/*, feat/*, fix/*, docs/*
 
+HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/hook_block.sh
+source "$HOOK_DIR/lib/hook_block.sh"
+
 input=$(cat)
 
 # Bash ツール以外はスキップ
@@ -33,9 +37,18 @@ if ! echo "$command" | grep -qE '(^|[;&|]\s*)git\s+push(\s|$)'; then exit 0; fi
 # (^|\s)(main|master)(\s*$) → スペース or 行頭 + main/master + 行末 or スペース
 if echo "$command" | grep -qE '(^|\s)(main|master)\s*$' || \
    echo "$command" | grep -qE ':(main|master)\s*$'; then
-  jq -n \
-    '{"systemMessage": "[pre-git-push-check] ❌ main/master への直接 push をブロックしました。\n\nルール: main/master ブランチへの直接 push は禁止されています（PR 経由のみ）。\n\n許可されているブランチへの push 例:\n  git push -u origin content/V007-xxx\n  git push -u origin claude/feature-abc\n  git push -u origin feat/new-feature\n  git push -u origin fix/bug-fix\n  git push -u origin docs/update\n\nPR 経由でマージしてください。"}'
-  exit 2
+  hook_block "[pre-git-push-check] ❌ main/master への直接 push をブロックしました。
+
+ルール: main/master ブランチへの直接 push は禁止されています（PR 経由のみ）。
+
+許可されているブランチへの push 例:
+  git push -u origin content/V007-xxx
+  git push -u origin claude/feature-abc
+  git push -u origin feat/new-feature
+  git push -u origin fix/bug-fix
+  git push -u origin docs/update
+
+PR 経由でマージしてください。"
 fi
 
 # ブランチ名未指定の場合: 現在のブランチが main/master なら push をブロック
@@ -43,9 +56,11 @@ fi
 if echo "$command" | grep -qE '^git\s+push(\s+-[^ ]+)*(\s+[A-Za-z0-9._/-]+)?\s*$'; then
   current_branch=$(git branch --show-current 2>/dev/null || echo "")
   if [ "$current_branch" = "main" ] || [ "$current_branch" = "master" ]; then
-    jq -n \
-      '{"systemMessage": "[pre-git-push-check] ❌ main/master への直接 push をブロックしました。\n\nルール: main/master ブランチへの直接 push は禁止されています（PR 経由のみ）。\n\nPR 経由でマージしてください。"}'
-    exit 2
+    hook_block "[pre-git-push-check] ❌ main/master への直接 push をブロックしました。
+
+ルール: main/master ブランチへの直接 push は禁止されています（PR 経由のみ）。
+
+PR 経由でマージしてください。"
   fi
 fi
 

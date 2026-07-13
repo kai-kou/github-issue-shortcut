@@ -11,6 +11,8 @@ set -euo pipefail
 
 INPUT=$(cat)
 HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=lib/hook_block.sh
+source "$HOOK_DIR/lib/hook_block.sh"
 
 # ツール名を抽出（printf を使い、バックスラッシュを含む入力でも echo のエスケープ解釈に依存しない）
 TOOL_NAME=$(printf '%s\n' "$INPUT" | jq -r '.tool_name // ""')
@@ -43,8 +45,7 @@ fi
 # 注意: "git commit -m '... .env ...'" 等のコミットメッセージへの誤検知を防ぐため、
 # ファイルアクセスコマンド直後の引数として .env が現れるパターンのみブロックする
 if echo "$COMMAND" | grep -qE '(^|[[:space:];|&])(cat|less|head|tail|more|source|grep|\.)([[:space:]]+-[^[:space:];|&]+)*[[:space:]]+([^[:space:];|&]*/)?\.env([^[:space:];|&]*)?([[:space:];|&]|$)'; then
-  echo "BLOCK: .env ファイルへのアクセスは禁止されています"
-  exit 2
+  hook_block "BLOCK: .env ファイルへのアクセスは禁止されています"
 fi
 
 # 該当なし: 許可

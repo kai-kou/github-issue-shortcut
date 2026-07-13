@@ -1,6 +1,6 @@
 ---
 name: pr-review-watcher
-description: PR 作成後に Layer 1 /code-review セルフレビューを必ず実行し、指摘対応 → 自動マージまでを自律実行する。外部 AI レビュアー（Copilot/Gemini）への依頼はしない。CI・人手コメントは subscribe_pr_activity で任意監視する。対応はサイレント（ユーザー報告せず PR スレッド・Issue 記録のみ・L-102）。
+description: PR 作成後のレビュー監視・指摘対応・自動マージを自律実行するスキル。「PR を監視して」「レビュー対応して」「PR をマージまで見届けて」「レビュー待ち PR を回収して」と依頼された時、PR 作成フローの直後、またはセッション復帰時に check_pending_pr_reviews.py がレビュー待ち PR を検出した時に必ず使用する。Layer 1 /code-review セルフレビューを必ず実行し、指摘対応 → 自動マージまでを自律実行する。外部 AI レビュアー（Copilot/Gemini）への依頼はしない。CI・人手コメントは subscribe_pr_activity で任意監視する。対応はサイレント（ユーザー報告せず PR スレッド・Issue 記録のみ・L-102）。
 effort: medium
 ---
 
@@ -18,11 +18,11 @@ PR 作成後に **Claude 自身が `/code-review` スキルで必ずセルフレ
 - PR 作成後に AI レビューの到着を待つ時（PR 作成フローの一部として自動開始）
 - **セッション復帰時**: `tools/check_pending_pr_reviews.py` がレビュー待ち PR を検出した時
 
-## Layer 2 レビュー自動起動（Issue #97）
+## Layer 2 レビュー自動起動（Issue #97・ネイティブ化 #193）
 
-PR 作成・AI レビュー依頼の直後に `discussion_review_trigger.py` を呼び出す。
+PR 作成・AI レビュー依頼の直後に `discussion_review_trigger.py`（要否判定器）を呼び出す。
 差分 ≥300行 または `type:security`/`type:breaking-change` ラベル付きの PR には
-自動的に Layer 2 議論型レビューを追加起動する。
+自動的に Layer 2 議論型レビューを追加実行する。
 
 クラウド環境（gh CLI 不可）では `mcp__github__pull_request_read` で取得した値を渡す:
 
@@ -39,6 +39,9 @@ python3 tools/discussion_review_trigger.py --pr {PR番号}
 ```
 
 - Layer 2 不要と判定された場合: `ℹ️ Layer 2 レビュー不要` を出力して skip
+- **トリガー該当時**: 実行プラン JSON（id / spec / targets / rounds）が出力される。そのプランに従い
+  **`discussion-review` スキル（ネイティブ Agent Teams・既定）** で議論型レビューを実行する
+- ネイティブ実行が成立しない場合のみ、プランの `fallback_command`（`--legacy` = 旧 claude -p 経路）へ退避する（理由をログ）
 - Layer 2 失敗時: stderr に警告を出力し Layer 0+1 で継続（サイレントフォールバック禁止）
 - 詳細: `docs/rules/ai-reviewer-strategy.md` を参照
 
@@ -115,7 +118,6 @@ AIレビュー指摘対応は **ユーザーに報告しない**。記録は PR 
 
 ## 注意事項
 
-- 催促は各レビュアー **1回のみ**（スパム防止）
 - 修正コミット後の再レビューに備え、`resolved` 後も監視を継続する
 - 全体タイムアウトは 30 分。経過時は現状を PR コメントに記録（サイレント）
 - 他セッション対応中の PR（`active_session: true`・`--actionable-only` 出力に現れない）には介入しない（CP-4・L-109）
