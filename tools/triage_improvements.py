@@ -35,33 +35,15 @@ import urllib.parse
 import urllib.request
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
+from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from repo_slug import resolve_repo_slug  # noqa: E402
 
-def resolve_repo():
-    """対象リポジトリ slug を解決する（env 優先・git remote フォールバック）。
-
-    優先順: PROJECT_REPO → GITHUB_REPOSITORY → git remote の URL 解析 → 雛形プレースホルダ。
-    """
-    for env in ("PROJECT_REPO", "GITHUB_REPOSITORY"):
-        v = os.environ.get(env)
-        if v and "/" in v:
-            return v
-    try:
-        out = subprocess.run(
-            ["git", "remote", "get-url", "origin"],
-            capture_output=True, text=True, timeout=10,
-        )
-        if out.returncode == 0:
-            url = out.stdout.strip()
-            m = re.search(r"[:/]([^/]+/[^/]+?)(?:\.git)?$", url)
-            if m:
-                return m.group(1)
-    except (FileNotFoundError, subprocess.TimeoutExpired):
-        pass
-    return "kai-kou/github-issue-shortcut"
-
-
-REPO = resolve_repo()
+# 優先順: bootstrap 済みプレースホルダ解決値（最優先・下流リポジトリの既定動作）→
+# 未解決の場合のみ PROJECT_REPO → GITHUB_REPOSITORY → git remote の URL 解析 →
+# 雛形プレースホルダのまま（解決ロジックの正本は tools/repo_slug.py・#215）。
+REPO = resolve_repo_slug("kai-kou/github-issue-shortcut", env_vars=("PROJECT_REPO", "GITHUB_REPOSITORY"))
 
 # 監査タグ [監査PX/DOMAIN-NN] の DOMAIN コード → 日本語ラベル（任意機能）。
 # 監査タグ運用を採るプロジェクトのみ意味を持つ。未知コードはコードのまま素通しするため、

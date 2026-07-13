@@ -3,6 +3,10 @@
 # push済みブランチにPRがなければClaude に通知する
 set -euo pipefail
 
+HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/hook_block.sh
+source "$HOOK_DIR/lib/hook_block.sh"
+
 input=$(cat)
 
 # 再帰防止
@@ -38,9 +42,7 @@ fi
 # owner にドットを含むものも弾く（GitHub の owner 名にドットは不可。`host/repo` の単一セグメント
 # URL を `github.com/single` 等と誤パースした場合を検知する）。
 if [[ -z "$REPO_SLUG" || "$REPO_SLUG" != */* || "${REPO_SLUG%%/*}" == *.* ]]; then
-  jq -Rn --arg b "$current_branch" \
-    '{"systemMessage": "⚠️ PR確認できません: リポジトリ名（owner/repo）を自動検出できませんでした（GITHUB_REPOSITORY 未設定・gh 未導入・origin 不正のいずれか）。`gh pr list --head \($b) --state all` を手動実行して PR が作成されているか確認してください。"}'
-  exit 2
+  hook_block "⚠️ PR確認できません: リポジトリ名（owner/repo）を自動検出できませんでした（GITHUB_REPOSITORY 未設定・gh 未導入・origin 不正のいずれか）。\`gh pr list --head ${current_branch} --state all\` を手動実行して PR が作成されているか確認してください。"
 fi
 REPO_OWNER="${REPO_SLUG%%/*}"
 
@@ -93,9 +95,7 @@ if [[ "$branch_check_status" == "not_found" ]]; then exit 0; fi
 
 # gh CLI 未導入の場合は GitHub UI / API での手動確認を案内して終了
 if ! command -v gh >/dev/null 2>&1; then
-  jq -Rn --arg b "$current_branch" --arg r "$REPO_SLUG" \
-    '{"systemMessage": "⚠️ PR確認できません: gh CLI が未導入のため PR 存在確認ができません。gh をインストールするか GitHub UI（https://github.com/\($r)/pulls）でブランチ \($b) の PR を確認してください。"}'
-  exit 2
+  hook_block "⚠️ PR確認できません: gh CLI が未導入のため PR 存在確認ができません。gh をインストールするか GitHub UI（https://github.com/${REPO_SLUG}/pulls）でブランチ ${current_branch} の PR を確認してください。"
 fi
 
 total="unknown"
@@ -117,20 +117,17 @@ fi
 if [[ "$total" == "0" ]]; then
   if [[ "$branch_check_status" == "exists" ]]; then
     # ブランチの存在が確定している場合のみ "push済み" と断定する
-    jq -Rn --arg b "$current_branch" \
-      '{"systemMessage": "⚠️ PR未作成警告: ブランチ \($b) はリモートにpush済みですが、PRがまだ作成されていません。pr-review-flow.md に従い、セルフレビュー → PR作成 → AIレビュー依頼 → レビュー監視を実行してください。\n\n【根本原因対策 L-050】PR作成を報告する前に必ずPR URLを確認してください。"}'
+    hook_block "⚠️ PR未作成警告: ブランチ ${current_branch} はリモートにpush済みですが、PRがまだ作成されていません。pr-review-flow.md に従い、セルフレビュー → PR作成 → AIレビュー依頼 → レビュー監視を実行してください。
+
+【根本原因対策 L-050】PR作成を報告する前に必ずPR URLを確認してください。"
   else
     # branch_check_status == "unknown": ブランチpush状態が確認できないため断定を避ける
-    jq -Rn --arg b "$current_branch" --arg h "$VERIFY_HINT" \
-      '{"systemMessage": "⚠️ PR確認できません: ブランチ \($b) のブランチ存在確認でエラー（timeout/認証/ネットワーク等）が発生したため、PR未作成かどうか断定できません。\($h)。作成されていない場合はpr-review-flow.mdに従いPRを作成してください。"}'
+    hook_block "⚠️ PR確認できません: ブランチ ${current_branch} のブランチ存在確認でエラー（timeout/認証/ネットワーク等）が発生したため、PR未作成かどうか断定できません。${VERIFY_HINT}。作成されていない場合はpr-review-flow.mdに従いPRを作成してください。"
   fi
-  exit 2
 elif [[ "$total" == "unknown" ]]; then
   # 判定不能時（timeout/認証/レート制限/ネットワーク等）はサイレントスキップせず警告を出す（L-050 対策）
   # クラウドでは gh の repo 操作が常に 403 になるため、ここは MCP 検証（VERIFY_HINT）へ誘導する（L-114）
-  jq -Rn --arg b "$current_branch" --arg h "$VERIFY_HINT" \
-    '{"systemMessage": "⚠️ PR確認できません: ブランチ \($b) のPR存在確認でエラー（クラウドでは gh の repo 操作が 403／ローカルでは timeout/認証/レート制限等）が発生しました。\($h)。作成されていない場合はpr-review-flow.mdに従いPRを作成してください。"}'
-  exit 2
+  hook_block "⚠️ PR確認できません: ブランチ ${current_branch} のPR存在確認でエラー（クラウドでは gh の repo 操作が 403／ローカルでは timeout/認証/レート制限等）が発生しました。${VERIFY_HINT}。作成されていない場合はpr-review-flow.mdに従いPRを作成してください。"
 fi
 
 exit 0

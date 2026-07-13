@@ -19,10 +19,13 @@ import os
 import sys
 import urllib.error
 import urllib.request
+from pathlib import Path
 from typing import Optional
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from repo_slug import resolve_repo_slug  # noqa: E402
 
-_DEFAULT_REPO = "kai-kou/github-issue-shortcut"
+_DEFAULT_REPO = resolve_repo_slug("kai-kou/github-issue-shortcut")
 _PER_PAGE = 100  # GitHub API の最大許容値
 
 

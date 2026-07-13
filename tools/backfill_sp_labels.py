@@ -24,7 +24,10 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 PROJECT_DIR = Path(__file__).resolve().parent.parent
-REPO = "kai-kou/github-issue-shortcut"
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from repo_slug import resolve_repo_slug  # noqa: E402
+
+REPO = resolve_repo_slug("kai-kou/github-issue-shortcut")
 OWNER, NAME = REPO.split("/", 1)
 JST = timezone(timedelta(hours=9))
 SP_VALUES = {1, 2, 3, 5, 8}
