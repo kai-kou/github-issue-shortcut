@@ -33,7 +33,8 @@ export const SCHEMA_STATEMENTS: string[] = [
     access_expires_at INTEGER NOT NULL,
     refresh_token_enc TEXT,
     refresh_expires_at INTEGER,
-    updated_at INTEGER NOT NULL
+    updated_at INTEGER NOT NULL,
+    refreshing_until INTEGER
   )`,
 ];
 
@@ -51,6 +52,12 @@ export interface EncryptedTokens {
   accessExpiresAt: number;
   refreshEnc: string | null;
   refreshExpiresAt: number | null;
+}
+
+export interface TokenRow extends EncryptedTokens {
+  userId: string;
+  /** リフレッシュロックの有効期限（unix 秒）。NULL は未ロック（OQ-3・M1 #17）。 */
+  refreshingUntil: number | null;
 }
 
 /** 現在時刻を UNIX 秒で返す。 */
@@ -85,7 +92,10 @@ export async function upsertUser(db: D1Database, ghUser: GitHubUser): Promise<st
   return row.id;
 }
 
-/** 暗号化済みトークンをユーザー単位 1 行で保存する（ローテーション直列化の単位）。 */
+/**
+ * 暗号化済みトークンをユーザー単位 1 行で保存する（ローテーション直列化の単位）。
+ * 更新時は進行中のリフレッシュロック（refreshing_until）も必ずクリアする。
+ */
 export async function saveTokens(db: D1Database, userId: string, tokens: EncryptedTokens): Promise<void> {
   const now = nowSeconds();
   await db
@@ -97,10 +107,60 @@ export async function saveTokens(db: D1Database, userId: string, tokens: Encrypt
          access_expires_at = excluded.access_expires_at,
          refresh_token_enc = excluded.refresh_token_enc,
          refresh_expires_at = excluded.refresh_expires_at,
-         updated_at = excluded.updated_at`,
+         updated_at = excluded.updated_at,
+         refreshing_until = NULL`,
     )
     .bind(userId, tokens.accessEnc, tokens.accessExpiresAt, tokens.refreshEnc, tokens.refreshExpiresAt, now)
     .run();
+}
+
+/** ユーザーのトークン行を取得する。 */
+export async function getTokens(db: D1Database, userId: string): Promise<TokenRow | null> {
+  const row = await db
+    .prepare(
+      `SELECT user_id, access_token_enc, access_expires_at, refresh_token_enc, refresh_expires_at, refreshing_until
+       FROM tokens WHERE user_id = ?`,
+    )
+    .bind(userId)
+    .first<{
+      user_id: string;
+      access_token_enc: string;
+      access_expires_at: number;
+      refresh_token_enc: string | null;
+      refresh_expires_at: number | null;
+      refreshing_until: number | null;
+    }>();
+  if (!row) return null;
+  return {
+    userId: row.user_id,
+    accessEnc: row.access_token_enc,
+    accessExpiresAt: row.access_expires_at,
+    refreshEnc: row.refresh_token_enc,
+    refreshExpiresAt: row.refresh_expires_at,
+    refreshingUntil: row.refreshing_until,
+  };
+}
+
+/**
+ * リフレッシュロックの獲得を試みる（ユーザー単位の直列化・OQ-3: D1 行ロックで解決）。
+ * 既に他リクエストが有効なロックを保持していれば false（呼び出し側はポーリングで完了を待つ）。
+ * lockUntil はクラッシュ時に自動失効させるための有効期限（unix 秒）。
+ */
+export async function tryAcquireRefreshLock(db: D1Database, userId: string, lockUntil: number): Promise<boolean> {
+  const now = nowSeconds();
+  const result = await db
+    .prepare(
+      `UPDATE tokens SET refreshing_until = ?
+       WHERE user_id = ? AND (refreshing_until IS NULL OR refreshing_until < ?)`,
+    )
+    .bind(lockUntil, userId, now)
+    .run();
+  return result.meta.changes === 1;
+}
+
+/** リフレッシュロックを解放する（リフレッシュ失敗時のクリーンアップ用）。 */
+export async function releaseRefreshLock(db: D1Database, userId: string): Promise<void> {
+  await db.prepare(`UPDATE tokens SET refreshing_until = NULL WHERE user_id = ?`).bind(userId).run();
 }
 
 /** セッションを作成する（id_hash はハッシュ化済みの値を渡す）。 */
