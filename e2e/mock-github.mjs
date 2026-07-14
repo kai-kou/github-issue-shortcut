@@ -24,7 +24,13 @@ const server = createServer((req, res) => {
       res.writeHead(400);
       return res.end("missing redirect_uri");
     }
-    const to = new URL(redirectUri);
+    let to;
+    try {
+      to = new URL(redirectUri);
+    } catch {
+      res.writeHead(400);
+      return res.end("invalid redirect_uri");
+    }
     to.searchParams.set("code", "mock_authorization_code");
     to.searchParams.set("state", state);
     res.writeHead(302, { Location: to.toString() });

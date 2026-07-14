@@ -15,7 +15,7 @@ export default defineConfig({
   timeout: 30_000,
   reporter: "list",
   use: {
-    baseURL: "http://localhost:8787",
+    baseURL: "http://localhost:8789",
     ...devices["Pixel 7"],
     ignoreHTTPSErrors: true,
     launchOptions: {
@@ -34,13 +34,13 @@ export default defineConfig({
     {
       command:
         "npx wrangler d1 migrations apply DB --local && " +
-        "npx wrangler dev --port 8787 " +
+        "npx wrangler dev --port 8789 " +
         "--var GITHUB_CLIENT_ID:e2e-client-id " +
         "--var GITHUB_CLIENT_SECRET:e2e-client-secret " +
         `--var TOKEN_ENCRYPTION_KEY:${TOKEN_KEY} ` +
         "--var GITHUB_OAUTH_BASE:http://localhost:8788 " +
         "--var GITHUB_API_BASE:http://localhost:8788",
-      url: "http://localhost:8787/api/health",
+      url: "http://localhost:8789/api/health",
       reuseExistingServer: !process.env.CI,
       timeout: 90_000,
     },
