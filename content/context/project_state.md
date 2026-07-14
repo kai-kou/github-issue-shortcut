@@ -1,4 +1,4 @@
-# プロジェクト状態スナップショット（2026-07-10 13:19 JST 更新）
+# プロジェクト状態スナップショット（2026-07-14 11:28 JST 更新）
 > SessionStart フックが自動注入。最新化は `python3 tools/generate_project_context.py`。
 
 ## 作業中 Issue（status:in-progress）
@@ -14,10 +14,11 @@
 ⚠ 取得失敗（gh 403/エラー）。0 件と混同しないこと。クラウドでは `mcp__github__list_issues` / `list_pull_requests` で直接確認する（L-114）
 
 ## 直近のコミット
-- d18e678 docs: セルフレビュー指摘 16 件を反映（M1 への MUST 要件反映・FR-18/FR-24 の時期統一・リンク修正・要件の穴埋め）
-- 66a0026 docs: ユーザーストーリーマップとマイルストーン計画（M0〜M4・SP 見積もり・Done 判定）を追加
-- d67a3b5 docs: 要件定義書本体（FR/NFR・アーキテクチャ・制約・公開要件・リスク）を追加
-- a6e9b55 docs: リーンキャンバスとインセプションデッキを追加
-- d6816f6 docs: 要件定義ドキュメント一式のインデックスと決定事項を追加
-- c4071aa docs: 認証・技術スタック・モバイルUX・市場競合の4領域ディープリサーチ結果を追加
-- c81b123 chore: claude-code-base のルール・スキル・ハーネス一式を適用しプロジェクトミッションを記入
+- f57aad0 chore: claude-code-base ac5659c を再同期（apply-to-repo + UPDATE NOTES 手動手順 + 議論型レビュー済み） (#47)
+- 76db1d8 feat: 利用規約・プライバシーポリシーページを i18n 対応 (#45)
+- f925428 chore: リポジトリ public 化の前提整備 (#44)
+- b71dab9 feat: i18n 基盤（日英ロケール検出・手動切替）を追加し Home/フッターへ適用 (#42)
+- 6db38a4 feat: 利用規約・プライバシーポリシーページを追加 (#41)
+- 00bb521 feat: Vite + React SPA + Hono API の単一 Worker 構成でリポジトリ雛形を作成 (#38)
+- f0b7a46 docs: キーレス CI 構成（GHA=テスト / Workers Builds=デプロイ）とコネクタ事実確認を要件・リサーチに反映 (#39)
+- 1efed06 feat: スプリント定期実行ルーティンのエントリポイント指示（docs/routines/sprint-session.md）を追加 (#36)
