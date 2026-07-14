@@ -1,0 +1,31 @@
+# GitGuardian ggshield 設定（version 2）
+# https://docs.gitguardian.com/ggshield-docs/reference/config
+#
+# 目的: テスト専用のダミー鍵を ggshield（ローカル / CI / pre-commit スキャン）の
+#       誤検知（false positive）から除外する。
+#
+# 背景（Issue #50）: GitGuardian の内部モニタリングがコミット 8fca77b の下記の値を
+#   "Generic High Entropy Secret" として検出したが、これは base64 デコードで
+#   "0123456789abcdef0123456789abcdef" になるテスト専用の固定ダミー鍵であり、
+#   本物のクレデンシャルではない。本番の暗号化鍵・GitHub App Client Secret は
+#   Cloudflare Workers Secrets で管理し、リポジトリにはコミットしない
+#   （.dev.vars は .gitignore 済み・.dev.vars.example はプレースホルダのみ）。
+#
+# 注意（スコープの切り分け）: 本ファイルは ggshield（ローカル / CI スキャン）側の
+#   抑制設定であり、GitGuardian ダッシュボードの「内部モニタリング」には作用しない。
+#   内部モニタリングが検出済みの既存インシデントは、ダッシュボード上で
+#   False Positive としてクローズする必要がある（アカウント権限が必要）。
+
+version: 2
+
+secret:
+  ignored_matches:
+    # テスト用 AES-256 ダミー鍵 = base64("0123456789abcdef0123456789abcdef")。
+    # 使用箇所: vitest.config.ts（miniflare bindings）/ worker/crypto.test.ts（KEY 定数）。
+    - name: "test AES-256 dummy key (not a real secret)"
+      match: "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
+  ignored_paths:
+    # 暗号ユーティリティのユニットテスト（ダミー鍵・例示トークン gho_exampletoken_... を含む）。
+    - "worker/crypto.test.ts"
+    # miniflare のテスト用バインディング（ダミー Secrets を注入）。
+    - "vitest.config.ts"
