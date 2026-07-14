@@ -13,9 +13,10 @@ import type { Env } from "./types";
 const EXPIRY_BUFFER = 60;
 /** リフレッシュロックの TTL（秒）。処理がクラッシュした場合にロックを自動失効させる。 */
 const LOCK_TTL = 30;
-/** 他リクエストがリフレッシュ中のときのポーリング間隔（ms）と最大試行回数（最大 3 秒待つ）。 */
+/** 他リクエストがリフレッシュ中のときのポーリング間隔（ms）。 */
 const POLL_INTERVAL_MS = 100;
-const POLL_MAX_ATTEMPTS = 30;
+/** ポーリングの最大試行回数。ロック保持者が LOCK_TTL いっぱい使う可能性があるため、それに合わせる。 */
+const POLL_MAX_ATTEMPTS = Math.ceil((LOCK_TTL * 1000) / POLL_INTERVAL_MS);
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -44,7 +45,18 @@ export async function getValidAccessToken(env: Env, userId: string): Promise<str
   const acquired = await tryAcquireRefreshLock(env.DB, userId, nowSeconds() + LOCK_TTL);
   if (acquired) {
     try {
-      const refreshToken = await decryptString(env.TOKEN_ENCRYPTION_KEY, tokens.refreshEnc);
+      // ロック獲得直前に他リクエストが refresh を完了させている可能性があるため再読込する。
+      // 再読込せず最初に読んだ refreshEnc をそのまま使うと、既に消費済みの単回使用トークンで
+      // refresh を試みて失敗する（TOCTOU）。
+      const fresh = await getTokens(env.DB, userId);
+      if (!fresh) throw new Error("no tokens saved for user");
+      if (isValid(fresh.accessExpiresAt)) {
+        await releaseRefreshLock(env.DB, userId);
+        return decryptString(env.TOKEN_ENCRYPTION_KEY, fresh.accessEnc);
+      }
+      if (!fresh.refreshEnc) throw new Error("access token expired and no refresh token available");
+
+      const refreshToken = await decryptString(env.TOKEN_ENCRYPTION_KEY, fresh.refreshEnc);
       const refreshed = await refreshAccessToken({
         oauthBase: env.GITHUB_OAUTH_BASE ?? DEFAULT_OAUTH_BASE,
         clientId: env.GITHUB_CLIENT_ID,
@@ -56,14 +68,14 @@ export async function getValidAccessToken(env: Env, userId: string): Promise<str
       // GitHub がローテーション後の refresh_token を返さない場合は既存値を維持する。
       const refreshEnc = refreshed.refresh_token
         ? await encryptString(env.TOKEN_ENCRYPTION_KEY, refreshed.refresh_token)
-        : tokens.refreshEnc;
+        : fresh.refreshEnc;
       await saveTokens(env.DB, userId, {
         accessEnc,
         accessExpiresAt: now + (refreshed.expires_in ?? DEFAULT_ACCESS_TOKEN_TTL),
         refreshEnc,
         refreshExpiresAt: refreshed.refresh_token_expires_in
           ? now + refreshed.refresh_token_expires_in
-          : tokens.refreshExpiresAt,
+          : fresh.refreshExpiresAt,
       });
       return refreshed.access_token!;
     } catch (err) {
@@ -76,8 +88,15 @@ export async function getValidAccessToken(env: Env, userId: string): Promise<str
   for (let attempt = 0; attempt < POLL_MAX_ATTEMPTS; attempt++) {
     await sleep(POLL_INTERVAL_MS);
     tokens = await getTokens(env.DB, userId);
-    if (tokens && isValid(tokens.accessExpiresAt)) {
+    if (!tokens) throw new Error("no tokens saved for user");
+    if (isValid(tokens.accessExpiresAt)) {
       return decryptString(env.TOKEN_ENCRYPTION_KEY, tokens.accessEnc);
+    }
+    // ロックが解放済み（＝相手のリフレッシュ試行は終わっている）なのにまだ無効ならリフレッシュは
+    // 失敗している。フルのポーリング予算を待たず、この呼び出し自身でリフレッシュを再試行する。
+    const stillLocked = tokens.refreshingUntil !== null && tokens.refreshingUntil > nowSeconds();
+    if (!stillLocked) {
+      return getValidAccessToken(env, userId);
     }
   }
   throw new Error("timed out waiting for concurrent token refresh");

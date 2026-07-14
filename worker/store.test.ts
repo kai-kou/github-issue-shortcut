@@ -7,6 +7,9 @@ import {
   deleteSession,
   getUserBySessionHash,
   nowSeconds,
+  releaseRefreshLock,
+  saveTokens,
+  tryAcquireRefreshLock,
   upsertUser,
 } from "./store";
 
@@ -49,5 +52,54 @@ describe("sessions", () => {
       .bind(nowSeconds() - 10, idHash)
       .run();
     expect(await getUserBySessionHash(db, idHash)).toBeNull();
+  });
+});
+
+describe("refresh lock (tryAcquireRefreshLock / releaseRefreshLock)", () => {
+  async function makeTokenUser(): Promise<string> {
+    const userId = await upsertUser(db, {
+      id: Math.floor(Math.random() * 1e9),
+      login: "lockuser",
+      avatar_url: "",
+    });
+    await saveTokens(db, userId, {
+      accessEnc: "enc",
+      accessExpiresAt: nowSeconds() - 10,
+      refreshEnc: "enc",
+      refreshExpiresAt: nowSeconds() + 1000,
+    });
+    return userId;
+  }
+
+  it("only lets one caller acquire the lock at a time", async () => {
+    const userId = await makeTokenUser();
+    expect(await tryAcquireRefreshLock(db, userId, nowSeconds() + 30)).toBe(true);
+    expect(await tryAcquireRefreshLock(db, userId, nowSeconds() + 30)).toBe(false);
+  });
+
+  it("allows re-acquiring after release", async () => {
+    const userId = await makeTokenUser();
+    expect(await tryAcquireRefreshLock(db, userId, nowSeconds() + 30)).toBe(true);
+    await releaseRefreshLock(db, userId);
+    expect(await tryAcquireRefreshLock(db, userId, nowSeconds() + 30)).toBe(true);
+  });
+
+  it("allows re-acquiring once a stale lock's TTL has passed (crash recovery)", async () => {
+    const userId = await makeTokenUser();
+    expect(await tryAcquireRefreshLock(db, userId, nowSeconds() - 1)).toBe(true);
+    // 直前のロックは既に期限切れなので、解放されていなくても再獲得できる。
+    expect(await tryAcquireRefreshLock(db, userId, nowSeconds() + 30)).toBe(true);
+  });
+
+  it("clears the lock when saveTokens persists a fresh token", async () => {
+    const userId = await makeTokenUser();
+    expect(await tryAcquireRefreshLock(db, userId, nowSeconds() + 30)).toBe(true);
+    await saveTokens(db, userId, {
+      accessEnc: "enc2",
+      accessExpiresAt: nowSeconds() + 3600,
+      refreshEnc: "enc2",
+      refreshExpiresAt: nowSeconds() + 1000,
+    });
+    expect(await tryAcquireRefreshLock(db, userId, nowSeconds() + 30)).toBe(true);
   });
 });
