@@ -158,9 +158,16 @@ export async function tryAcquireRefreshLock(db: D1Database, userId: string, lock
   return result.meta.changes === 1;
 }
 
-/** リフレッシュロックを解放する（リフレッシュ失敗時のクリーンアップ用）。 */
-export async function releaseRefreshLock(db: D1Database, userId: string): Promise<void> {
-  await db.prepare(`UPDATE tokens SET refreshing_until = NULL WHERE user_id = ?`).bind(userId).run();
+/**
+ * リフレッシュロックを解放する（リフレッシュ失敗時のクリーンアップ用）。
+ * lockUntil は自分が tryAcquireRefreshLock で獲得した際の値をそのまま渡す。一致する場合のみ
+ * 解放することで、TTL 切れ後に他リクエストが獲得した新しいロックを誤って解放しない（CAS）。
+ */
+export async function releaseRefreshLock(db: D1Database, userId: string, lockUntil: number): Promise<void> {
+  await db
+    .prepare(`UPDATE tokens SET refreshing_until = NULL WHERE user_id = ? AND refreshing_until = ?`)
+    .bind(userId, lockUntil)
+    .run();
 }
 
 /** セッションを作成する（id_hash はハッシュ化済みの値を渡す）。 */

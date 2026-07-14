@@ -79,8 +79,9 @@ describe("refresh lock (tryAcquireRefreshLock / releaseRefreshLock)", () => {
 
   it("allows re-acquiring after release", async () => {
     const userId = await makeTokenUser();
-    expect(await tryAcquireRefreshLock(db, userId, nowSeconds() + 30)).toBe(true);
-    await releaseRefreshLock(db, userId);
+    const lockUntil = nowSeconds() + 30;
+    expect(await tryAcquireRefreshLock(db, userId, lockUntil)).toBe(true);
+    await releaseRefreshLock(db, userId, lockUntil);
     expect(await tryAcquireRefreshLock(db, userId, nowSeconds() + 30)).toBe(true);
   });
 
@@ -89,6 +90,18 @@ describe("refresh lock (tryAcquireRefreshLock / releaseRefreshLock)", () => {
     expect(await tryAcquireRefreshLock(db, userId, nowSeconds() - 1)).toBe(true);
     // 直前のロックは既に期限切れなので、解放されていなくても再獲得できる。
     expect(await tryAcquireRefreshLock(db, userId, nowSeconds() + 30)).toBe(true);
+  });
+
+  it("does not release a lock acquired by someone else after its own lockUntil is stale (CAS)", async () => {
+    const userId = await makeTokenUser();
+    const staleLockUntil = nowSeconds() - 1;
+    expect(await tryAcquireRefreshLock(db, userId, staleLockUntil)).toBe(true);
+    // 別リクエストが期限切れロックを引き継いで新しいロックを獲得する。
+    const newLockUntil = nowSeconds() + 30;
+    expect(await tryAcquireRefreshLock(db, userId, newLockUntil)).toBe(true);
+    // 最初のリクエストが（自分の古い lockUntil で）解放を試みても、他者の新しいロックは消えない。
+    await releaseRefreshLock(db, userId, staleLockUntil);
+    expect(await tryAcquireRefreshLock(db, userId, nowSeconds() + 30)).toBe(false);
   });
 
   it("clears the lock when saveTokens persists a fresh token", async () => {

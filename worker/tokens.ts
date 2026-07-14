@@ -42,7 +42,8 @@ export async function getValidAccessToken(env: Env, userId: string): Promise<str
     throw new Error("access token expired and no refresh token available");
   }
 
-  const acquired = await tryAcquireRefreshLock(env.DB, userId, nowSeconds() + LOCK_TTL);
+  const lockUntil = nowSeconds() + LOCK_TTL;
+  const acquired = await tryAcquireRefreshLock(env.DB, userId, lockUntil);
   if (acquired) {
     try {
       // ロック獲得直前に他リクエストが refresh を完了させている可能性があるため再読込する。
@@ -51,7 +52,7 @@ export async function getValidAccessToken(env: Env, userId: string): Promise<str
       const fresh = await getTokens(env.DB, userId);
       if (!fresh) throw new Error("no tokens saved for user");
       if (isValid(fresh.accessExpiresAt)) {
-        await releaseRefreshLock(env.DB, userId);
+        await releaseRefreshLock(env.DB, userId, lockUntil);
         return decryptString(env.TOKEN_ENCRYPTION_KEY, fresh.accessEnc);
       }
       if (!fresh.refreshEnc) throw new Error("access token expired and no refresh token available");
@@ -79,7 +80,9 @@ export async function getValidAccessToken(env: Env, userId: string): Promise<str
       });
       return refreshed.access_token!;
     } catch (err) {
-      await releaseRefreshLock(env.DB, userId);
+      // lockUntil 一致時のみ解放するため、TTL 切れ後に他リクエストが獲得した
+      // 新しいロックを誤って解放することはない（CAS）。
+      await releaseRefreshLock(env.DB, userId, lockUntil);
       throw err;
     }
   }
