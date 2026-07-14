@@ -1,22 +1,29 @@
 /**
  * GitHub App の user-to-server OAuth ヘルパー。
  * トークン交換エンドポイントは CORS 非対応のため、必ず Worker（サーバー側）で実行する（§7.1）。
+ *
+ * エンドポイントの base URL は引数で差し替え可能（既定は実 GitHub）。
+ * E2E テストではモック GitHub（ローカル）を指すことで、実 GitHub に触れずに
+ * OAuth 往復フローを検証できる（IdP モックは OAuth E2E のベストプラクティス）。
  */
 
-const AUTHORIZE_URL = "https://github.com/login/oauth/authorize";
-const TOKEN_URL = "https://github.com/login/oauth/access_token";
-const USER_URL = "https://api.github.com/user";
+/** GitHub OAuth（authorize / token）の既定 base。 */
+export const DEFAULT_OAUTH_BASE = "https://github.com";
+/** GitHub REST API の既定 base。 */
+export const DEFAULT_API_BASE = "https://api.github.com";
+
 const API_VERSION = "2026-03-10";
 const USER_AGENT = "github-issue-shortcut";
 
 /** GitHub 認可 URL を組み立てる（state + PKCE S256・フルページリダイレクト用）。 */
 export function buildAuthorizeUrl(params: {
+  oauthBase: string;
   clientId: string;
   state: string;
   codeChallenge: string;
   redirectUri: string;
 }): string {
-  const url = new URL(AUTHORIZE_URL);
+  const url = new URL(`${params.oauthBase}/login/oauth/authorize`);
   url.searchParams.set("client_id", params.clientId);
   url.searchParams.set("redirect_uri", params.redirectUri);
   url.searchParams.set("state", params.state);
@@ -39,13 +46,14 @@ export interface GitHubTokenResponse {
 
 /** authorization code をサーバー側でトークンに交換する。 */
 export async function exchangeCodeForToken(params: {
+  oauthBase: string;
   clientId: string;
   clientSecret: string;
   code: string;
   codeVerifier: string;
   redirectUri: string;
 }): Promise<GitHubTokenResponse> {
-  const res = await fetch(TOKEN_URL, {
+  const res = await fetch(`${params.oauthBase}/login/oauth/access_token`, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -75,8 +83,8 @@ export interface GitHubUser {
 }
 
 /** access token を使ってログインユーザー情報を取得する。 */
-export async function fetchGitHubUser(accessToken: string): Promise<GitHubUser> {
-  const res = await fetch(USER_URL, {
+export async function fetchGitHubUser(apiBase: string, accessToken: string): Promise<GitHubUser> {
+  const res = await fetch(`${apiBase}/user`, {
     headers: {
       Authorization: `Bearer ${accessToken}`,
       Accept: "application/vnd.github+json",
