@@ -12,6 +12,7 @@ import {
 } from "./crypto";
 import {
   buildAuthorizeUrl,
+  DEFAULT_ACCESS_TOKEN_TTL,
   DEFAULT_API_BASE,
   DEFAULT_OAUTH_BASE,
   exchangeCodeForToken,
@@ -26,8 +27,6 @@ import {
   upsertUser,
 } from "./store";
 
-/** GitHub App の access token 既定 TTL（8 時間・§7.1）。expires_in 不在時のフォールバック。 */
-const ACCESS_TOKEN_TTL = 8 * 60 * 60;
 /** pre-auth Cookie の TTL（10 分・§4.2-1）。 */
 const PREAUTH_TTL = 10 * 60;
 /** セッションの TTL（30 日）。refresh token（6 ヶ月）より短く、透過リフレッシュで延命する。 */
@@ -142,7 +141,7 @@ app.get("/auth/callback", async (c) => {
     : null;
   await saveTokens(c.env.DB, userId, {
     accessEnc,
-    accessExpiresAt: now + (token.expires_in ?? ACCESS_TOKEN_TTL),
+    accessExpiresAt: now + (token.expires_in ?? DEFAULT_ACCESS_TOKEN_TTL),
     refreshEnc,
     refreshExpiresAt: token.refresh_token_expires_in ? now + token.refresh_token_expires_in : null,
   });
