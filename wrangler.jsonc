@@ -3,6 +3,11 @@
   "name": "github-issue-shortcut",
   "compatibility_date": "2026-07-09",
   "main": "./worker/index.ts",
+  // GitHub App の Client ID は公開値（認可 URL に出る）。secret ではないため vars に置き、
+  // デプロイでダッシュボードの plaintext var が上書き消去される問題を防ぐ。Client Secret / 暗号鍵は Workers Secrets。
+  "vars": {
+    "GITHUB_CLIENT_ID": "Iv23livFCo9vcWDm0zyg"
+  },
   "assets": {
     "not_found_handling": "single-page-application",
     "run_worker_first": ["/api/*", "/auth/*", "/setup"]
