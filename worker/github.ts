@@ -11,6 +11,8 @@
 export const DEFAULT_OAUTH_BASE = "https://github.com";
 /** GitHub REST API の既定 base。 */
 export const DEFAULT_API_BASE = "https://api.github.com";
+/** GitHub App の access token 既定 TTL（8 時間・§7.1）。expires_in 不在時のフォールバック。 */
+export const DEFAULT_ACCESS_TOKEN_TTL = 8 * 60 * 60;
 
 const API_VERSION = "2026-03-10";
 const USER_AGENT = "github-issue-shortcut";
@@ -72,6 +74,34 @@ export async function exchangeCodeForToken(params: {
   const data = (await res.json()) as GitHubTokenResponse;
   if (!res.ok || data.error || !data.access_token) {
     throw new Error(`GitHub token exchange failed: ${data.error ?? `HTTP ${res.status}`}`);
+  }
+  return data;
+}
+
+/** リフレッシュトークンで access token を更新する（単回使用ローテーション・A1-2）。 */
+export async function refreshAccessToken(params: {
+  oauthBase: string;
+  clientId: string;
+  clientSecret: string;
+  refreshToken: string;
+}): Promise<GitHubTokenResponse> {
+  const res = await fetch(`${params.oauthBase}/login/oauth/access_token`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      Accept: "application/json",
+      "User-Agent": USER_AGENT,
+    },
+    body: new URLSearchParams({
+      client_id: params.clientId,
+      client_secret: params.clientSecret,
+      refresh_token: params.refreshToken,
+      grant_type: "refresh_token",
+    }),
+  });
+  const data = (await res.json()) as GitHubTokenResponse;
+  if (!res.ok || data.error || !data.access_token) {
+    throw new Error(`GitHub token refresh failed: ${data.error ?? `HTTP ${res.status}`}`);
   }
   return data;
 }
