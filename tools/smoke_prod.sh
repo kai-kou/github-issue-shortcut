@@ -12,18 +12,22 @@ BASE="${1:-https://github-issue-shortcut.kinamocchi-tech.workers.dev}"
 fail=0
 note() { printf '%s\n' "$*"; }
 
+# ステータス + ボディを 1 リクエストで取得（末尾行が HTTP ステータス）。
+# curl -w は接続失敗時も 000 を出力するため `|| echo` の後付けはしない（二重出力の回避）。
+req() { curl -sS -w $'\n%{http_code}' "$1" 2>/dev/null; }
+
 # 1. /api/health → 200
-code=$(curl -sS -o /dev/null -w '%{http_code}' "$BASE/api/health" 2>/dev/null || echo 000)
+out=$(req "$BASE/api/health"); code="${out##*$'\n'}"
 if [ "$code" = "200" ]; then note "✅ /api/health 200"; else note "❌ /api/health $code"; fail=1; fi
 
 # 2. /api/ready → 200（鍵妥当性・Client ID・D1 テーブルの自己診断）
-body=$(curl -sS "$BASE/api/ready" 2>/dev/null || echo '')
-code=$(curl -sS -o /dev/null -w '%{http_code}' "$BASE/api/ready" 2>/dev/null || echo 000)
+out=$(req "$BASE/api/ready"); code="${out##*$'\n'}"; body="${out%$'\n'*}"
 if [ "$code" = "200" ]; then note "✅ /api/ready 200 $body"; else note "❌ /api/ready $code $body"; fail=1; fi
 
 # 3. /auth/login → 302 で github.com の認可 URL へ、かつ client_id が空でない
-loc=$(curl -sS -o /dev/null -D - "$BASE/auth/login" 2>/dev/null | tr -d '\r' | awk 'tolower($1)=="location:"{print $2}')
-code=$(curl -sS -o /dev/null -w '%{http_code}' "$BASE/auth/login" 2>/dev/null || echo 000)
+hdr=$(mktemp)
+code=$(curl -sS -o /dev/null -D "$hdr" -w '%{http_code}' "$BASE/auth/login" 2>/dev/null)
+loc=$(awk 'tolower($1)=="location:"{print $2}' "$hdr" | tr -d '\r'); rm -f "$hdr"
 if [ "$code" = "302" ] \
   && printf '%s' "$loc" | grep -q "github.com/login/oauth/authorize" \
   && printf '%s' "$loc" | grep -qE "client_id=[^&]+"; then
