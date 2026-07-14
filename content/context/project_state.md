@@ -1,4 +1,4 @@
-# プロジェクト状態スナップショット（2026-07-14 11:28 JST 更新）
+# プロジェクト状態スナップショット（2026-07-14 14:00 JST 更新）
 > SessionStart フックが自動注入。最新化は `python3 tools/generate_project_context.py`。
 
 ## 作業中 Issue（status:in-progress）
