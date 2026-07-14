@@ -1,0 +1,13 @@
+# `wrangler dev` 用のローカル Secrets のテンプレート。
+# このファイルを `.dev.vars` にコピーして値を埋める（.dev.vars はコミットしない）。
+# 本番の値は Cloudflare の Workers Secrets（Variables and Secrets）で管理する。
+
+# GitHub App の Client ID（公開値・#9 で発行済み）
+GITHUB_CLIENT_ID="Iv23lixxxxxxxxxxxxxx"
+
+# GitHub App の Client Secret（秘匿）
+GITHUB_CLIENT_SECRET="your-github-app-client-secret"
+
+# トークン暗号化マスターキー: 32 バイトを base64 エンコードした値。
+# 生成: openssl rand -base64 32
+TOKEN_ENCRYPTION_KEY="base64-encoded-32-byte-key"

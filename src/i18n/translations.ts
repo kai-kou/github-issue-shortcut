@@ -31,6 +31,13 @@ interface Translations {
   languageSwitcher: {
     label: string;
   };
+  auth: {
+    loginButton: string;
+    checking: string;
+    loggedInAs: string;
+    logoutButton: string;
+    loginError: string;
+  };
   terms: LegalPage;
   privacy: LegalPage;
 }
@@ -50,6 +57,13 @@ export const translations = {
     },
     languageSwitcher: {
       label: "言語",
+    },
+    auth: {
+      loginButton: "GitHub でログイン",
+      checking: "ログイン状態を確認中...",
+      loggedInAs: "ログイン中",
+      logoutButton: "ログアウト",
+      loginError: "ログイン状態を確認できませんでした",
     },
     terms: {
       title: "利用規約",
@@ -158,6 +172,13 @@ export const translations = {
     },
     languageSwitcher: {
       label: "Language",
+    },
+    auth: {
+      loginButton: "Sign in with GitHub",
+      checking: "Checking sign-in status...",
+      loggedInAs: "Signed in as",
+      logoutButton: "Sign out",
+      loginError: "Could not check sign-in status",
     },
     terms: {
       title: "Terms of Service",

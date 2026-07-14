@@ -1,0 +1,143 @@
+/**
+ * D1 永続化層（users / sessions / tokens）。
+ * データモデルは docs/requirements/00-requirements.md §6.2 準拠。
+ * タイムスタンプは UNIX 秒（機械処理用・UTC 基準・datetime-rules）。
+ */
+import type { GitHubUser } from "./github";
+
+/**
+ * スキーマの正本（テストで直接適用する）。本番は migrations/0001_init.sql を
+ * `wrangler d1 migrations apply` で適用する。両者は同一内容を維持すること。
+ */
+export const SCHEMA_STATEMENTS: string[] = [
+  `CREATE TABLE IF NOT EXISTS users (
+    id TEXT PRIMARY KEY,
+    github_user_id INTEGER NOT NULL UNIQUE,
+    login TEXT NOT NULL,
+    avatar_url TEXT,
+    created_at INTEGER NOT NULL,
+    deleted_at INTEGER
+  )`,
+  `CREATE TABLE IF NOT EXISTS sessions (
+    id_hash TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id),
+    created_at INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL,
+    last_used_at INTEGER NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON sessions(expires_at)`,
+  `CREATE TABLE IF NOT EXISTS tokens (
+    user_id TEXT PRIMARY KEY REFERENCES users(id),
+    access_token_enc TEXT NOT NULL,
+    access_expires_at INTEGER NOT NULL,
+    refresh_token_enc TEXT,
+    refresh_expires_at INTEGER,
+    updated_at INTEGER NOT NULL
+  )`,
+];
+
+export interface UserRow {
+  id: string;
+  github_user_id: number;
+  login: string;
+  avatar_url: string | null;
+  created_at: number;
+  deleted_at: number | null;
+}
+
+export interface EncryptedTokens {
+  accessEnc: string;
+  accessExpiresAt: number;
+  refreshEnc: string | null;
+  refreshExpiresAt: number | null;
+}
+
+/** 現在時刻を UNIX 秒で返す。 */
+export function nowSeconds(): number {
+  return Math.floor(Date.now() / 1000);
+}
+
+/** テスト・初期化用にスキーマを適用する。 */
+export async function applySchema(db: D1Database): Promise<void> {
+  for (const statement of SCHEMA_STATEMENTS) {
+    await db.prepare(statement).run();
+  }
+}
+
+/** GitHub ユーザーを upsert し、内部 user id を返す。 */
+export async function upsertUser(db: D1Database, ghUser: GitHubUser): Promise<string> {
+  const now = nowSeconds();
+  const id = crypto.randomUUID();
+  const row = await db
+    .prepare(
+      `INSERT INTO users (id, github_user_id, login, avatar_url, created_at, deleted_at)
+       VALUES (?, ?, ?, ?, ?, NULL)
+       ON CONFLICT(github_user_id) DO UPDATE SET
+         login = excluded.login,
+         avatar_url = excluded.avatar_url,
+         deleted_at = NULL
+       RETURNING id`,
+    )
+    .bind(id, ghUser.id, ghUser.login, ghUser.avatar_url, now)
+    .first<{ id: string }>();
+  if (!row) throw new Error("upsertUser: no id returned");
+  return row.id;
+}
+
+/** 暗号化済みトークンをユーザー単位 1 行で保存する（ローテーション直列化の単位）。 */
+export async function saveTokens(db: D1Database, userId: string, tokens: EncryptedTokens): Promise<void> {
+  const now = nowSeconds();
+  await db
+    .prepare(
+      `INSERT INTO tokens (user_id, access_token_enc, access_expires_at, refresh_token_enc, refresh_expires_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?)
+       ON CONFLICT(user_id) DO UPDATE SET
+         access_token_enc = excluded.access_token_enc,
+         access_expires_at = excluded.access_expires_at,
+         refresh_token_enc = excluded.refresh_token_enc,
+         refresh_expires_at = excluded.refresh_expires_at,
+         updated_at = excluded.updated_at`,
+    )
+    .bind(userId, tokens.accessEnc, tokens.accessExpiresAt, tokens.refreshEnc, tokens.refreshExpiresAt, now)
+    .run();
+}
+
+/** セッションを作成する（id_hash はハッシュ化済みの値を渡す）。 */
+export async function createSession(
+  db: D1Database,
+  idHash: string,
+  userId: string,
+  ttlSeconds: number,
+): Promise<void> {
+  const now = nowSeconds();
+  await db
+    .prepare(
+      `INSERT INTO sessions (id_hash, user_id, created_at, expires_at, last_used_at)
+       VALUES (?, ?, ?, ?, ?)`,
+    )
+    .bind(idHash, userId, now, now + ttlSeconds, now)
+    .run();
+}
+
+/** 有効なセッションから紐づくユーザーを返す。見つかれば last_used_at を更新する。 */
+export async function getUserBySessionHash(db: D1Database, idHash: string): Promise<UserRow | null> {
+  const now = nowSeconds();
+  const row = await db
+    .prepare(
+      `SELECT u.id, u.github_user_id, u.login, u.avatar_url, u.created_at, u.deleted_at
+       FROM sessions s
+       JOIN users u ON u.id = s.user_id
+       WHERE s.id_hash = ? AND s.expires_at > ? AND u.deleted_at IS NULL`,
+    )
+    .bind(idHash, now)
+    .first<UserRow>();
+  if (!row) return null;
+  await db.prepare(`UPDATE sessions SET last_used_at = ? WHERE id_hash = ?`).bind(now, idHash).run();
+  return row;
+}
+
+/** セッションを削除する（ログアウト）。 */
+export async function deleteSession(db: D1Database, idHash: string): Promise<void> {
+  await db.prepare(`DELETE FROM sessions WHERE id_hash = ?`).bind(idHash).run();
+}
