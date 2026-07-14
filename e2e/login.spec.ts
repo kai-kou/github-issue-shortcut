@@ -7,6 +7,11 @@ import { test, expect } from "@playwright/test";
 // 実機 Android 固有（WebAPK・standalone PWA の Chrome Custom Tab 経由 OAuth）は対象外。
 test.describe("OAuth ログインフロー（モック GitHub・モバイルエミュレーション）", () => {
   test("ログイン → セッション確立 → ログイン表示 → ログアウト", async ({ page }) => {
+    // readiness: ローカル D1 マイグレーション済み・鍵・client_id が揃っていること
+    const ready = await page.request.get("/api/ready");
+    expect(ready.status()).toBe(200);
+    expect((await ready.json()).ready).toBe(true);
+
     await page.goto("/");
 
     const loginLink = page.getByRole("link", { name: /GitHub でログイン|Sign in with GitHub/ });

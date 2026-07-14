@@ -64,6 +64,19 @@ async function importAesKey(base64Key: string): Promise<CryptoKey> {
   return crypto.subtle.importKey("raw", raw, { name: "AES-GCM" }, false, ["encrypt", "decrypt"]);
 }
 
+/**
+ * TOKEN_ENCRYPTION_KEY が有効（base64 で 32 バイトにデコードされる）かを返す。
+ * 設定の自己診断（/api/ready）で使う。不正な鍵は暗号化時に例外→500 になるため事前検知する。
+ */
+export function isValidEncryptionKey(base64Key: string | undefined): boolean {
+  if (!base64Key) return false;
+  try {
+    return base64ToBytes(base64Key).byteLength === 32;
+  } catch {
+    return false;
+  }
+}
+
 /** 平文を AES-256-GCM で暗号化し、base64url(iv(12B) || ciphertext) を返す。 */
 export async function encryptString(base64Key: string, plaintext: string): Promise<string> {
   const key = await importAesKey(base64Key);

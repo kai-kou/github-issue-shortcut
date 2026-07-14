@@ -7,6 +7,7 @@ import {
   decryptString,
   encryptString,
   hashSessionId,
+  isValidEncryptionKey,
   randomToken,
 } from "./crypto";
 import {
@@ -51,6 +52,25 @@ function jsonError(code: string, message: string) {
 }
 
 app.get("/api/health", (c) => c.json({ status: "ok" }));
+
+// GET /api/ready: 本番の設定・プロビジョニングを自己診断する（デプロイ後スモークテスト用）。
+// 「コードは正しいが本番構成が不正（鍵不正・var 欠落・D1 未マイグレーション）」を検知して
+// 汎用 500 でなく可視化する。E2E green ≠ 本番動作、のギャップを埋める（docs/testing-e2e.md）。
+app.get("/api/ready", async (c) => {
+  const checks = {
+    encryptionKey: isValidEncryptionKey(c.env.TOKEN_ENCRYPTION_KEY),
+    clientId: Boolean(c.env.GITHUB_CLIENT_ID),
+    database: false,
+  };
+  try {
+    await c.env.DB.prepare("SELECT 1 FROM users LIMIT 1").all();
+    checks.database = true;
+  } catch {
+    checks.database = false;
+  }
+  const ready = checks.encryptionKey && checks.clientId && checks.database;
+  return c.json({ ready, checks }, ready ? 200 : 503);
+});
 
 // GET /auth/login: state + PKCE を生成し pre-auth Cookie に保存して GitHub へフルページリダイレクト。
 app.get("/auth/login", async (c) => {
