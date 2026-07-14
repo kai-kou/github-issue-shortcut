@@ -8,8 +8,9 @@ import {
   randomToken,
 } from "./crypto";
 
-// テスト用の 32 バイト鍵（base64）。
-const KEY = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=";
+// テスト用の 32 バイト鍵。可読 ASCII のプレースホルダを base64 化する
+// （秘密に見える高エントロピー文字列をソースに直書きしないため）。
+const KEY = btoa("0123456789abcdef0123456789abcdef");
 
 describe("randomToken", () => {
   it("returns url-safe base64 of expected length and is unique", () => {
