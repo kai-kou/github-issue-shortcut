@@ -9,6 +9,21 @@ describe("/api/health", () => {
   });
 });
 
+describe("GET /api/ready", () => {
+  it("reports not-ready (503) when the database is not provisioned", async () => {
+    // このテストファイルはスキーマを適用しないため、D1 のテーブルが存在しない。
+    // 本番で「remote D1 未マイグレーション」により /auth/callback が 500 になった事象
+    // （E2E が見逃したクラス）を、readiness チェックが検知できることを示す。
+    const res = await SELF.fetch("https://example.com/api/ready");
+    expect(res.status).toBe(503);
+    const body = (await res.json()) as { ready: boolean; checks: Record<string, boolean> };
+    expect(body.ready).toBe(false);
+    expect(body.checks.encryptionKey).toBe(true); // miniflare のテスト鍵は有効
+    expect(body.checks.clientId).toBe(true); // miniflare のテスト client_id
+    expect(body.checks.database).toBe(false); // スキーマ未適用 → 検知される
+  });
+});
+
 describe("GET /auth/login", () => {
   it("redirects to GitHub authorize with state + PKCE and sets a pre-auth cookie", async () => {
     const res = await SELF.fetch("https://example.com/auth/login", { redirect: "manual" });

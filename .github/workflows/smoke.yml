@@ -1,0 +1,23 @@
+name: Smoke (production)
+
+# 本番デプロイの実経路スモークテスト。E2E（モック・ローカル）が見逃す本番の設定・
+# プロビジョニング不良を早期検知する（#56）。スケジュール + 手動実行。
+on:
+  schedule:
+    - cron: "17 */6 * * *" # 6 時間ごと
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: "Base URL to smoke-test"
+        required: false
+        default: "https://github-issue-shortcut.kinamocchi-tech.workers.dev"
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash tools/smoke_prod.sh "${{ github.event.inputs.base_url || 'https://github-issue-shortcut.kinamocchi-tech.workers.dev' }}"
