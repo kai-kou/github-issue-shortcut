@@ -8,4 +8,8 @@ export interface Env {
   GITHUB_CLIENT_SECRET: string;
   /** トークン暗号化マスターキー（base64 エンコードした 32 バイト・Workers Secret）。 */
   TOKEN_ENCRYPTION_KEY: string;
+  /** GitHub OAuth（authorize/token）の base URL。未設定なら実 GitHub。E2E でモックを指すため。 */
+  GITHUB_OAUTH_BASE?: string;
+  /** GitHub REST API の base URL。未設定なら実 GitHub。E2E でモックを指すため。 */
+  GITHUB_API_BASE?: string;
 }

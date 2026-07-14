@@ -36,3 +36,23 @@ jobs:
           python-version: "3.11"
 
       - run: python3 tools/check_cjk_markdown.py --changed
+
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - run: npx playwright install --with-deps chromium
+
+      # OAuth ログインフローの E2E（Playwright・モバイルエミュレーション・モック GitHub）。
+      # webServer が wrangler dev（ローカル D1・モック GitHub base）とモックを起動する。
+      - run: npm run e2e
+        env:
+          WRANGLER_SEND_METRICS: "false"

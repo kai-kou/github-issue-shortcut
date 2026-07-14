@@ -9,6 +9,8 @@ worker-configuration.d.ts
 __pycache__/
 *.pyc
 coverage/
+test-results/
+playwright-report/
 .DS_Store
 
 # コスト telemetry（ローカル計測は継続・公開しない）
