@@ -5,6 +5,10 @@ import { defineConfig } from "vitest/config";
 // TOKEN_ENCRYPTION_KEY は全ゼロ 32 バイトの base64（明らかにテスト用・秘密ではない）。
 // 低エントロピーなので秘密スキャナに誤検知されない。
 export default defineConfig({
+  // ユニットテストのみ対象。e2e/*.spec.ts（Playwright）は vitest では実行しない。
+  test: {
+    include: ["worker/**/*.test.ts", "src/**/*.test.ts"],
+  },
   plugins: [
     cloudflareTest({
       wrangler: { configPath: "./wrangler.jsonc" },

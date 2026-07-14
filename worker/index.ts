@@ -9,7 +9,13 @@ import {
   hashSessionId,
   randomToken,
 } from "./crypto";
-import { buildAuthorizeUrl, exchangeCodeForToken, fetchGitHubUser } from "./github";
+import {
+  buildAuthorizeUrl,
+  DEFAULT_API_BASE,
+  DEFAULT_OAUTH_BASE,
+  exchangeCodeForToken,
+  fetchGitHubUser,
+} from "./github";
 import {
   createSession,
   deleteSession,
@@ -62,6 +68,7 @@ app.get("/auth/login", async (c) => {
   });
 
   const authorizeUrl = buildAuthorizeUrl({
+    oauthBase: c.env.GITHUB_OAUTH_BASE ?? DEFAULT_OAUTH_BASE,
     clientId: c.env.GITHUB_CLIENT_ID,
     state,
     codeChallenge: challenge,
@@ -95,13 +102,14 @@ app.get("/auth/callback", async (c) => {
   let ghUser;
   try {
     token = await exchangeCodeForToken({
+      oauthBase: c.env.GITHUB_OAUTH_BASE ?? DEFAULT_OAUTH_BASE,
       clientId: c.env.GITHUB_CLIENT_ID,
       clientSecret: c.env.GITHUB_CLIENT_SECRET,
       code,
       codeVerifier: pre.verifier,
       redirectUri: callbackUrl(c.req.url),
     });
-    ghUser = await fetchGitHubUser(token.access_token!);
+    ghUser = await fetchGitHubUser(c.env.GITHUB_API_BASE ?? DEFAULT_API_BASE, token.access_token!);
   } catch {
     return c.json(jsonError("oauth_failed", "GitHub authorization failed"), 502);
   }
