@@ -30,8 +30,10 @@ test.describe("PWA インストール可能要件", () => {
     // （SW がフォールバックを横取りしていれば URL は "/auth/login" のまま止まる）。
     await page.goto("/auth/login");
     await expect(page).toHaveURL(/\/$/);
-    const me = await page.request.get("/api/me");
-    expect(me.status()).toBe(200);
-    expect((await me.json()).login).toBe("e2e-user");
+    // page.request（APIRequestContext）は SW を経由しないため、ページ内 fetch で SW 非干渉まで検証する。
+    const me = await page.evaluate(() =>
+      fetch("/api/me", { credentials: "same-origin" }).then((r) => r.json()),
+    );
+    expect(me.login).toBe("e2e-user");
   });
 });
