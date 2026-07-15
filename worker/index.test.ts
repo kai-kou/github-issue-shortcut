@@ -64,6 +64,15 @@ describe("GET /api/me", () => {
   });
 });
 
+describe("GET /api/installations", () => {
+  it("returns 401 when unauthenticated", async () => {
+    const res = await SELF.fetch("https://example.com/api/installations");
+    expect(res.status).toBe(401);
+    const body = (await res.json()) as { error: { code: string } };
+    expect(body.error.code).toBe("unauthenticated");
+  });
+});
+
 describe("POST /auth/logout", () => {
   it("rejects a cross-origin request (CSRF)", async () => {
     const res = await SELF.fetch("https://example.com/auth/logout", {

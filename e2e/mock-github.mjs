@@ -2,6 +2,7 @@
 // - GET  /login/oauth/authorize    : ユーザー承認をシミュレートし redirect_uri へ code+state を返す
 // - POST /login/oauth/access_token : トークン交換のレスポンスを返す
 // - GET  /user                     : ログインユーザー情報を返す
+// - GET  /user/installations       : App インストール数を返す（e2e-user は常に 0 件・A2-1）
 // Worker（wrangler dev）の GITHUB_OAUTH_BASE / GITHUB_API_BASE をこのサーバーに向けて使う。
 import { createServer } from "node:http";
 
@@ -49,6 +50,11 @@ const server = createServer((req, res) => {
   }
 
   if (req.method === "GET" && url.pathname === "/user") return json(200, MOCK_USER);
+
+  // A2-1: e2e-user は GitHub App を未インストールというシナリオを再現する（installations 0 件）。
+  if (req.method === "GET" && url.pathname === "/user/installations") {
+    return json(200, { total_count: 0, installations: [] });
+  }
 
   res.writeHead(404, { "Content-Type": "application/json" });
   res.end(JSON.stringify({ message: "not found" }));
