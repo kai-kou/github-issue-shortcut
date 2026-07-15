@@ -38,6 +38,12 @@ interface Translations {
     logoutButton: string;
     loginError: string;
   };
+  install: {
+    title: string;
+    body: string;
+    cta: string;
+    orgNotice: string;
+  };
   terms: LegalPage;
   privacy: LegalPage;
 }
@@ -64,6 +70,13 @@ export const translations = {
       loggedInAs: "ログイン中",
       logoutButton: "ログアウト",
       loginError: "ログイン状態を確認できませんでした",
+    },
+    install: {
+      title: "GitHub App のインストールが必要です",
+      body: "起票したいリポジトリに GitHub App をインストールすると使えるようになります。",
+      cta: "GitHub App をインストール",
+      orgNotice:
+        "Organization のリポジトリでは、管理者でない場合はインストール申請となり承認をお待ちいただくことがあります。",
     },
     terms: {
       title: "利用規約",
@@ -179,6 +192,13 @@ export const translations = {
       loggedInAs: "Signed in as",
       logoutButton: "Sign out",
       loginError: "Could not check sign-in status",
+    },
+    install: {
+      title: "Install the GitHub App to get started",
+      body: "Install the GitHub App on the repositories you want to file issues in.",
+      cta: "Install GitHub App",
+      orgNotice:
+        "For organization repositories, non-admins may need to request installation and wait for an admin's approval.",
     },
     terms: {
       title: "Terms of Service",

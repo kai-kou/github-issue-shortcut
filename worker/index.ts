@@ -1,4 +1,4 @@
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import type { Env } from "./types";
 import {
@@ -17,6 +17,7 @@ import {
   DEFAULT_OAUTH_BASE,
   exchangeCodeForToken,
   fetchGitHubUser,
+  fetchInstallationCount,
 } from "./github";
 import {
   createSession,
@@ -25,7 +26,9 @@ import {
   nowSeconds,
   saveTokens,
   upsertUser,
+  type UserRow,
 } from "./store";
+import { getValidAccessToken } from "./tokens";
 
 /** pre-auth Cookie の TTL（10 分・§4.2-1）。 */
 const PREAUTH_TTL = 10 * 60;
@@ -48,6 +51,19 @@ function callbackUrl(reqUrl: string): string {
 
 function jsonError(code: string, message: string) {
   return { error: { code, message } };
+}
+
+/**
+ * セッション Cookie からログインユーザーを解決する。
+ * Cookie 欠落・セッション失効時は、対応する 401 レスポンスをそのまま返す（呼び出し側は user が
+ * null かどうかで分岐する）。
+ */
+async function resolveSessionUser(c: Context<{ Bindings: Env }>): Promise<UserRow | Response> {
+  const sessionId = getCookie(c, SESSION_COOKIE);
+  if (!sessionId) return c.json(jsonError("unauthenticated", "not logged in"), 401);
+  const user = await getUserBySessionHash(c.env.DB, await hashSessionId(sessionId));
+  if (!user) return c.json(jsonError("unauthenticated", "session invalid or expired"), 401);
+  return user;
 }
 
 app.get("/api/health", (c) => c.json({ status: "ok" }));
@@ -160,11 +176,24 @@ app.get("/auth/callback", async (c) => {
 
 // GET /api/me: 現在のログインユーザー情報。
 app.get("/api/me", async (c) => {
-  const sessionId = getCookie(c, SESSION_COOKIE);
-  if (!sessionId) return c.json(jsonError("unauthenticated", "not logged in"), 401);
-  const user = await getUserBySessionHash(c.env.DB, await hashSessionId(sessionId));
-  if (!user) return c.json(jsonError("unauthenticated", "session invalid or expired"), 401);
+  const user = await resolveSessionUser(c);
+  if (user instanceof Response) return user;
   return c.json({ login: user.login, avatarUrl: user.avatar_url, githubUserId: user.github_user_id });
+});
+
+// GET /api/installations: ログインユーザーの GitHub App インストール数（A2-1・FR-4）。
+// 0 件なら「App 未インストール」としてフロントがオンボーディング誘導を表示する。
+app.get("/api/installations", async (c) => {
+  const user = await resolveSessionUser(c);
+  if (user instanceof Response) return user;
+
+  try {
+    const accessToken = await getValidAccessToken(c.env, user.id);
+    const count = await fetchInstallationCount(c.env.GITHUB_API_BASE ?? DEFAULT_API_BASE, accessToken);
+    return c.json({ installed: count > 0 });
+  } catch {
+    return c.json(jsonError("upstream_failed", "could not check GitHub App installations"), 502);
+  }
 });
 
 // POST /auth/logout: サーバー側セッションを無効化（CSRF: 同一 Origin を要求）。
