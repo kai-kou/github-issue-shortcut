@@ -19,6 +19,8 @@ def make_icon(size: int, plus_ratio: float) -> bytes:
     arm = max(2, round(size * plus_ratio * 0.34))
     half_len = round(size * plus_ratio / 2)
     cx = cy = size // 2
+    bg_bytes = bytes(BG)
+    fg_bytes = bytes(FG)
 
     rows = []
     for y in range(size):
@@ -26,8 +28,7 @@ def make_icon(size: int, plus_ratio: float) -> bytes:
         for x in range(size):
             in_h_arm = abs(y - cy) <= arm // 2 and abs(x - cx) <= half_len
             in_v_arm = abs(x - cx) <= arm // 2 and abs(y - cy) <= half_len
-            color = FG if (in_h_arm or in_v_arm) else BG
-            row += bytes(color)
+            row.extend(fg_bytes if (in_h_arm or in_v_arm) else bg_bytes)
         rows.append(b"\x00" + bytes(row))  # フィルタタイプ 0（None）
 
     raw = b"".join(rows)
