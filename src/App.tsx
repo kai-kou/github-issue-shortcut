@@ -7,6 +7,9 @@ import { SUPPORTED_LOCALES } from "./i18n/translations";
 
 type ApiStatus = "checking" | "unreachable" | string;
 
+/** GitHub App の Public installation ページ（App slug "issue-shortcut"・#9 で登録済み）。 */
+const APP_INSTALL_URL = "https://github.com/apps/issue-shortcut/installations/new";
+
 type Me = { login: string; avatarUrl: string | null; githubUserId: number };
 type AuthState =
   | { status: "checking" }
@@ -14,9 +17,27 @@ type AuthState =
   | { status: "authenticated"; me: Me }
   | { status: "error" };
 
+/** ログイン済みユーザーが GitHub App を 1 件以上インストール済みか（A2-1・FR-4）。未確定は null。 */
+type InstallState = boolean | null;
+
+function InstallGuidance() {
+  const { t } = useLanguage();
+  return (
+    <div>
+      <p>{t.install.title}</p>
+      <p>{t.install.body}</p>
+      <p>
+        <a href={APP_INSTALL_URL}>{t.install.cta}</a>
+      </p>
+      <p>{t.install.orgNotice}</p>
+    </div>
+  );
+}
+
 function AuthPanel() {
   const { t } = useLanguage();
   const [auth, setAuth] = useState<AuthState>({ status: "checking" });
+  const [installed, setInstalled] = useState<InstallState>(null);
 
   useEffect(() => {
     let active = true;
@@ -38,6 +59,25 @@ function AuthPanel() {
     };
   }, []);
 
+  useEffect(() => {
+    if (auth.status !== "authenticated") return;
+    let active = true;
+    fetch("/api/installations", { credentials: "same-origin" })
+      .then(async (res) => {
+        if (!res.ok) throw new Error(`unexpected status: ${res.status}`);
+        return (await res.json()) as { installed: boolean };
+      })
+      .then((data) => {
+        if (active) setInstalled(data.installed);
+      })
+      .catch(() => {
+        // 取得失敗時は誘導を出さない（false negative より安全側: 誤って未インストール表示にしない）。
+      });
+    return () => {
+      active = false;
+    };
+  }, [auth.status]);
+
   async function logout() {
     await fetch("/auth/logout", { method: "POST", credentials: "same-origin" });
     window.location.assign("/");
@@ -47,12 +87,15 @@ function AuthPanel() {
   if (auth.status === "error") return <p>{t.auth.loginError}</p>;
   if (auth.status === "authenticated") {
     return (
-      <p>
-        {t.auth.loggedInAs}: <strong>{auth.me.login}</strong>{" "}
-        <button type="button" onClick={logout}>
-          {t.auth.logoutButton}
-        </button>
-      </p>
+      <>
+        <p>
+          {t.auth.loggedInAs}: <strong>{auth.me.login}</strong>{" "}
+          <button type="button" onClick={logout}>
+            {t.auth.logoutButton}
+          </button>
+        </p>
+        {installed === false ? <InstallGuidance /> : null}
+      </>
     );
   }
   return (

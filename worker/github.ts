@@ -126,3 +126,21 @@ export async function fetchGitHubUser(apiBase: string, accessToken: string): Pro
   const user = (await res.json()) as GitHubUser;
   return { id: user.id, login: user.login, avatar_url: user.avatar_url };
 }
+
+/**
+ * user access token に紐づく GitHub App のインストール数を取得する（A2-1・FR-4）。
+ * 0 件なら「App インストール済み ∩ ユーザーがアクセス可」なリポジトリが存在しないと判定できる。
+ */
+export async function fetchInstallationCount(apiBase: string, accessToken: string): Promise<number> {
+  const res = await fetch(`${apiBase}/user/installations`, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      Accept: "application/vnd.github+json",
+      "X-GitHub-Api-Version": API_VERSION,
+      "User-Agent": USER_AGENT,
+    },
+  });
+  if (!res.ok) throw new Error(`GitHub installations fetch failed: HTTP ${res.status}`);
+  const data = (await res.json()) as { total_count?: number };
+  return data.total_count ?? 0;
+}
