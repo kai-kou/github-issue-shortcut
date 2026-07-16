@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { useLanguage } from "../i18n/LanguageContext";
+import { loadDraft, saveDraft, clearDraft } from "./draft";
 
 export type IssueInput = { title: string; body: string };
 
@@ -9,13 +10,39 @@ interface IssueFormProps {
   submitting?: boolean;
 }
 
-/** タイトル必須・本文任意の起票フォーム（B3-1）。GitHub への実作成は onSubmit の呼び出し元（B4-1）が行う。 */
+/** 対象リポジトリ向けの下書きがあれば初期値として使う（自リポジトリ以外の下書きは復元しない）。 */
+function draftFor(repoFullName: string) {
+  const draft = loadDraft();
+  return draft && draft.repo === repoFullName ? draft : null;
+}
+
+/** タイトル必須・本文任意の起票フォーム（B3-1）。GitHub への実作成は onSubmit の呼び出し元（B4-1）が行う。
+ * 送信失敗・中断時は入力内容を端末（localStorage）に下書き保存し、再訪時に復元する（B5-1）。 */
 export function IssueForm({ repoFullName, onSubmit, submitting = false }: IssueFormProps) {
   const { t } = useLanguage();
-  const [title, setTitle] = useState("");
-  const [body, setBody] = useState("");
+  const [initialDraft] = useState(() => draftFor(repoFullName));
+  const [title, setTitle] = useState(() => initialDraft?.title ?? "");
+  const [body, setBody] = useState(() => initialDraft?.body ?? "");
 
   const canSubmit = title.trim().length > 0 && !submitting;
+
+  function persist(nextTitle: string, nextBody: string) {
+    if (nextTitle.trim() || nextBody.trim()) {
+      saveDraft({ repo: repoFullName, title: nextTitle, body: nextBody });
+    } else {
+      clearDraft();
+    }
+  }
+
+  function handleTitleChange(value: string) {
+    setTitle(value);
+    persist(value, body);
+  }
+
+  function handleBodyChange(value: string) {
+    setBody(value);
+    persist(title, value);
+  }
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -33,13 +60,17 @@ export function IssueForm({ repoFullName, onSubmit, submitting = false }: IssueF
         <input
           type="text"
           value={title}
-          onChange={(e) => setTitle(e.target.value)}
+          onChange={(e) => handleTitleChange(e.target.value)}
           placeholder={t.issueForm.titlePlaceholder}
         />
       </label>
       <label>
         {t.issueForm.bodyLabel}
-        <textarea value={body} onChange={(e) => setBody(e.target.value)} placeholder={t.issueForm.bodyPlaceholder} />
+        <textarea
+          value={body}
+          onChange={(e) => handleBodyChange(e.target.value)}
+          placeholder={t.issueForm.bodyPlaceholder}
+        />
       </label>
       <button type="submit" disabled={!canSubmit}>
         {submitting ? t.issueForm.submitting : t.issueForm.submitButton}

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useLanguage } from "../i18n/LanguageContext";
 import { loadRecentRepos, recordRecentRepo } from "./recentRepos";
 import { IssueForm, type IssueInput } from "../issues/IssueForm";
+import { loadDraft, clearDraft } from "../issues/draft";
 
 type Repo = { id: number; fullName: string; private: boolean };
 type ReposState = { status: "loading" } | { status: "error" } | { status: "ready"; repos: Repo[] };
@@ -17,7 +18,8 @@ export function RepoPicker() {
   const [state, setState] = useState<ReposState>({ status: "loading" });
   const [query, setQuery] = useState("");
   const [recent, setRecent] = useState<string[]>(() => loadRecentRepos());
-  const [selected, setSelected] = useState<string | null>(null);
+  // 送信失敗・中断時の下書き（B5-1）があれば、そのリポジトリを再訪時に自動選択して復元する。
+  const [selected, setSelected] = useState<string | null>(() => loadDraft()?.repo ?? null);
   const [submitState, setSubmitState] = useState<SubmitState>({ status: "idle" });
   const [formKey, setFormKey] = useState(0);
 
@@ -71,6 +73,7 @@ export function RepoPicker() {
       });
       if (!res.ok) throw new Error(`unexpected status: ${res.status}`);
       const data = (await res.json()) as { number: number; htmlUrl: string };
+      clearDraft();
       setSubmitState({ status: "success", number: data.number, htmlUrl: data.htmlUrl });
       // 送信成功のたびにフォームを再マウントして入力内容をクリアする（連続起票を想定）。
       setFormKey((k) => k + 1);
