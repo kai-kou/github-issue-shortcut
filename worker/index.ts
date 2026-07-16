@@ -24,6 +24,7 @@ import {
   GitHubApiError,
 } from "./github";
 import {
+  checkRateLimit,
   createSession,
   deleteAccount,
   deleteSession,
@@ -43,6 +44,13 @@ const PREAUTH_TTL = 10 * 60;
 const SESSION_TTL = 30 * 24 * 60 * 60;
 /** 二重送信防止（FR-24）の照合ウィンドウ（秒）。再タップ・タイムアウト再送を吸収する短時間ウィンドウ。 */
 const DUPLICATE_SUBMISSION_WINDOW = 30;
+/**
+ * アプリ側レート制限（不正利用対策・PR-4・OQ-6・2026-07-16 決定）: ユーザーあたり 1 分間に
+ * 起票できる回数の上限。GitHub の二次制限（コンテンツ生成系 80 req/min）の 1/8 に抑え、
+ * 本アプリ経由の連続起票が GitHub 側の制裁対象になる前にアプリ側で止める。
+ */
+const ISSUE_RATE_LIMIT_WINDOW_SECONDS = 60;
+const ISSUE_RATE_LIMIT_PER_WINDOW = 10;
 
 const PREAUTH_COOKIE = "__Host-preauth";
 const SESSION_COOKIE = "__Host-session";
@@ -267,6 +275,12 @@ app.post("/api/issues", async (c) => {
   if (csrfRejection) return csrfRejection;
   const user = await resolveSessionUser(c);
   if (user instanceof Response) return user;
+
+  const rateLimit = await checkRateLimit(c.env.DB, user.id, ISSUE_RATE_LIMIT_WINDOW_SECONDS, ISSUE_RATE_LIMIT_PER_WINDOW);
+  if (!rateLimit.allowed) {
+    c.header("Retry-After", String(rateLimit.retryAfterSeconds));
+    return c.json(jsonError("rate_limited", "too many issues submitted; please wait before retrying"), 429);
+  }
 
   let payload: unknown;
   try {

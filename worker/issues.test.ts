@@ -202,3 +202,41 @@ describe("POST /api/issues の二重送信防止 (B4-3/FR-24)", () => {
     expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("POST /api/issues のアプリ側レート制限 (不正利用対策・PR-4/OQ-6)", () => {
+  it("allows up to the per-minute limit (10) and blocks the 11th with 429 + Retry-After", async () => {
+    const cookie = await loginSession();
+    let call = 0;
+    const fetchSpy = vi.fn(async () =>
+      jsonResponse(201, { number: 100 + call++, html_url: "https://github.com/kai-kou/alpha/issues/x" }),
+    );
+    vi.stubGlobal("fetch", fetchSpy);
+
+    for (let i = 0; i < 10; i++) {
+      const res = await postIssue(cookie, { title: `t${i}` });
+      expect(res.status).toBe(201);
+    }
+
+    const blocked = await postIssue(cookie, { title: "t10" });
+    expect(blocked.status).toBe(429);
+    expect(Number(blocked.headers.get("Retry-After"))).toBeGreaterThan(0);
+    const body = (await blocked.json()) as { error: { code: string } };
+    expect(body.error.code).toBe("rate_limited");
+    // 上限超過分は GitHub 側を呼び出す前にアプリ側で止める。
+    expect(fetchSpy).toHaveBeenCalledTimes(10);
+  });
+
+  it("keeps the limit scoped per user, not shared globally", async () => {
+    const cookieA = await loginSession();
+    const cookieB = await loginSession();
+    const fetchSpy = vi.fn(async () => jsonResponse(201, { number: 1, html_url: "https://github.com/kai-kou/alpha/issues/1" }));
+    vi.stubGlobal("fetch", fetchSpy);
+
+    for (let i = 0; i < 10; i++) {
+      expect((await postIssue(cookieA, { title: `a${i}` })).status).toBe(201);
+    }
+    expect((await postIssue(cookieA, { title: "a10" })).status).toBe(429);
+    // 別ユーザーは影響を受けない。
+    expect((await postIssue(cookieB, { title: "b0" })).status).toBe(201);
+  });
+});
