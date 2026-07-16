@@ -82,6 +82,15 @@ describe("GET /api/repos", () => {
   });
 });
 
+describe("GET /api/labels", () => {
+  it("returns 401 when unauthenticated", async () => {
+    const res = await SELF.fetch("https://example.com/api/labels?repo=kai-kou/alpha");
+    expect(res.status).toBe(401);
+    const body = (await res.json()) as { error: { code: string } };
+    expect(body.error.code).toBe("unauthenticated");
+  });
+});
+
 describe("POST /api/issues", () => {
   it("rejects a cross-origin request (CSRF)", async () => {
     const res = await SELF.fetch("https://example.com/api/issues", {

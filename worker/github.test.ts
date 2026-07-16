@@ -1,5 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createIssue, fetchAccessibleRepos, fetchInstallationCount, fetchInstallations, GitHubApiError } from "./github";
+import {
+  createIssue,
+  fetchAccessibleRepos,
+  fetchInstallationCount,
+  fetchInstallations,
+  fetchRepoLabels,
+  GitHubApiError,
+} from "./github";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -77,21 +84,21 @@ describe("fetchAccessibleRepos", () => {
     await expect(fetchAccessibleRepos("https://api.github.com", "token")).resolves.toEqual([]);
   });
 
-  it("aggregates repositories across installations, sorted and de-duplicated", async () => {
+  it("aggregates repositories across installations, sorted and de-duplicated, carrying push permission", async () => {
     const fetchMock = vi.fn(async (url: string) => {
       if (url.includes("/user/installations?")) {
         return jsonResponse(200, { installations: [{ id: 10 }, { id: 20 }] });
       }
       if (url.includes("/user/installations/10/repositories")) {
         return jsonResponse(200, {
-          repositories: [{ id: 1, full_name: "kai-kou/beta", private: false }],
+          repositories: [{ id: 1, full_name: "kai-kou/beta", private: false, permissions: { push: false } }],
         });
       }
       if (url.includes("/user/installations/20/repositories")) {
         return jsonResponse(200, {
           repositories: [
-            { id: 2, full_name: "kai-kou/alpha", private: true },
-            { id: 1, full_name: "kai-kou/beta", private: false },
+            { id: 2, full_name: "kai-kou/alpha", private: true, permissions: { push: true } },
+            { id: 1, full_name: "kai-kou/beta", private: false, permissions: { push: false } },
           ],
         });
       }
@@ -99,9 +106,60 @@ describe("fetchAccessibleRepos", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
     await expect(fetchAccessibleRepos("https://api.github.com", "token")).resolves.toEqual([
-      { id: 2, fullName: "kai-kou/alpha", private: true },
-      { id: 1, fullName: "kai-kou/beta", private: false },
+      { id: 2, fullName: "kai-kou/alpha", private: true, pushAccess: true },
+      { id: 1, fullName: "kai-kou/beta", private: false, pushAccess: false },
     ]);
+  });
+
+  it("defaults pushAccess to false when the permissions field is absent", async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.includes("/user/installations?")) {
+        return jsonResponse(200, { installations: [{ id: 10 }] });
+      }
+      return jsonResponse(200, { repositories: [{ id: 1, full_name: "kai-kou/beta", private: false }] });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(fetchAccessibleRepos("https://api.github.com", "token")).resolves.toEqual([
+      { id: 1, fullName: "kai-kou/beta", private: false, pushAccess: false },
+    ]);
+  });
+});
+
+describe("fetchRepoLabels", () => {
+  it("returns the label list for a repository", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => jsonResponse(200, [{ name: "bug", color: "d73a4a" }, { name: "enhancement", color: "a2eeef" }])),
+    );
+    await expect(fetchRepoLabels("https://api.github.com", "token", "kai-kou/alpha")).resolves.toEqual([
+      { name: "bug", color: "d73a4a" },
+      { name: "enhancement", color: "a2eeef" },
+    ]);
+  });
+
+  it("follows pagination until a short page is returned", async () => {
+    const fullPage = Array.from({ length: 100 }, (_, i) => ({ name: `label-${i}`, color: "ededed" }));
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(200, fullPage))
+      .mockResolvedValueOnce(jsonResponse(200, [{ name: "last", color: "000000" }]));
+    vi.stubGlobal("fetch", fetchMock);
+    const labels = await fetchRepoLabels("https://api.github.com", "token", "kai-kou/alpha");
+    expect(labels).toHaveLength(101);
+    expect(labels.at(-1)).toEqual({ name: "last", color: "000000" });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("throws a GitHubApiError on a non-2xx response", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => jsonResponse(404, { message: "Not Found" })),
+    );
+    const err: GitHubApiError = await fetchRepoLabels("https://api.github.com", "token", "kai-kou/missing").catch(
+      (e) => e,
+    );
+    expect(err).toBeInstanceOf(GitHubApiError);
+    expect(err.status).toBe(404);
   });
 });
 
@@ -128,6 +186,28 @@ describe("createIssue", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
     await createIssue("https://api.github.com", "token", "kai-kou/alpha", { title: "タイトルのみ", body: "" });
+  });
+
+  it("includes labels in the request payload when provided (B3-2)", async () => {
+    const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+      expect(JSON.parse(init?.body as string)).toEqual({ title: "バグ報告", labels: ["bug", "urgent"] });
+      return jsonResponse(201, { number: 2, html_url: "https://github.com/kai-kou/alpha/issues/2" });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    await createIssue("https://api.github.com", "token", "kai-kou/alpha", {
+      title: "バグ報告",
+      body: "",
+      labels: ["bug", "urgent"],
+    });
+  });
+
+  it("omits labels from the request payload when the array is empty", async () => {
+    const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+      expect(JSON.parse(init?.body as string)).toEqual({ title: "タイトルのみ" });
+      return jsonResponse(201, { number: 3, html_url: "https://github.com/kai-kou/alpha/issues/3" });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    await createIssue("https://api.github.com", "token", "kai-kou/alpha", { title: "タイトルのみ", body: "", labels: [] });
   });
 
   it("throws a GitHubApiError carrying the status and GitHub's message on a non-2xx response", async () => {

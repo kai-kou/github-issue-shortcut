@@ -194,12 +194,15 @@ export async function createIssue(
   apiBase: string,
   accessToken: string,
   repoFullName: string,
-  input: { title: string; body: string },
+  input: { title: string; body: string; labels?: string[] },
 ): Promise<CreatedIssue> {
+  const payload: { title: string; body?: string; labels?: string[] } = { title: input.title };
+  if (input.body) payload.body = input.body;
+  if (input.labels && input.labels.length > 0) payload.labels = input.labels;
   const res = await fetch(`${apiBase}/repos/${repoFullName}/issues`, {
     method: "POST",
     headers: { ...authHeaders(accessToken), "Content-Type": "application/json" },
-    body: JSON.stringify(input.body ? { title: input.title, body: input.body } : { title: input.title }),
+    body: JSON.stringify(payload),
   });
   if (!res.ok) throw await githubApiErrorFrom(res, `GitHub issue creation failed: HTTP ${res.status}`);
   const data = (await res.json()) as { number: number; html_url: string };
@@ -241,6 +244,8 @@ export interface RepoSummary {
   id: number;
   fullName: string;
   private: boolean;
+  /** ユーザーがこのリポジトリへ push 権限を持つか（B3-2・B5-3・FR-14）。ラベル UI の表示可否に使う。 */
+  pushAccess: boolean;
 }
 
 /**
@@ -258,14 +263,45 @@ export async function fetchAccessibleRepos(apiBase: string, accessToken: string)
       );
       if (!res.ok) throw new Error(`GitHub installation repositories fetch failed: HTTP ${res.status}`);
       const data = (await res.json()) as {
-        repositories?: { id: number; full_name: string; private: boolean }[];
+        repositories?: { id: number; full_name: string; private: boolean; permissions?: { push?: boolean } }[];
       };
       const batch = data.repositories ?? [];
-      repos.push(...batch.map((r) => ({ id: r.id, fullName: r.full_name, private: r.private })));
+      repos.push(
+        ...batch.map((r) => ({
+          id: r.id,
+          fullName: r.full_name,
+          private: r.private,
+          pushAccess: r.permissions?.push ?? false,
+        })),
+      );
       if (batch.length < PER_PAGE) break;
     }
   }
   const deduped = Array.from(new Map(repos.map((r) => [r.id, r])).values());
   deduped.sort((a, b) => a.fullName.localeCompare(b.fullName));
   return deduped;
+}
+
+export interface GitHubLabel {
+  name: string;
+  color: string;
+}
+
+/** リポジトリのラベル一覧を取得する（B3-2・FR-14・ページング対応）。 */
+export async function fetchRepoLabels(
+  apiBase: string,
+  accessToken: string,
+  repoFullName: string,
+): Promise<GitHubLabel[]> {
+  const labels: GitHubLabel[] = [];
+  for (let page = 1; ; page++) {
+    const res = await fetch(`${apiBase}/repos/${repoFullName}/labels?per_page=${PER_PAGE}&page=${page}`, {
+      headers: authHeaders(accessToken),
+    });
+    if (!res.ok) throw await githubApiErrorFrom(res, `GitHub labels fetch failed: HTTP ${res.status}`);
+    const data = (await res.json()) as { name: string; color: string }[];
+    labels.push(...data.map((l) => ({ name: l.name, color: l.color })));
+    if (data.length < PER_PAGE) break;
+  }
+  return labels;
 }
