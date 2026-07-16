@@ -18,7 +18,7 @@ export function LabelPicker({ repoFullName, pushAccess, selected, onChange }: La
   const [state, setState] = useState<LabelsState>({ status: "idle" });
 
   function handleToggleOpen(e: React.SyntheticEvent<HTMLDetailsElement>) {
-    if (!e.currentTarget.open || state.status !== "idle") return;
+    if (!e.currentTarget.open || state.status !== "idle" || !pushAccess) return;
     setState({ status: "loading" });
     fetch(`/api/labels?repo=${encodeURIComponent(repoFullName)}`, { credentials: "same-origin" })
       .then(async (res) => {
