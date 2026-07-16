@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fetchAccessibleRepos, fetchInstallationCount, fetchInstallations } from "./github";
+import { createIssue, fetchAccessibleRepos, fetchInstallationCount, fetchInstallations } from "./github";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -102,5 +102,41 @@ describe("fetchAccessibleRepos", () => {
       { id: 2, fullName: "kai-kou/alpha", private: true },
       { id: 1, fullName: "kai-kou/beta", private: false },
     ]);
+  });
+});
+
+describe("createIssue", () => {
+  it("posts to /repos/{owner}/{repo}/issues with the pinned API version and returns number/htmlUrl", async () => {
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      expect(url).toBe("https://api.github.com/repos/kai-kou/alpha/issues");
+      expect(init?.method).toBe("POST");
+      const headers = init?.headers as Record<string, string>;
+      expect(headers["X-GitHub-Api-Version"]).toBe("2026-03-10");
+      expect(JSON.parse(init?.body as string)).toEqual({ title: "バグ報告", body: "詳細" });
+      return jsonResponse(201, { number: 42, html_url: "https://github.com/kai-kou/alpha/issues/42" });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(
+      createIssue("https://api.github.com", "token", "kai-kou/alpha", { title: "バグ報告", body: "詳細" }),
+    ).resolves.toEqual({ number: 42, htmlUrl: "https://github.com/kai-kou/alpha/issues/42" });
+  });
+
+  it("omits body from the request payload when empty (title-only submission)", async () => {
+    const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+      expect(JSON.parse(init?.body as string)).toEqual({ title: "タイトルのみ" });
+      return jsonResponse(201, { number: 1, html_url: "https://github.com/kai-kou/alpha/issues/1" });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    await createIssue("https://api.github.com", "token", "kai-kou/alpha", { title: "タイトルのみ", body: "" });
+  });
+
+  it("throws on a non-2xx response", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => jsonResponse(404, { message: "Not Found" })),
+    );
+    await expect(
+      createIssue("https://api.github.com", "token", "kai-kou/missing", { title: "x", body: "" }),
+    ).rejects.toThrow(/HTTP 404/);
   });
 });

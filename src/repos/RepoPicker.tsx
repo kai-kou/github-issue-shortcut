@@ -5,6 +5,11 @@ import { IssueForm, type IssueInput } from "../issues/IssueForm";
 
 type Repo = { id: number; fullName: string; private: boolean };
 type ReposState = { status: "loading" } | { status: "error" } | { status: "ready"; repos: Repo[] };
+type SubmitState =
+  | { status: "idle" }
+  | { status: "submitting" }
+  | { status: "success"; number: number; htmlUrl: string }
+  | { status: "error" };
 
 /** 起票先リポジトリの検索/選択 UI（B2-1/B2-2）。最近使用したリポジトリを先頭に表示する。 */
 export function RepoPicker() {
@@ -13,6 +18,8 @@ export function RepoPicker() {
   const [query, setQuery] = useState("");
   const [recent, setRecent] = useState<string[]>(() => loadRecentRepos());
   const [selected, setSelected] = useState<string | null>(null);
+  const [submitState, setSubmitState] = useState<SubmitState>({ status: "idle" });
+  const [formKey, setFormKey] = useState(0);
 
   useEffect(() => {
     let active = true;
@@ -49,10 +56,27 @@ export function RepoPicker() {
   function selectRepo(fullName: string) {
     setSelected(fullName);
     setRecent(recordRecentRepo(fullName));
+    setSubmitState({ status: "idle" });
   }
 
-  function submitIssue(_input: IssueInput) {
-    // GitHub への実作成（POST /api/issues）は B4-1（#25）で実装する。
+  async function submitIssue(input: IssueInput) {
+    if (!selected) return;
+    setSubmitState({ status: "submitting" });
+    try {
+      const res = await fetch("/api/issues", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ repo: selected, title: input.title, body: input.body }),
+      });
+      if (!res.ok) throw new Error(`unexpected status: ${res.status}`);
+      const data = (await res.json()) as { number: number; htmlUrl: string };
+      setSubmitState({ status: "success", number: data.number, htmlUrl: data.htmlUrl });
+      // 送信成功のたびにフォームを再マウントして入力内容をクリアする（連続起票を想定）。
+      setFormKey((k) => k + 1);
+    } catch {
+      setSubmitState({ status: "error" });
+    }
   }
 
   if (state.status === "loading") return <p>{t.repoPicker.loading}</p>;
@@ -82,7 +106,25 @@ export function RepoPicker() {
           ))}
         </ul>
       )}
-      {selected ? <IssueForm key={selected} repoFullName={selected} onSubmit={submitIssue} /> : null}
+      {selected ? (
+        <>
+          <IssueForm
+            key={`${selected}-${formKey}`}
+            repoFullName={selected}
+            onSubmit={submitIssue}
+            submitting={submitState.status === "submitting"}
+          />
+          {submitState.status === "success" ? (
+            <p>
+              {t.issueForm.successMessage} #{submitState.number}{" "}
+              <a href={submitState.htmlUrl} target="_blank" rel="noreferrer">
+                {t.issueForm.viewIssueLink}
+              </a>
+            </p>
+          ) : null}
+          {submitState.status === "error" ? <p>{t.issueForm.errorMessage}</p> : null}
+        </>
+      ) : null}
     </div>
   );
 }

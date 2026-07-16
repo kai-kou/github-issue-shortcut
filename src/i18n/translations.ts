@@ -58,6 +58,10 @@ interface Translations {
     bodyLabel: string;
     bodyPlaceholder: string;
     submitButton: string;
+    submitting: string;
+    successMessage: string;
+    viewIssueLink: string;
+    errorMessage: string;
   };
   terms: LegalPage;
   privacy: LegalPage;
@@ -107,6 +111,10 @@ export const translations = {
       bodyLabel: "本文（任意）",
       bodyPlaceholder: "詳細があれば入力してください",
       submitButton: "Issue を作成",
+      submitting: "作成中...",
+      successMessage: "Issue を作成しました",
+      viewIssueLink: "GitHub で開く",
+      errorMessage: "Issue を作成できませんでした",
     },
     terms: {
       title: "利用規約",
@@ -244,6 +252,10 @@ export const translations = {
       bodyLabel: "Body (optional)",
       bodyPlaceholder: "Add details if you have any",
       submitButton: "Create issue",
+      submitting: "Creating...",
+      successMessage: "Issue created",
+      viewIssueLink: "Open on GitHub",
+      errorMessage: "Could not create the issue",
     },
     terms: {
       title: "Terms of Service",

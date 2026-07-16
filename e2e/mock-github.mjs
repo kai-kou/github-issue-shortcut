@@ -4,6 +4,7 @@
 // - GET  /user                              : ログインユーザー情報を返す
 // - GET  /user/installations                : App インストール一覧を返す（既定は e2e-user 常に 0 件・A2-1）
 // - GET  /user/installations/:id/repositories: インストール別のアクセス可能リポジトリを返す（B2-1/B2-2）
+// - POST /repos/:owner/:repo/issues         : Issue 作成をシミュレートし number/html_url を返す（B4-1）
 // - POST /mock/config                       : インストール/リポジトリの応答内容をテストごとに上書きする
 // Worker（wrangler dev）の GITHUB_OAUTH_BASE / GITHUB_API_BASE をこのサーバーに向けて使う。
 import { createServer } from "node:http";
@@ -13,6 +14,7 @@ const MOCK_USER = { id: 424242, login: "e2e-user", avatar_url: "https://example.
 
 /** @type {{ installations: Array<{ id: number, repos: Array<{ id: number, full_name: string, private: boolean }> }> }} */
 let mockConfig = { installations: [] };
+let nextIssueNumber = 1;
 
 function readJsonBody(req) {
   return new Promise((resolve, reject) => {
@@ -96,6 +98,17 @@ const server = createServer(async (req, res) => {
     const installation = mockConfig.installations.find((i) => String(i.id) === repoMatch[1]);
     const repos = installation?.repos ?? [];
     return json(200, { total_count: repos.length, repositories: repos });
+  }
+
+  const issueMatch = url.pathname.match(/^\/repos\/([^/]+\/[^/]+)\/issues$/);
+  if (req.method === "POST" && issueMatch) {
+    const body = await readJsonBody(req);
+    if (!body.title) {
+      res.writeHead(422);
+      return res.end();
+    }
+    const number = nextIssueNumber++;
+    return json(201, { number, html_url: `https://github.com/${issueMatch[1]}/issues/${number}` });
   }
 
   res.writeHead(404, { "Content-Type": "application/json" });
