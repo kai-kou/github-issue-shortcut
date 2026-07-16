@@ -4,6 +4,7 @@ import type { Env } from "./types";
 import {
   applySchema,
   createSession,
+  deleteAccount,
   deleteSession,
   getUserBySessionHash,
   nowSeconds,
@@ -99,6 +100,29 @@ describe("issue_log (reserveIssueLog / releaseIssueLogReservation)", () => {
       reserveIssueLog(db, userId, "kai-kou/alpha", "hash-f", 30),
     ]);
     expect([a, b].filter(Boolean)).toHaveLength(1);
+  });
+});
+
+describe("deleteAccount", () => {
+  it("removes the user's rows from users, sessions, tokens, and issue_log (FR-12)", async () => {
+    const userId = await upsertUser(db, { id: 5001, login: "delme", avatar_url: "" });
+    const idHash = "hash-delme";
+    await createSession(db, idHash, userId, 3600);
+    await saveTokens(db, userId, {
+      accessEnc: "enc",
+      accessExpiresAt: nowSeconds() + 3600,
+      refreshEnc: null,
+      refreshExpiresAt: null,
+    });
+    await reserveIssueLog(db, userId, "kai-kou/alpha", "hash-delme", 30);
+
+    await deleteAccount(db, userId);
+
+    expect(await getUserBySessionHash(db, idHash)).toBeNull();
+    expect(await db.prepare("SELECT 1 FROM users WHERE id = ?").bind(userId).first()).toBeNull();
+    expect(await db.prepare("SELECT 1 FROM sessions WHERE user_id = ?").bind(userId).first()).toBeNull();
+    expect(await db.prepare("SELECT 1 FROM tokens WHERE user_id = ?").bind(userId).first()).toBeNull();
+    expect(await db.prepare("SELECT 1 FROM issue_log WHERE user_id = ?").bind(userId).first()).toBeNull();
   });
 });
 

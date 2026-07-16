@@ -10,6 +10,8 @@ type ApiStatus = "checking" | "unreachable" | string;
 
 /** GitHub App の Public installation ページ（App slug "issue-shortcut"・#9 で登録済み）。 */
 const APP_INSTALL_URL = "https://github.com/apps/issue-shortcut/installations/new";
+/** GitHub 側で App インストール/連携を管理する画面（アカウント削除後の連携解除案内・A4-3・FR-12）。 */
+const GITHUB_INSTALLATIONS_URL = "https://github.com/settings/installations";
 
 type Me = { login: string; avatarUrl: string | null; githubUserId: number };
 type AuthState =
@@ -35,10 +37,67 @@ function InstallGuidance() {
   );
 }
 
+type DeleteState = "idle" | "confirming" | "deleting" | "error";
+
+function AccountDeletionGuidance() {
+  const { t } = useLanguage();
+  return (
+    <div>
+      <p>{t.account.deleted}</p>
+      <p>
+        <a href={GITHUB_INSTALLATIONS_URL}>{t.account.revokeCta}</a>
+      </p>
+      <p>
+        <a href="/">{t.account.backHome}</a>
+      </p>
+    </div>
+  );
+}
+
+function AccountDeletion({ onDeleted }: { onDeleted: () => void }) {
+  const { t } = useLanguage();
+  const [state, setState] = useState<DeleteState>("idle");
+
+  async function handleDelete() {
+    setState("deleting");
+    try {
+      const res = await fetch("/api/account", { method: "DELETE", credentials: "same-origin" });
+      if (!res.ok) throw new Error(`unexpected status: ${res.status}`);
+      onDeleted();
+    } catch {
+      setState("error");
+    }
+  }
+
+  if (state === "confirming" || state === "deleting") {
+    return (
+      <p>
+        {t.account.confirmMessage}{" "}
+        <button type="button" onClick={handleDelete} disabled={state === "deleting"}>
+          {t.account.confirmButton}
+        </button>{" "}
+        <button type="button" onClick={() => setState("idle")} disabled={state === "deleting"}>
+          {t.account.cancelButton}
+        </button>
+      </p>
+    );
+  }
+
+  return (
+    <p>
+      <button type="button" onClick={() => setState("confirming")}>
+        {t.account.deleteButton}
+      </button>
+      {state === "error" ? <span> {t.account.error}</span> : null}
+    </p>
+  );
+}
+
 function AuthPanel() {
   const { t } = useLanguage();
   const [auth, setAuth] = useState<AuthState>({ status: "checking" });
   const [installed, setInstalled] = useState<InstallState>(null);
+  const [accountDeleted, setAccountDeleted] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -84,6 +143,7 @@ function AuthPanel() {
     window.location.assign("/");
   }
 
+  if (accountDeleted) return <AccountDeletionGuidance />;
   if (auth.status === "checking") return <p>{t.auth.checking}</p>;
   if (auth.status === "error") return <p>{t.auth.loginError}</p>;
   if (auth.status === "authenticated") {
@@ -97,6 +157,7 @@ function AuthPanel() {
         </p>
         {installed === false ? <InstallGuidance /> : null}
         {installed === true ? <RepoPicker /> : null}
+        <AccountDeletion onDeleted={() => setAccountDeleted(true)} />
       </>
     );
   }

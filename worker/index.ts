@@ -25,6 +25,7 @@ import {
 } from "./github";
 import {
   createSession,
+  deleteAccount,
   deleteSession,
   getUserBySessionHash,
   nowSeconds,
@@ -306,6 +307,21 @@ app.post("/auth/logout", async (c) => {
   }
   const sessionId = getCookie(c, SESSION_COOKIE);
   if (sessionId) await deleteSession(c.env.DB, await hashSessionId(sessionId));
+  deleteCookie(c, SESSION_COOKIE, { path: "/", secure: true });
+  return c.body(null, 204);
+});
+
+// DELETE /api/account: アカウント削除（FR-12・PR-3）。全テーブルの該当ユーザー行を削除し
+// セッション Cookie を破棄する（CSRF: 同一 Origin を要求）。
+app.delete("/api/account", async (c) => {
+  const origin = c.req.header("Origin");
+  if (origin && origin !== originOf(c.req.url)) {
+    return c.json(jsonError("forbidden", "cross-origin request rejected"), 403);
+  }
+  const user = await resolveSessionUser(c);
+  if (user instanceof Response) return user;
+
+  await deleteAccount(c.env.DB, user.id);
   deleteCookie(c, SESSION_COOKIE, { path: "/", secure: true });
   return c.body(null, 204);
 });
