@@ -221,15 +221,19 @@ app.post("/api/issues", async (c) => {
   const user = await resolveSessionUser(c);
   if (user instanceof Response) return user;
 
-  let payload: { repo?: unknown; title?: unknown; body?: unknown };
+  let payload: unknown;
   try {
     payload = await c.req.json();
   } catch {
     return c.json(jsonError("invalid_request", "invalid JSON body"), 400);
   }
-  const repo = typeof payload.repo === "string" ? payload.repo.trim() : "";
-  const title = typeof payload.title === "string" ? payload.title.trim() : "";
-  const body = typeof payload.body === "string" ? payload.body.trim() : "";
+  if (typeof payload !== "object" || payload === null) {
+    return c.json(jsonError("invalid_request", "invalid JSON body"), 400);
+  }
+  const { repo: repoValue, title: titleValue, body: bodyValue } = payload as Record<string, unknown>;
+  const repo = typeof repoValue === "string" ? repoValue.trim() : "";
+  const title = typeof titleValue === "string" ? titleValue.trim() : "";
+  const body = typeof bodyValue === "string" ? bodyValue.trim() : "";
   if (!repo || !title) {
     return c.json(jsonError("invalid_request", "repo and title are required"), 400);
   }
