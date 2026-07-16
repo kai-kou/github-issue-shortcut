@@ -1,5 +1,7 @@
 const STORAGE_KEY = "issue-shortcut:draft";
 
+/** アプリ全体で保持する下書きは常に 1 件のみ（YAGNI・複数リポジトリの下書きを同時保持する要件なし）。
+ * 別リポジトリに切り替えて入力すると、切替前の下書きは上書きされる。 */
 export type Draft = { repo: string; title: string; body: string };
 
 function isDraft(value: unknown): value is Draft {
