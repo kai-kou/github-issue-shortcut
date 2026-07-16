@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLanguage } from "../i18n/LanguageContext";
+import type { Translations } from "../i18n/translations";
 import { loadRecentRepos, recordRecentRepo } from "./recentRepos";
 import { IssueForm, type IssueInput } from "../issues/IssueForm";
 import { loadDraft, clearDraft } from "../issues/draft";
@@ -10,7 +11,37 @@ type SubmitState =
   | { status: "idle" }
   | { status: "submitting" }
   | { status: "success"; number: number; htmlUrl: string }
-  | { status: "error" };
+  | { status: "error"; code: string };
+
+/** `/api/issues` の失敗レスポンス（`{ error: { code, message } }`・B5-2・FR-9）から表示コードを読み取る。 */
+async function submitErrorCode(res: Response): Promise<string> {
+  try {
+    const data = (await res.json()) as { error?: { code?: string } };
+    return data.error?.code ?? "upstream_failed";
+  } catch {
+    return "upstream_failed";
+  }
+}
+
+/** エラー種別ごとに識別可能な文言へ振り分ける（B5-2）。未知のコードは汎用メッセージにフォールバックする。 */
+function submitErrorMessage(code: string, t: Translations): string {
+  switch (code) {
+    case "reauth_required":
+      return t.issueForm.errors.reauthRequired;
+    case "rate_limited":
+      return t.issueForm.errors.rateLimited;
+    case "forbidden":
+      return t.issueForm.errors.forbidden;
+    case "not_found":
+      return t.issueForm.errors.notFound;
+    case "issues_disabled":
+      return t.issueForm.errors.issuesDisabled;
+    case "validation_failed":
+      return t.issueForm.errors.validationFailed;
+    default:
+      return t.issueForm.errorMessage;
+  }
+}
 
 /** 起票先リポジトリの検索/選択 UI（B2-1/B2-2）。最近使用したリポジトリを先頭に表示する。 */
 export function RepoPicker() {
@@ -71,14 +102,18 @@ export function RepoPicker() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ repo: selected, title: input.title, body: input.body }),
       });
-      if (!res.ok) throw new Error(`unexpected status: ${res.status}`);
+      if (!res.ok) {
+        setSubmitState({ status: "error", code: await submitErrorCode(res) });
+        return;
+      }
       const data = (await res.json()) as { number: number; htmlUrl: string };
       clearDraft();
       setSubmitState({ status: "success", number: data.number, htmlUrl: data.htmlUrl });
       // 送信成功のたびにフォームを再マウントして入力内容をクリアする（連続起票を想定）。
       setFormKey((k) => k + 1);
     } catch {
-      setSubmitState({ status: "error" });
+      // fetch 自体の失敗（オフライン等）はネットワーク断とみなし汎用メッセージにフォールバックする。
+      setSubmitState({ status: "error", code: "network" });
     }
   }
 
@@ -125,7 +160,17 @@ export function RepoPicker() {
               </a>
             </p>
           ) : null}
-          {submitState.status === "error" ? <p>{t.issueForm.errorMessage}</p> : null}
+          {submitState.status === "error" ? (
+            <p>
+              {submitErrorMessage(submitState.code, t)}
+              {submitState.code === "reauth_required" ? (
+                <>
+                  {" "}
+                  <a href="/auth/login">{t.auth.loginButton}</a>
+                </>
+              ) : null}
+            </p>
+          ) : null}
         </>
       ) : null}
     </div>

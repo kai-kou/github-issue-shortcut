@@ -20,6 +20,7 @@ import {
   fetchAccessibleRepos,
   fetchGitHubUser,
   fetchInstallationCount,
+  GitHubApiError,
 } from "./github";
 import {
   createSession,
@@ -53,6 +54,35 @@ function callbackUrl(reqUrl: string): string {
 
 function jsonError(code: string, message: string) {
   return { error: { code, message } };
+}
+
+/**
+ * GitHub の Issue 作成エラーを種別ごとに識別可能な `{ error: { code, message } }` へ正規化する（B5-2・FR-9）。
+ * 401 は再ログイン導線、403 はレート制限/権限不足の区別、410 は Issues 無効、422 は盲目リトライ禁止の
+ * 表示にフロント側で振り分けられるよう、GitHub 固有の HTTP ステータスをそのまま透過する。
+ */
+function issueCreationErrorResponse(c: Context<{ Bindings: Env }>, err: unknown) {
+  if (err instanceof GitHubApiError) {
+    if (err.retryAfterSeconds !== undefined) {
+      c.header("Retry-After", String(err.retryAfterSeconds));
+    }
+    switch (err.status) {
+      case 401:
+        return c.json(jsonError("reauth_required", "GitHub authorization expired; please log in again"), 401);
+      case 403:
+        return c.json(jsonError(err.rateLimited ? "rate_limited" : "forbidden", err.message), 403);
+      case 404:
+        return c.json(jsonError("not_found", "repository not found or not accessible"), 404);
+      case 410:
+        return c.json(jsonError("issues_disabled", "issues are disabled for this repository"), 410);
+      case 422:
+        // spam 判定を含むため盲目リトライ禁止（§7.1）。呼び出し側で自動再試行しないこと。
+        return c.json(jsonError("validation_failed", err.message), 422);
+      default:
+        return c.json(jsonError("upstream_failed", "could not create issue"), 502);
+    }
+  }
+  return c.json(jsonError("upstream_failed", "could not create issue"), 502);
 }
 
 /**
@@ -242,8 +272,8 @@ app.post("/api/issues", async (c) => {
     const accessToken = await getValidAccessToken(c.env, user.id);
     const issue = await createIssue(c.env.GITHUB_API_BASE ?? DEFAULT_API_BASE, accessToken, repo, { title, body });
     return c.json({ number: issue.number, htmlUrl: issue.htmlUrl }, 201);
-  } catch {
-    return c.json(jsonError("upstream_failed", "could not create issue"), 502);
+  } catch (err) {
+    return issueCreationErrorResponse(c, err);
   }
 });
 

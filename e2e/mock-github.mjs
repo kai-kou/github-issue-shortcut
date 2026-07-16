@@ -16,6 +16,18 @@ const MOCK_USER = { id: 424242, login: "e2e-user", avatar_url: "https://example.
 let mockConfig = { installations: [] };
 let nextIssueNumber = 1;
 
+// タイトルにこのマジック文字列を使うと、Issue 作成 API が対応する GitHub エラーを返す
+// （B5-2/FR-9 の E2E: エラー種別ごとの表示分岐を検証するためのトリガー）。
+const ISSUE_CREATION_ERROR_TRIGGERS = {
+  __mock_401__: { status: 401, body: { message: "Bad credentials" } },
+  __mock_403_rate_limit__: {
+    status: 403,
+    body: { message: "You have exceeded a secondary rate limit" },
+    headers: { "Retry-After": "30" },
+  },
+  __mock_422__: { status: 422, body: { message: "Validation failed" } },
+};
+
 function readJsonBody(req) {
   return new Promise((resolve, reject) => {
     let body = "";
@@ -106,6 +118,11 @@ const server = createServer(async (req, res) => {
     if (!body.title) {
       res.writeHead(422);
       return res.end();
+    }
+    const trigger = ISSUE_CREATION_ERROR_TRIGGERS[body.title];
+    if (trigger) {
+      res.writeHead(trigger.status, { "Content-Type": "application/json", ...(trigger.headers ?? {}) });
+      return res.end(JSON.stringify(trigger.body));
     }
     const number = nextIssueNumber++;
     return json(201, { number, html_url: `https://github.com/${issueMatch[1]}/issues/${number}` });
