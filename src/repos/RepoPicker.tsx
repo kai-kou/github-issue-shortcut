@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLanguage } from "../i18n/LanguageContext";
 import { loadRecentRepos, recordRecentRepo } from "./recentRepos";
+import { IssueForm, type IssueInput } from "../issues/IssueForm";
 
 type Repo = { id: number; fullName: string; private: boolean };
 type ReposState = { status: "loading" } | { status: "error" } | { status: "ready"; repos: Repo[] };
@@ -50,6 +51,10 @@ export function RepoPicker() {
     setRecent(recordRecentRepo(fullName));
   }
 
+  function submitIssue(_input: IssueInput) {
+    // GitHub への実作成（POST /api/issues）は B4-1（#25）で実装する。
+  }
+
   if (state.status === "loading") return <p>{t.repoPicker.loading}</p>;
   if (state.status === "error") return <p>{t.repoPicker.loadError}</p>;
 
@@ -77,6 +82,7 @@ export function RepoPicker() {
           ))}
         </ul>
       )}
+      {selected ? <IssueForm key={selected} repoFullName={selected} onSubmit={submitIssue} /> : null}
     </div>
   );
 }
