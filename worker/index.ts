@@ -12,6 +12,7 @@ import {
 } from "./crypto";
 import {
   buildAuthorizeUrl,
+  createIssue,
   DEFAULT_ACCESS_TOKEN_TTL,
   DEFAULT_API_BASE,
   DEFAULT_OAUTH_BASE,
@@ -208,6 +209,37 @@ app.get("/api/repos", async (c) => {
     return c.json({ repos });
   } catch {
     return c.json(jsonError("upstream_failed", "could not fetch repositories"), 502);
+  }
+});
+
+// POST /api/issues: 選択リポジトリへ Issue を作成する（B4-1・FR-6・CSRF: 同一 Origin を要求）。
+app.post("/api/issues", async (c) => {
+  const origin = c.req.header("Origin");
+  if (origin && origin !== originOf(c.req.url)) {
+    return c.json(jsonError("forbidden", "cross-origin request rejected"), 403);
+  }
+  const user = await resolveSessionUser(c);
+  if (user instanceof Response) return user;
+
+  let payload: { repo?: unknown; title?: unknown; body?: unknown };
+  try {
+    payload = await c.req.json();
+  } catch {
+    return c.json(jsonError("invalid_request", "invalid JSON body"), 400);
+  }
+  const repo = typeof payload.repo === "string" ? payload.repo.trim() : "";
+  const title = typeof payload.title === "string" ? payload.title.trim() : "";
+  const body = typeof payload.body === "string" ? payload.body.trim() : "";
+  if (!repo || !title) {
+    return c.json(jsonError("invalid_request", "repo and title are required"), 400);
+  }
+
+  try {
+    const accessToken = await getValidAccessToken(c.env, user.id);
+    const issue = await createIssue(c.env.GITHUB_API_BASE ?? DEFAULT_API_BASE, accessToken, repo, { title, body });
+    return c.json({ number: issue.number, htmlUrl: issue.htmlUrl }, 201);
+  } catch {
+    return c.json(jsonError("upstream_failed", "could not create issue"), 502);
   }
 });
 

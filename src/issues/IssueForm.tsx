@@ -6,15 +6,16 @@ export type IssueInput = { title: string; body: string };
 interface IssueFormProps {
   repoFullName: string;
   onSubmit: (input: IssueInput) => void;
+  submitting?: boolean;
 }
 
-/** タイトル必須・本文任意の起票フォーム（B3-1）。GitHub への実作成は B4-1（#25）で実装する。 */
-export function IssueForm({ repoFullName, onSubmit }: IssueFormProps) {
+/** タイトル必須・本文任意の起票フォーム（B3-1）。GitHub への実作成は onSubmit の呼び出し元（B4-1）が行う。 */
+export function IssueForm({ repoFullName, onSubmit, submitting = false }: IssueFormProps) {
   const { t } = useLanguage();
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
 
-  const canSubmit = title.trim().length > 0;
+  const canSubmit = title.trim().length > 0 && !submitting;
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -41,7 +42,7 @@ export function IssueForm({ repoFullName, onSubmit }: IssueFormProps) {
         <textarea value={body} onChange={(e) => setBody(e.target.value)} placeholder={t.issueForm.bodyPlaceholder} />
       </label>
       <button type="submit" disabled={!canSubmit}>
-        {t.issueForm.submitButton}
+        {submitting ? t.issueForm.submitting : t.issueForm.submitButton}
       </button>
     </form>
   );

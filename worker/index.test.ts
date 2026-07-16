@@ -82,6 +82,28 @@ describe("GET /api/repos", () => {
   });
 });
 
+describe("POST /api/issues", () => {
+  it("rejects a cross-origin request (CSRF)", async () => {
+    const res = await SELF.fetch("https://example.com/api/issues", {
+      method: "POST",
+      headers: { Origin: "https://evil.example", "Content-Type": "application/json" },
+      body: JSON.stringify({ repo: "kai-kou/alpha", title: "x" }),
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it("returns 401 when unauthenticated", async () => {
+    const res = await SELF.fetch("https://example.com/api/issues", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ repo: "kai-kou/alpha", title: "x" }),
+    });
+    expect(res.status).toBe(401);
+    const body = (await res.json()) as { error: { code: string } };
+    expect(body.error.code).toBe("unauthenticated");
+  });
+});
+
 describe("POST /auth/logout", () => {
   it("rejects a cross-origin request (CSRF)", async () => {
     const res = await SELF.fetch("https://example.com/auth/logout", {

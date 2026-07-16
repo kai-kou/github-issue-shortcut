@@ -145,6 +145,34 @@ export async function fetchInstallationCount(apiBase: string, accessToken: strin
   return data.total_count ?? 0;
 }
 
+export interface CreatedIssue {
+  number: number;
+  htmlUrl: string;
+}
+
+/** リポジトリ（owner/repo）へ Issue を作成する（B4-1・FR-6）。API バージョンを pin する。 */
+export async function createIssue(
+  apiBase: string,
+  accessToken: string,
+  repoFullName: string,
+  input: { title: string; body: string },
+): Promise<CreatedIssue> {
+  const res = await fetch(`${apiBase}/repos/${repoFullName}/issues`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      Accept: "application/vnd.github+json",
+      "X-GitHub-Api-Version": API_VERSION,
+      "User-Agent": USER_AGENT,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(input.body ? { title: input.title, body: input.body } : { title: input.title }),
+  });
+  if (!res.ok) throw new Error(`GitHub issue creation failed: HTTP ${res.status}`);
+  const data = (await res.json()) as { number: number; html_url: string };
+  return { number: data.number, htmlUrl: data.html_url };
+}
+
 const PER_PAGE = 100;
 
 function authHeaders(accessToken: string): HeadersInit {
