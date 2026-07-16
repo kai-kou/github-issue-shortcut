@@ -7,7 +7,9 @@ import {
   deleteSession,
   getUserBySessionHash,
   nowSeconds,
+  releaseIssueLogReservation,
   releaseRefreshLock,
+  reserveIssueLog,
   saveTokens,
   tryAcquireRefreshLock,
   upsertUser,
@@ -52,6 +54,51 @@ describe("sessions", () => {
       .bind(nowSeconds() - 10, idHash)
       .run();
     expect(await getUserBySessionHash(db, idHash)).toBeNull();
+  });
+});
+
+describe("issue_log (reserveIssueLog / releaseIssueLogReservation)", () => {
+  it("reserves a fresh key and blocks a second reservation within the window", async () => {
+    const userId = await upsertUser(db, { id: 2001, login: "loguser", avatar_url: "" });
+    expect(await reserveIssueLog(db, userId, "kai-kou/alpha", "hash-a", 30)).toBe(true);
+    expect(await reserveIssueLog(db, userId, "kai-kou/alpha", "hash-a", 30)).toBe(false);
+  });
+
+  it("allows reservation again once the existing record has gone stale", async () => {
+    const userId = await upsertUser(db, { id: 2002, login: "loguser2", avatar_url: "" });
+    expect(await reserveIssueLog(db, userId, "kai-kou/alpha", "hash-b", 30)).toBe(true);
+    // ウィンドウが経過した体で古いタイムスタンプに書き換える（reserveIssueLog 自体は now() を内部で使うため）。
+    await db
+      .prepare("UPDATE issue_log SET created_at = ? WHERE user_id = ? AND repo = ? AND content_hash = ?")
+      .bind(nowSeconds() - 60, userId, "kai-kou/alpha", "hash-b")
+      .run();
+    expect(await reserveIssueLog(db, userId, "kai-kou/alpha", "hash-b", 30)).toBe(true);
+  });
+
+  it("scopes reservations by user, repo, and content hash independently", async () => {
+    const userId = await upsertUser(db, { id: 2003, login: "loguser3", avatar_url: "" });
+    const otherUserId = await upsertUser(db, { id: 2004, login: "loguser4", avatar_url: "" });
+    expect(await reserveIssueLog(db, userId, "kai-kou/alpha", "hash-c", 30)).toBe(true);
+
+    expect(await reserveIssueLog(db, userId, "kai-kou/beta", "hash-c", 30)).toBe(true);
+    expect(await reserveIssueLog(db, userId, "kai-kou/alpha", "hash-d", 30)).toBe(true);
+    expect(await reserveIssueLog(db, otherUserId, "kai-kou/alpha", "hash-c", 30)).toBe(true);
+  });
+
+  it("lets a subsequent reservation succeed immediately after release", async () => {
+    const userId = await upsertUser(db, { id: 2005, login: "loguser5", avatar_url: "" });
+    expect(await reserveIssueLog(db, userId, "kai-kou/alpha", "hash-e", 30)).toBe(true);
+    await releaseIssueLogReservation(db, userId, "kai-kou/alpha", "hash-e");
+    expect(await reserveIssueLog(db, userId, "kai-kou/alpha", "hash-e", 30)).toBe(true);
+  });
+
+  it("lets only one of two concurrent reservations for the same key succeed (atomicity)", async () => {
+    const userId = await upsertUser(db, { id: 2006, login: "loguser6", avatar_url: "" });
+    const [a, b] = await Promise.all([
+      reserveIssueLog(db, userId, "kai-kou/alpha", "hash-f", 30),
+      reserveIssueLog(db, userId, "kai-kou/alpha", "hash-f", 30),
+    ]);
+    expect([a, b].filter(Boolean)).toHaveLength(1);
   });
 });
 
