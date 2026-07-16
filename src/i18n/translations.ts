@@ -82,6 +82,13 @@ interface Translations {
       duplicateSubmission: string;
     };
   };
+  labelPicker: {
+    summary: string;
+    loading: string;
+    loadError: string;
+    empty: string;
+    noPushAccessWarning: string;
+  };
   terms: LegalPage;
   privacy: LegalPage;
 }
@@ -153,6 +160,13 @@ export const translations = {
         validationFailed: "内容を見直してから再度お試しください。",
         duplicateSubmission: "この内容は直前に送信済みです。連続で作成されないよう自動的にスキップしました。",
       },
+    },
+    labelPicker: {
+      summary: "ラベルを追加",
+      loading: "ラベルを取得中...",
+      loadError: "ラベルを取得できませんでした",
+      empty: "ラベルがありません",
+      noPushAccessWarning: "このリポジトリへの push 権限がないため、ラベルは反映されません（起票は可能です）。",
     },
     terms: {
       title: "利用規約",
@@ -313,6 +327,13 @@ export const translations = {
         validationFailed: "Please review the content and try again.",
         duplicateSubmission: "This was already submitted moments ago, so the duplicate was skipped automatically.",
       },
+    },
+    labelPicker: {
+      summary: "Add labels",
+      loading: "Loading labels...",
+      loadError: "Could not load labels",
+      empty: "No labels",
+      noPushAccessWarning: "You don't have push access to this repository, so labels won't be applied (the issue itself can still be created).",
     },
     terms: {
       title: "Terms of Service",

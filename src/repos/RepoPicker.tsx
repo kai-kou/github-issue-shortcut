@@ -5,7 +5,7 @@ import { loadRecentRepos, recordRecentRepo } from "./recentRepos";
 import { IssueForm, type IssueInput } from "../issues/IssueForm";
 import { loadDraft, clearDraft } from "../issues/draft";
 
-type Repo = { id: number; fullName: string; private: boolean };
+type Repo = { id: number; fullName: string; private: boolean; pushAccess: boolean };
 type ReposState = { status: "loading" } | { status: "error" } | { status: "ready"; repos: Repo[] };
 type SubmitState =
   | { status: "idle" }
@@ -88,6 +88,11 @@ export function RepoPicker() {
     return [...recentFirst, ...rest];
   }, [state, query, recent]);
 
+  const selectedPushAccess = useMemo(() => {
+    if (state.status !== "ready" || !selected) return false;
+    return state.repos.find((r) => r.fullName === selected)?.pushAccess ?? false;
+  }, [state, selected]);
+
   function selectRepo(fullName: string) {
     setSelected(fullName);
     setRecent(recordRecentRepo(fullName));
@@ -102,7 +107,7 @@ export function RepoPicker() {
         method: "POST",
         credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ repo: selected, title: input.title, body: input.body }),
+        body: JSON.stringify({ repo: selected, title: input.title, body: input.body, labels: input.labels }),
       });
       if (!res.ok) {
         const code = await submitErrorCode(res);
@@ -156,6 +161,7 @@ export function RepoPicker() {
           <IssueForm
             key={`${selected}-${formKey}`}
             repoFullName={selected}
+            pushAccess={selectedPushAccess}
             onSubmit={submitIssue}
             submitting={submitState.status === "submitting"}
           />

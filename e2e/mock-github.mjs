@@ -4,17 +4,25 @@
 // - GET  /user                              : ログインユーザー情報を返す
 // - GET  /user/installations                : App インストール一覧を返す（既定は e2e-user 常に 0 件・A2-1）
 // - GET  /user/installations/:id/repositories: インストール別のアクセス可能リポジトリを返す（B2-1/B2-2）
+// - GET  /repos/:owner/:repo/labels         : リポジトリのラベル一覧を返す（B3-2）
 // - POST /repos/:owner/:repo/issues         : Issue 作成をシミュレートし number/html_url を返す（B4-1）
-// - POST /mock/config                       : インストール/リポジトリの応答内容をテストごとに上書きする
+// - GET  /mock/last-issue                   : 直近の Issue 作成リクエストボディを返す（labels 送信の E2E 検証用）
+// - POST /mock/config                       : インストール/リポジトリ/ラベルの応答内容をテストごとに上書きする
 // Worker（wrangler dev）の GITHUB_OAUTH_BASE / GITHUB_API_BASE をこのサーバーに向けて使う。
 import { createServer } from "node:http";
 
 const PORT = Number(process.env.MOCK_GITHUB_PORT ?? 8788);
 const MOCK_USER = { id: 424242, login: "e2e-user", avatar_url: "https://example.com/avatar.png" };
 
-/** @type {{ installations: Array<{ id: number, repos: Array<{ id: number, full_name: string, private: boolean }> }> }} */
-let mockConfig = { installations: [] };
+/**
+ * @type {{
+ *   installations: Array<{ id: number, repos: Array<{ id: number, full_name: string, private: boolean, permissions?: { push?: boolean } }> }>,
+ *   labels: Array<{ name: string, color: string }>,
+ * }}
+ */
+let mockConfig = { installations: [], labels: [] };
 let nextIssueNumber = 1;
+let lastIssueRequestBody = null;
 
 // タイトルにこのマジック文字列を使うと、Issue 作成 API が対応する GitHub エラーを返す
 // （B5-2/FR-9 の E2E: エラー種別ごとの表示分岐を検証するためのトリガー）。
@@ -90,12 +98,19 @@ const server = createServer(async (req, res) => {
   if (req.method === "POST" && url.pathname === "/mock/config") {
     try {
       const body = await readJsonBody(req);
-      mockConfig = { installations: Array.isArray(body.installations) ? body.installations : [] };
+      mockConfig = {
+        installations: Array.isArray(body.installations) ? body.installations : [],
+        labels: Array.isArray(body.labels) ? body.labels : [],
+      };
       return json(200, { ok: true });
     } catch {
       res.writeHead(400);
       return res.end();
     }
+  }
+
+  if (req.method === "GET" && url.pathname === "/mock/last-issue") {
+    return json(200, lastIssueRequestBody ?? {});
   }
 
   if (req.method === "GET" && url.pathname === "/user/installations") {
@@ -112,6 +127,11 @@ const server = createServer(async (req, res) => {
     return json(200, { total_count: repos.length, repositories: repos });
   }
 
+  const labelsMatch = url.pathname.match(/^\/repos\/([^/]+\/[^/]+)\/labels$/);
+  if (req.method === "GET" && labelsMatch) {
+    return json(200, mockConfig.labels);
+  }
+
   const issueMatch = url.pathname.match(/^\/repos\/([^/]+\/[^/]+)\/issues$/);
   if (req.method === "POST" && issueMatch) {
     const body = await readJsonBody(req);
@@ -124,6 +144,7 @@ const server = createServer(async (req, res) => {
       res.writeHead(trigger.status, { "Content-Type": "application/json", ...(trigger.headers ?? {}) });
       return res.end(JSON.stringify(trigger.body));
     }
+    lastIssueRequestBody = body;
     const number = nextIssueNumber++;
     return json(201, { number, html_url: `https://github.com/${issueMatch[1]}/issues/${number}` });
   }
