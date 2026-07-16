@@ -144,3 +144,67 @@ export async function fetchInstallationCount(apiBase: string, accessToken: strin
   const data = (await res.json()) as { total_count?: number };
   return data.total_count ?? 0;
 }
+
+const PER_PAGE = 100;
+
+function authHeaders(accessToken: string): HeadersInit {
+  return {
+    Authorization: `Bearer ${accessToken}`,
+    Accept: "application/vnd.github+json",
+    "X-GitHub-Api-Version": API_VERSION,
+    "User-Agent": USER_AGENT,
+  };
+}
+
+/** user access token に紐づく GitHub App インストール ID の一覧を取得する（ページング対応）。 */
+export async function fetchInstallations(
+  apiBase: string,
+  accessToken: string,
+  perPage: number = PER_PAGE,
+): Promise<{ id: number }[]> {
+  const installations: { id: number }[] = [];
+  for (let page = 1; ; page++) {
+    const res = await fetch(`${apiBase}/user/installations?per_page=${perPage}&page=${page}`, {
+      headers: authHeaders(accessToken),
+    });
+    if (!res.ok) throw new Error(`GitHub installations fetch failed: HTTP ${res.status}`);
+    const data = (await res.json()) as { installations?: { id: number }[] };
+    const batch = data.installations ?? [];
+    installations.push(...batch);
+    if (batch.length < perPage) break;
+  }
+  return installations;
+}
+
+export interface RepoSummary {
+  id: number;
+  fullName: string;
+  private: boolean;
+}
+
+/**
+ * ログインユーザーが起票できるリポジトリ一覧（App インストール済み ∩ アクセス可能）を取得する（B2-1/B2-2・FR-5）。
+ * インストールが 0 件なら空配列を返す。
+ */
+export async function fetchAccessibleRepos(apiBase: string, accessToken: string): Promise<RepoSummary[]> {
+  const installations = await fetchInstallations(apiBase, accessToken);
+  const repos: RepoSummary[] = [];
+  for (const installation of installations) {
+    for (let page = 1; ; page++) {
+      const res = await fetch(
+        `${apiBase}/user/installations/${installation.id}/repositories?per_page=${PER_PAGE}&page=${page}`,
+        { headers: authHeaders(accessToken) },
+      );
+      if (!res.ok) throw new Error(`GitHub installation repositories fetch failed: HTTP ${res.status}`);
+      const data = (await res.json()) as {
+        repositories?: { id: number; full_name: string; private: boolean }[];
+      };
+      const batch = data.repositories ?? [];
+      repos.push(...batch.map((r) => ({ id: r.id, fullName: r.full_name, private: r.private })));
+      if (batch.length < PER_PAGE) break;
+    }
+  }
+  const deduped = Array.from(new Map(repos.map((r) => [r.id, r])).values());
+  deduped.sort((a, b) => a.fullName.localeCompare(b.fullName));
+  return deduped;
+}
