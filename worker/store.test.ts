@@ -3,6 +3,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import type { Env } from "./types";
 import {
   applySchema,
+  checkRateLimit,
   createSession,
   deleteAccount,
   deleteSession,
@@ -104,7 +105,7 @@ describe("issue_log (reserveIssueLog / releaseIssueLogReservation)", () => {
 });
 
 describe("deleteAccount", () => {
-  it("removes the user's rows from users, sessions, tokens, and issue_log (FR-12)", async () => {
+  it("removes the user's rows from users, sessions, tokens, issue_log, and rate_limits (FR-12)", async () => {
     const userId = await upsertUser(db, { id: 5001, login: "delme", avatar_url: "" });
     const idHash = "hash-delme";
     await createSession(db, idHash, userId, 3600);
@@ -115,6 +116,7 @@ describe("deleteAccount", () => {
       refreshExpiresAt: null,
     });
     await reserveIssueLog(db, userId, "kai-kou/alpha", "hash-delme", 30);
+    await checkRateLimit(db, userId, 60, 10);
 
     await deleteAccount(db, userId);
 
@@ -123,6 +125,46 @@ describe("deleteAccount", () => {
     expect(await db.prepare("SELECT 1 FROM sessions WHERE user_id = ?").bind(userId).first()).toBeNull();
     expect(await db.prepare("SELECT 1 FROM tokens WHERE user_id = ?").bind(userId).first()).toBeNull();
     expect(await db.prepare("SELECT 1 FROM issue_log WHERE user_id = ?").bind(userId).first()).toBeNull();
+    expect(await db.prepare("SELECT 1 FROM rate_limits WHERE user_id = ?").bind(userId).first()).toBeNull();
+  });
+});
+
+describe("checkRateLimit (不正利用対策・PR-4/OQ-6)", () => {
+  it("allows requests up to the limit within a window and blocks the next one", async () => {
+    const userId = await upsertUser(db, { id: 6001, login: "rluser", avatar_url: "" });
+    for (let i = 0; i < 3; i++) {
+      expect((await checkRateLimit(db, userId, 60, 3)).allowed).toBe(true);
+    }
+    const blocked = await checkRateLimit(db, userId, 60, 3);
+    expect(blocked.allowed).toBe(false);
+    expect(blocked.retryAfterSeconds).toBeGreaterThan(0);
+    expect(blocked.retryAfterSeconds).toBeLessThanOrEqual(60);
+  });
+
+  it("scopes the counter independently per user", async () => {
+    const userA = await upsertUser(db, { id: 6002, login: "rlusera", avatar_url: "" });
+    const userB = await upsertUser(db, { id: 6003, login: "rluserb", avatar_url: "" });
+    expect((await checkRateLimit(db, userA, 60, 1)).allowed).toBe(true);
+    expect((await checkRateLimit(db, userA, 60, 1)).allowed).toBe(false);
+    expect((await checkRateLimit(db, userB, 60, 1)).allowed).toBe(true);
+  });
+
+  it("resets once a new window starts", async () => {
+    const userId = await upsertUser(db, { id: 6004, login: "rluserc", avatar_url: "" });
+    expect((await checkRateLimit(db, userId, 60, 1)).allowed).toBe(true);
+    expect((await checkRateLimit(db, userId, 60, 1)).allowed).toBe(false);
+    // 前のウィンドウの行を過去へずらして、新しいウィンドウが始まった体にする。
+    await db.prepare("UPDATE rate_limits SET window_start = window_start - 60 WHERE user_id = ?").bind(userId).run();
+    expect((await checkRateLimit(db, userId, 60, 1)).allowed).toBe(true);
+  });
+
+  it("cleans up stale windows for the same user once a new window is checked", async () => {
+    const userId = await upsertUser(db, { id: 6005, login: "rluserd", avatar_url: "" });
+    await checkRateLimit(db, userId, 60, 10);
+    await db.prepare("UPDATE rate_limits SET window_start = window_start - 120 WHERE user_id = ?").bind(userId).run();
+    await checkRateLimit(db, userId, 60, 10);
+    const rows = await db.prepare("SELECT window_start FROM rate_limits WHERE user_id = ?").bind(userId).all();
+    expect(rows.results).toHaveLength(1);
   });
 });
 
