@@ -314,10 +314,16 @@ export async function checkRateLimit(
     )
     .bind(userId, windowStart)
     .first<{ count: number }>();
-  await db
-    .prepare(`DELETE FROM rate_limits WHERE user_id = ? AND window_start < ?`)
-    .bind(userId, windowStart)
-    .run();
+  // 掃除は次回呼び出し時にも再試行されるベストエフォートのため、失敗してもレート制限判定
+  // 自体（上で確定済み）を巻き込んで request 全体を失敗させない。
+  try {
+    await db
+      .prepare(`DELETE FROM rate_limits WHERE user_id = ? AND window_start < ?`)
+      .bind(userId, windowStart)
+      .run();
+  } catch {
+    // no-op: 次回のチェック呼び出しでも同じ条件で再試行されるため無視してよい。
+  }
   const count = row?.count ?? 1;
   return { allowed: count <= limit, retryAfterSeconds: windowStart + windowSeconds - now };
 }
