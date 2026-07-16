@@ -19,7 +19,7 @@ export function IssueForm({ repoFullName, onSubmit }: IssueFormProps) {
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
     if (!canSubmit) return;
-    onSubmit({ title: title.trim(), body });
+    onSubmit({ title: title.trim(), body: body.trim() });
   }
 
   return (

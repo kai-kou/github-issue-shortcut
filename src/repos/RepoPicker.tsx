@@ -82,7 +82,7 @@ export function RepoPicker() {
           ))}
         </ul>
       )}
-      {selected ? <IssueForm repoFullName={selected} onSubmit={submitIssue} /> : null}
+      {selected ? <IssueForm key={selected} repoFullName={selected} onSubmit={submitIssue} /> : null}
     </div>
   );
 }
