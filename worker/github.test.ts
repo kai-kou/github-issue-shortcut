@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createIssue, fetchAccessibleRepos, fetchInstallationCount, fetchInstallations } from "./github";
+import { createIssue, fetchAccessibleRepos, fetchInstallationCount, fetchInstallations, GitHubApiError } from "./github";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -130,13 +130,76 @@ describe("createIssue", () => {
     await createIssue("https://api.github.com", "token", "kai-kou/alpha", { title: "タイトルのみ", body: "" });
   });
 
-  it("throws on a non-2xx response", async () => {
+  it("throws a GitHubApiError carrying the status and GitHub's message on a non-2xx response", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => jsonResponse(404, { message: "Not Found" })),
     );
-    await expect(
-      createIssue("https://api.github.com", "token", "kai-kou/missing", { title: "x", body: "" }),
-    ).rejects.toThrow(/HTTP 404/);
+    const err: GitHubApiError = await createIssue("https://api.github.com", "token", "kai-kou/missing", {
+      title: "x",
+      body: "",
+    }).catch((e) => e);
+    expect(err).toBeInstanceOf(GitHubApiError);
+    expect(err.status).toBe(404);
+    expect(err.message).toBe("Not Found");
+    expect(err.rateLimited).toBe(false);
+  });
+
+  it("marks a 403 with Retry-After as rate limited and carries the wait time", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ message: "You have exceeded a secondary rate limit" }), {
+            status: 403,
+            headers: { "Content-Type": "application/json", "Retry-After": "30" },
+          }),
+      ),
+    );
+    const err: GitHubApiError = await createIssue("https://api.github.com", "token", "kai-kou/alpha", {
+      title: "x",
+      body: "",
+    }).catch((e) => e);
+    expect(err).toBeInstanceOf(GitHubApiError);
+    expect(err.status).toBe(403);
+    expect(err.rateLimited).toBe(true);
+    expect(err.retryAfterSeconds).toBe(30);
+  });
+
+  it("marks a 403 without rate-limit headers as a plain permission error", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => jsonResponse(403, { message: "Resource not accessible by integration" })),
+    );
+    const err: GitHubApiError = await createIssue("https://api.github.com", "token", "kai-kou/alpha", {
+      title: "x",
+      body: "",
+    }).catch((e) => e);
+    expect(err.status).toBe(403);
+    expect(err.rateLimited).toBe(false);
+  });
+
+  it("throws a 410 GitHubApiError when issues are disabled", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => jsonResponse(410, { message: "Issues are disabled for this repo" })),
+    );
+    const err: GitHubApiError = await createIssue("https://api.github.com", "token", "kai-kou/alpha", {
+      title: "x",
+      body: "",
+    }).catch((e) => e);
+    expect(err.status).toBe(410);
+  });
+
+  it("throws a 422 GitHubApiError on validation/spam rejection", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => jsonResponse(422, { message: "Validation failed" })),
+    );
+    const err: GitHubApiError = await createIssue("https://api.github.com", "token", "kai-kou/alpha", {
+      title: "x",
+      body: "",
+    }).catch((e) => e);
+    expect(err.status).toBe(422);
   });
 });

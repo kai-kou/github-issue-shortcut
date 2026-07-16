@@ -150,6 +150,43 @@ export interface CreatedIssue {
   htmlUrl: string;
 }
 
+/**
+ * GitHub API が非 2xx を返したときに送出するエラー。呼び出し側（Worker のルートハンドラ）が
+ * `status` / `rateLimited` / `retryAfterSeconds` を見て種別ごとの表示に振り分けられるよう、
+ * 汎用 Error でなく構造化情報を持たせる（B5-2・FR-9）。
+ */
+export class GitHubApiError extends Error {
+  readonly status: number;
+  /** GitHub の `Retry-After` ヘッダ（秒）。二次レート制限時に付与される。 */
+  readonly retryAfterSeconds?: number;
+  /** 403 がレート制限由来か（権限不足の 403 と区別するため）。 */
+  readonly rateLimited: boolean;
+
+  constructor(status: number, message: string, options: { retryAfterSeconds?: number; rateLimited?: boolean } = {}) {
+    super(message);
+    this.name = "GitHubApiError";
+    this.status = status;
+    this.retryAfterSeconds = options.retryAfterSeconds;
+    this.rateLimited = options.rateLimited ?? false;
+  }
+}
+
+/** 非 2xx レスポンスから GitHubApiError を組み立てる（GitHub のエラー本文 `message` を可能なら採用）。 */
+async function githubApiErrorFrom(res: Response, fallbackMessage: string): Promise<GitHubApiError> {
+  let message = fallbackMessage;
+  try {
+    const data = (await res.json()) as { message?: string };
+    if (data.message) message = data.message;
+  } catch {
+    // GitHub のエラー本文が JSON でない場合はフォールバック文言のまま
+  }
+  const retryAfterHeader = res.headers.get("Retry-After");
+  const retryAfterSeconds = retryAfterHeader ? Number(retryAfterHeader) : undefined;
+  // 一次制限は X-RateLimit-Remaining: 0、二次制限は Retry-After 付与で判定する（§7.1）。
+  const rateLimited = retryAfterSeconds !== undefined || res.headers.get("X-RateLimit-Remaining") === "0";
+  return new GitHubApiError(res.status, message, { retryAfterSeconds, rateLimited });
+}
+
 /** リポジトリ（owner/repo）へ Issue を作成する（B4-1・FR-6）。API バージョンを pin する。 */
 export async function createIssue(
   apiBase: string,
@@ -162,7 +199,7 @@ export async function createIssue(
     headers: { ...authHeaders(accessToken), "Content-Type": "application/json" },
     body: JSON.stringify(input.body ? { title: input.title, body: input.body } : { title: input.title }),
   });
-  if (!res.ok) throw new Error(`GitHub issue creation failed: HTTP ${res.status}`);
+  if (!res.ok) throw await githubApiErrorFrom(res, `GitHub issue creation failed: HTTP ${res.status}`);
   const data = (await res.json()) as { number: number; html_url: string };
   return { number: data.number, htmlUrl: data.html_url };
 }

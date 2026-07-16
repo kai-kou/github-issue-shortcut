@@ -62,6 +62,14 @@ interface Translations {
     successMessage: string;
     viewIssueLink: string;
     errorMessage: string;
+    errors: {
+      reauthRequired: string;
+      rateLimited: string;
+      forbidden: string;
+      notFound: string;
+      issuesDisabled: string;
+      validationFailed: string;
+    };
   };
   terms: LegalPage;
   privacy: LegalPage;
@@ -115,6 +123,14 @@ export const translations = {
       successMessage: "Issue を作成しました",
       viewIssueLink: "GitHub で開く",
       errorMessage: "Issue を作成できませんでした",
+      errors: {
+        reauthRequired: "ログインの有効期限が切れました。再度ログインしてください。",
+        rateLimited: "リクエストが多すぎます。しばらく時間をおいてから再試行してください。",
+        forbidden: "このリポジトリへの権限がありません。App のインストール状態をご確認ください。",
+        notFound: "リポジトリが見つからないか、アクセスできません。",
+        issuesDisabled: "このリポジトリは Issues が無効になっています。",
+        validationFailed: "内容を見直してから再度お試しください。",
+      },
     },
     terms: {
       title: "利用規約",
@@ -256,6 +272,14 @@ export const translations = {
       successMessage: "Issue created",
       viewIssueLink: "Open on GitHub",
       errorMessage: "Could not create the issue",
+      errors: {
+        reauthRequired: "Your login has expired. Please sign in again.",
+        rateLimited: "Too many requests. Please wait a bit and try again.",
+        forbidden: "You don't have access to this repository. Check that the App is installed.",
+        notFound: "The repository could not be found or is not accessible.",
+        issuesDisabled: "Issues are disabled for this repository.",
+        validationFailed: "Please review the content and try again.",
+      },
     },
     terms: {
       title: "Terms of Service",
