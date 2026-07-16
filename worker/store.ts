@@ -37,13 +37,12 @@ export const SCHEMA_STATEMENTS: string[] = [
     refreshing_until INTEGER
   )`,
   `CREATE TABLE IF NOT EXISTS issue_log (
-    id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL REFERENCES users(id),
     repo TEXT NOT NULL,
     content_hash TEXT NOT NULL,
-    created_at INTEGER NOT NULL
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY (user_id, repo, content_hash)
   )`,
-  `CREATE INDEX IF NOT EXISTS idx_issue_log_dedup ON issue_log(user_id, repo, content_hash, created_at)`,
 ];
 
 export interface UserRow {
@@ -217,30 +216,50 @@ export async function deleteSession(db: D1Database, idHash: string): Promise<voi
   await db.prepare(`DELETE FROM sessions WHERE id_hash = ?`).bind(idHash).run();
 }
 
-/** GitHub への Issue 作成成功を issue_log に記録する（二重送信防止・FR-24）。タイトル・本文の平文は保存しない。 */
-export async function recordIssueLog(db: D1Database, userId: string, repo: string, contentHash: string): Promise<void> {
-  await db
-    .prepare(`INSERT INTO issue_log (id, user_id, repo, content_hash, created_at) VALUES (?, ?, ?, ?, ?)`)
-    .bind(crypto.randomUUID(), userId, repo, contentHash, nowSeconds())
-    .run();
-}
-
 /**
- * 直近の短時間ウィンドウ内に、同一ユーザー・リポジトリ・内容ハッシュの送信記録があるかを返す（FR-24）。
- * 送信中の再タップ抑止（client 側）だけではタイムアウト後の再送信を防げないため、サーバー側でも照合する。
+ * 同一ユーザー・リポジトリ・内容ハッシュの送信枠を単一の原子的 UPSERT で予約する（二重送信防止・FR-24）。
+ * `hasRecentIssueLog` の SELECT → GitHub 呼び出し → `recordIssueLog` の INSERT という check-then-act だと、
+ * ほぼ同時の二重タップ・タイムアウト再送が両方とも SELECT を通過して GitHub 側で二重作成されてしまう
+ * （`tryAcquireRefreshLock` が CAS の `UPDATE ... WHERE` で解決しているのと同じ競合クラス）。
+ * `(user_id, repo, content_hash)` の PK に対する `INSERT ... ON CONFLICT DO UPDATE ... WHERE` で、
+ * 直近ウィンドウ内の既存予約がなければ 1 回の D1 ラウンドトリップで原子的に予約を確保する。
+ * 戻り値 true = 予約できた（GitHub 呼び出しへ進んでよい）、false = 直近ウィンドウ内に既存予約があった（重複）。
+ * タイトル・本文の平文は保存しない。
  */
-export async function hasRecentIssueLog(
+export async function reserveIssueLog(
   db: D1Database,
   userId: string,
   repo: string,
   contentHash: string,
-  sinceUnixSeconds: number,
+  windowSeconds: number,
 ): Promise<boolean> {
-  const row = await db
+  const now = nowSeconds();
+  const staleBefore = now - windowSeconds;
+  const result = await db
     .prepare(
-      `SELECT 1 FROM issue_log WHERE user_id = ? AND repo = ? AND content_hash = ? AND created_at >= ? LIMIT 1`,
+      `INSERT INTO issue_log (user_id, repo, content_hash, created_at) VALUES (?, ?, ?, ?)
+       ON CONFLICT(user_id, repo, content_hash) DO UPDATE SET created_at = excluded.created_at
+       WHERE issue_log.created_at < ?`,
     )
-    .bind(userId, repo, contentHash, sinceUnixSeconds)
-    .first();
-  return row !== null;
+    .bind(userId, repo, contentHash, now, staleBefore)
+    .run();
+  return result.meta.changes === 1;
+}
+
+/**
+ * `reserveIssueLog` で確保した予約を解放する（GitHub 側の作成が失敗した場合の後始末）。
+ * 失敗時に予約を残したままだと、正当な再試行まで `duplicate_submission` としてブロックし続けてしまう。
+ * 予約中（作成 created_at がウィンドウ内）は他リクエストが同じキーで upsert を通せないため、
+ * 無条件 DELETE でも他者の予約を誤って消す競合は起こらない。
+ */
+export async function releaseIssueLogReservation(
+  db: D1Database,
+  userId: string,
+  repo: string,
+  contentHash: string,
+): Promise<void> {
+  await db
+    .prepare(`DELETE FROM issue_log WHERE user_id = ? AND repo = ? AND content_hash = ?`)
+    .bind(userId, repo, contentHash)
+    .run();
 }

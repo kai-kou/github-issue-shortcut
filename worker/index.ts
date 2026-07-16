@@ -27,9 +27,9 @@ import {
   createSession,
   deleteSession,
   getUserBySessionHash,
-  hasRecentIssueLog,
   nowSeconds,
-  recordIssueLog,
+  releaseIssueLogReservation,
+  reserveIssueLog,
   saveTokens,
   upsertUser,
   type UserRow,
@@ -273,18 +273,14 @@ app.post("/api/issues", async (c) => {
     return c.json(jsonError("invalid_request", "repo and title are required"), 400);
   }
 
-  // 送信中の再タップ抑止は client 側（送信ボタン無効化）に加え、タイムアウト再送等でも
-  // GitHub に二重作成させないよう、同一内容（リポジトリ + タイトル + 本文）の直近の送信成功記録と
-  // サーバー側でも照合する（MUST・FR-24）。GitHub API には冪等性キーがないため自前で担保する。
-  const contentHash = await sha256Base64url(`${repo}\n${title}\n${body}`);
-  const isDuplicate = await hasRecentIssueLog(
-    c.env.DB,
-    user.id,
-    repo,
-    contentHash,
-    nowSeconds() - DUPLICATE_SUBMISSION_WINDOW,
-  );
-  if (isDuplicate) {
+  // 送信中の再タップ抑止は client 側（送信ボタン無効化）に加え、ほぼ同時の二重タップ・
+  // タイムアウト再送等でも GitHub に二重作成させないよう、同一内容（リポジトリ + タイトル + 本文）の
+  // 送信枠をサーバー側で原子的に予約してから GitHub を呼ぶ（MUST・FR-24）。GitHub API には
+  // 冪等性キーがないため自前で担保する。JSON 配列でハッシュ化し、フィールド境界の曖昧さ
+  // （例: repo="a", title="b\nc" と repo="a\nb", title="c" が同一ハッシュになる）を避ける。
+  const contentHash = await sha256Base64url(JSON.stringify([repo, title, body]));
+  const reserved = await reserveIssueLog(c.env.DB, user.id, repo, contentHash, DUPLICATE_SUBMISSION_WINDOW);
+  if (!reserved) {
     return c.json(
       jsonError("duplicate_submission", "this issue was already submitted moments ago"),
       409,
@@ -294,9 +290,10 @@ app.post("/api/issues", async (c) => {
   try {
     const accessToken = await getValidAccessToken(c.env, user.id);
     const issue = await createIssue(c.env.GITHUB_API_BASE ?? DEFAULT_API_BASE, accessToken, repo, { title, body });
-    await recordIssueLog(c.env.DB, user.id, repo, contentHash);
     return c.json({ number: issue.number, htmlUrl: issue.htmlUrl }, 201);
   } catch (err) {
+    // 予約したまま失敗すると、正当な再試行まで duplicate_submission でブロックし続けてしまうため解放する。
+    await releaseIssueLogReservation(c.env.DB, user.id, repo, contentHash);
     return issueCreationErrorResponse(c, err);
   }
 });

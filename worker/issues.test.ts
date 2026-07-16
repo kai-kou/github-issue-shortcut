@@ -188,4 +188,17 @@ describe("POST /api/issues の二重送信防止 (B4-3/FR-24)", () => {
     expect(second.status).toBe(201);
     expect(fetchSpy).toHaveBeenCalledTimes(2);
   });
+
+  it("lets only one of two concurrent identical submissions create a GitHub issue (no check-then-act race)", async () => {
+    const cookie = await loginSession();
+    let call = 0;
+    const fetchSpy = vi.fn(async () => jsonResponse(201, { number: 46 + call++, html_url: "https://github.com/kai-kou/alpha/issues/x" }));
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const [a, b] = await Promise.all([postIssue(cookie), postIssue(cookie)]);
+    const statuses = [a.status, b.status].sort();
+    expect(statuses).toEqual([201, 409]);
+    // 送信枠の予約が原子的なため、ほぼ同時の二重送信でも GitHub には 1 回しか呼ばれない。
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
 });
