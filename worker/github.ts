@@ -181,7 +181,9 @@ async function githubApiErrorFrom(res: Response, fallbackMessage: string): Promi
     // GitHub のエラー本文が JSON でない場合はフォールバック文言のまま
   }
   const retryAfterHeader = res.headers.get("Retry-After");
-  const retryAfterSeconds = retryAfterHeader ? Number(retryAfterHeader) : undefined;
+  const retryAfterParsed = retryAfterHeader ? Number(retryAfterHeader) : NaN;
+  // Retry-After は delta-seconds 形式を想定する。HTTP-date 形式等で数値化できない場合は無視する。
+  const retryAfterSeconds = Number.isFinite(retryAfterParsed) ? retryAfterParsed : undefined;
   // 一次制限は X-RateLimit-Remaining: 0、二次制限は Retry-After 付与で判定する（§7.1）。
   const rateLimited = retryAfterSeconds !== undefined || res.headers.get("X-RateLimit-Remaining") === "0";
   return new GitHubApiError(res.status, message, { retryAfterSeconds, rateLimited });
