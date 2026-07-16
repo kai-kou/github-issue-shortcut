@@ -69,6 +69,7 @@ interface Translations {
       notFound: string;
       issuesDisabled: string;
       validationFailed: string;
+      duplicateSubmission: string;
     };
   };
   terms: LegalPage;
@@ -130,6 +131,7 @@ export const translations = {
         notFound: "リポジトリが見つからないか、アクセスできません。",
         issuesDisabled: "このリポジトリは Issues が無効になっています。",
         validationFailed: "内容を見直してから再度お試しください。",
+        duplicateSubmission: "この内容は直前に送信済みです。連続で作成されないよう自動的にスキップしました。",
       },
     },
     terms: {
@@ -279,6 +281,7 @@ export const translations = {
         notFound: "The repository could not be found or is not accessible.",
         issuesDisabled: "Issues are disabled for this repository.",
         validationFailed: "Please review the content and try again.",
+        duplicateSubmission: "This was already submitted moments ago, so the duplicate was skipped automatically.",
       },
     },
     terms: {

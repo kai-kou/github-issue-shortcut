@@ -9,6 +9,7 @@ import {
   hashSessionId,
   isValidEncryptionKey,
   randomToken,
+  sha256Base64url,
 } from "./crypto";
 import {
   buildAuthorizeUrl,
@@ -27,6 +28,8 @@ import {
   deleteSession,
   getUserBySessionHash,
   nowSeconds,
+  releaseIssueLogReservation,
+  reserveIssueLog,
   saveTokens,
   upsertUser,
   type UserRow,
@@ -37,6 +40,8 @@ import { getValidAccessToken } from "./tokens";
 const PREAUTH_TTL = 10 * 60;
 /** セッションの TTL（30 日）。refresh token（6 ヶ月）より短く、透過リフレッシュで延命する。 */
 const SESSION_TTL = 30 * 24 * 60 * 60;
+/** 二重送信防止（FR-24）の照合ウィンドウ（秒）。再タップ・タイムアウト再送を吸収する短時間ウィンドウ。 */
+const DUPLICATE_SUBMISSION_WINDOW = 30;
 
 const PREAUTH_COOKIE = "__Host-preauth";
 const SESSION_COOKIE = "__Host-session";
@@ -268,11 +273,27 @@ app.post("/api/issues", async (c) => {
     return c.json(jsonError("invalid_request", "repo and title are required"), 400);
   }
 
+  // 送信中の再タップ抑止は client 側（送信ボタン無効化）に加え、ほぼ同時の二重タップ・
+  // タイムアウト再送等でも GitHub に二重作成させないよう、同一内容（リポジトリ + タイトル + 本文）の
+  // 送信枠をサーバー側で原子的に予約してから GitHub を呼ぶ（MUST・FR-24）。GitHub API には
+  // 冪等性キーがないため自前で担保する。JSON 配列でハッシュ化し、フィールド境界の曖昧さ
+  // （例: repo="a", title="b\nc" と repo="a\nb", title="c" が同一ハッシュになる）を避ける。
+  const contentHash = await sha256Base64url(JSON.stringify([repo, title, body]));
+  const reserved = await reserveIssueLog(c.env.DB, user.id, repo, contentHash, DUPLICATE_SUBMISSION_WINDOW);
+  if (!reserved) {
+    return c.json(
+      jsonError("duplicate_submission", "this issue was already submitted moments ago"),
+      409,
+    );
+  }
+
   try {
     const accessToken = await getValidAccessToken(c.env, user.id);
     const issue = await createIssue(c.env.GITHUB_API_BASE ?? DEFAULT_API_BASE, accessToken, repo, { title, body });
     return c.json({ number: issue.number, htmlUrl: issue.htmlUrl }, 201);
   } catch (err) {
+    // 予約したまま失敗すると、正当な再試行まで duplicate_submission でブロックし続けてしまうため解放する。
+    await releaseIssueLogReservation(c.env.DB, user.id, repo, contentHash);
     return issueCreationErrorResponse(c, err);
   }
 });

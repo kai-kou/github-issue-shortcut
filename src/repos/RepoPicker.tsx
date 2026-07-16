@@ -38,6 +38,8 @@ function submitErrorMessage(code: string, t: Translations): string {
       return t.issueForm.errors.issuesDisabled;
     case "validation_failed":
       return t.issueForm.errors.validationFailed;
+    case "duplicate_submission":
+      return t.issueForm.errors.duplicateSubmission;
     default:
       return t.issueForm.errorMessage;
   }
@@ -103,7 +105,12 @@ export function RepoPicker() {
         body: JSON.stringify({ repo: selected, title: input.title, body: input.body }),
       });
       if (!res.ok) {
-        setSubmitState({ status: "error", code: await submitErrorCode(res) });
+        const code = await submitErrorCode(res);
+        // duplicate_submission は直前の同一内容の送信が既に GitHub 側で成功済みであることを意味する
+        // （サーバー側は成功記録との照合でのみこのコードを返す）。取り残された下書きが後の
+        // ウィンドウ外での二重作成を招かないよう、下書きはクリアする（B5-1 と整合）。
+        if (code === "duplicate_submission") clearDraft();
+        setSubmitState({ status: "error", code });
         return;
       }
       const data = (await res.json()) as { number: number; htmlUrl: string };
