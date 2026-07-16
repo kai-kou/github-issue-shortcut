@@ -263,3 +263,16 @@ export async function releaseIssueLogReservation(
     .bind(userId, repo, contentHash)
     .run();
 }
+
+/**
+ * アカウント削除（FR-12・§6.2）: 該当ユーザーの行を全テーブルから削除する（論理削除ではなく物理削除）。
+ * shortcuts（M2 未実装）は現時点でテーブル自体が存在しないため対象外。着地後に削除対象へ追加すること。
+ */
+export async function deleteAccount(db: D1Database, userId: string): Promise<void> {
+  await db.batch([
+    db.prepare(`DELETE FROM issue_log WHERE user_id = ?`).bind(userId),
+    db.prepare(`DELETE FROM tokens WHERE user_id = ?`).bind(userId),
+    db.prepare(`DELETE FROM sessions WHERE user_id = ?`).bind(userId),
+    db.prepare(`DELETE FROM users WHERE id = ?`).bind(userId),
+  ]);
+}

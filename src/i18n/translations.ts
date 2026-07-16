@@ -38,6 +38,16 @@ interface Translations {
     logoutButton: string;
     loginError: string;
   };
+  account: {
+    deleteButton: string;
+    confirmMessage: string;
+    confirmButton: string;
+    cancelButton: string;
+    error: string;
+    deleted: string;
+    revokeCta: string;
+    backHome: string;
+  };
   install: {
     title: string;
     body: string;
@@ -98,6 +108,16 @@ export const translations = {
       loggedInAs: "ログイン中",
       logoutButton: "ログアウト",
       loginError: "ログイン状態を確認できませんでした",
+    },
+    account: {
+      deleteButton: "アカウント削除",
+      confirmMessage: "本アプリ内のデータ（セッション・トークン）を完全に削除します。よろしいですか？",
+      confirmButton: "削除する",
+      cancelButton: "キャンセル",
+      error: "アカウント削除に失敗しました。もう一度お試しください。",
+      deleted: "アカウントを削除しました。GitHub 側の連携解除は以下から行ってください。",
+      revokeCta: "GitHub App の連携管理を開く",
+      backHome: "ホームに戻る",
     },
     install: {
       title: "GitHub App のインストールが必要です",
@@ -248,6 +268,16 @@ export const translations = {
       loggedInAs: "Signed in as",
       logoutButton: "Sign out",
       loginError: "Could not check sign-in status",
+    },
+    account: {
+      deleteButton: "Delete account",
+      confirmMessage: "This permanently deletes your data in this app (session, tokens). Are you sure?",
+      confirmButton: "Delete",
+      cancelButton: "Cancel",
+      error: "Failed to delete account. Please try again.",
+      deleted: "Your account has been deleted. Please revoke the GitHub App connection below.",
+      revokeCta: "Manage GitHub App connection",
+      backHome: "Back to home",
     },
     install: {
       title: "Install the GitHub App to get started",
