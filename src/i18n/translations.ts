@@ -44,6 +44,13 @@ interface Translations {
     cta: string;
     orgNotice: string;
   };
+  repoPicker: {
+    loading: string;
+    loadError: string;
+    searchLabel: string;
+    searchPlaceholder: string;
+    empty: string;
+  };
   terms: LegalPage;
   privacy: LegalPage;
 }
@@ -77,6 +84,13 @@ export const translations = {
       cta: "GitHub App をインストール",
       orgNotice:
         "Organization のリポジトリでは、管理者でない場合はインストール申請となり承認をお待ちいただくことがあります。",
+    },
+    repoPicker: {
+      loading: "リポジトリを取得中...",
+      loadError: "リポジトリを取得できませんでした",
+      searchLabel: "リポジトリを検索",
+      searchPlaceholder: "owner/repo",
+      empty: "該当するリポジトリがありません",
     },
     terms: {
       title: "利用規約",
@@ -199,6 +213,13 @@ export const translations = {
       cta: "Install GitHub App",
       orgNotice:
         "For organization repositories, non-admins may need to request installation and wait for an admin's approval.",
+    },
+    repoPicker: {
+      loading: "Loading repositories...",
+      loadError: "Could not load repositories",
+      searchLabel: "Search repositories",
+      searchPlaceholder: "owner/repo",
+      empty: "No matching repositories",
     },
     terms: {
       title: "Terms of Service",

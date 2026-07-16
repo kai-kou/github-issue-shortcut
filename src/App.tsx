@@ -4,6 +4,7 @@ import TermsOfService from "./pages/TermsOfService";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
 import { LanguageProvider, useLanguage } from "./i18n/LanguageContext";
 import { SUPPORTED_LOCALES } from "./i18n/translations";
+import { RepoPicker } from "./repos/RepoPicker";
 
 type ApiStatus = "checking" | "unreachable" | string;
 
@@ -95,6 +96,7 @@ function AuthPanel() {
           </button>
         </p>
         {installed === false ? <InstallGuidance /> : null}
+        {installed === true ? <RepoPicker /> : null}
       </>
     );
   }
