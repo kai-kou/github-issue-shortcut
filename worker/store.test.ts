@@ -6,7 +6,9 @@ import {
   createSession,
   deleteSession,
   getUserBySessionHash,
+  hasRecentIssueLog,
   nowSeconds,
+  recordIssueLog,
   releaseRefreshLock,
   saveTokens,
   tryAcquireRefreshLock,
@@ -52,6 +54,32 @@ describe("sessions", () => {
       .bind(nowSeconds() - 10, idHash)
       .run();
     expect(await getUserBySessionHash(db, idHash)).toBeNull();
+  });
+});
+
+describe("issue_log (recordIssueLog / hasRecentIssueLog)", () => {
+  it("reports no recent duplicate before anything is recorded", async () => {
+    const userId = await upsertUser(db, { id: 2001, login: "loguser", avatar_url: "" });
+    expect(await hasRecentIssueLog(db, userId, "kai-kou/alpha", "hash-a", nowSeconds() - 30)).toBe(false);
+  });
+
+  it("detects a duplicate within the window and ignores it once the window has passed", async () => {
+    const userId = await upsertUser(db, { id: 2002, login: "loguser2", avatar_url: "" });
+    await recordIssueLog(db, userId, "kai-kou/alpha", "hash-b");
+
+    expect(await hasRecentIssueLog(db, userId, "kai-kou/alpha", "hash-b", nowSeconds() - 30)).toBe(true);
+    // ウィンドウの起点がこの記録より新しければ、期限切れとして扱う。
+    expect(await hasRecentIssueLog(db, userId, "kai-kou/alpha", "hash-b", nowSeconds() + 1)).toBe(false);
+  });
+
+  it("scopes duplicates by user, repo, and content hash independently", async () => {
+    const userId = await upsertUser(db, { id: 2003, login: "loguser3", avatar_url: "" });
+    const otherUserId = await upsertUser(db, { id: 2004, login: "loguser4", avatar_url: "" });
+    await recordIssueLog(db, userId, "kai-kou/alpha", "hash-c");
+
+    expect(await hasRecentIssueLog(db, userId, "kai-kou/beta", "hash-c", nowSeconds() - 30)).toBe(false);
+    expect(await hasRecentIssueLog(db, userId, "kai-kou/alpha", "hash-d", nowSeconds() - 30)).toBe(false);
+    expect(await hasRecentIssueLog(db, otherUserId, "kai-kou/alpha", "hash-c", nowSeconds() - 30)).toBe(false);
   });
 });
 

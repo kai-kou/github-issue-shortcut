@@ -38,11 +38,11 @@ function jsonResponse(status: number, body: unknown, headers: Record<string, str
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json", ...headers } });
 }
 
-function postIssue(cookie: string) {
+function postIssue(cookie: string, input: { repo?: string; title?: string; body?: string } = {}) {
   return SELF.fetch("https://example.com/api/issues", {
     method: "POST",
     headers: { "Content-Type": "application/json", Cookie: cookie },
-    body: JSON.stringify({ repo: "kai-kou/alpha", title: "x", body: "" }),
+    body: JSON.stringify({ repo: "kai-kou/alpha", title: "x", body: "", ...input }),
   });
 }
 
@@ -124,5 +124,68 @@ describe("POST /api/issues error mapping (B5-2/FR-9)", () => {
     expect(res.status).toBe(502);
     const body = (await res.json()) as { error: { code: string } };
     expect(body.error.code).toBe("upstream_failed");
+  });
+});
+
+describe("POST /api/issues の二重送信防止 (B4-3/FR-24)", () => {
+  it("creates the issue on the first submission and calls GitHub exactly once", async () => {
+    const cookie = await loginSession();
+    const fetchSpy = vi.fn(async () => jsonResponse(201, { number: 42, html_url: "https://github.com/kai-kou/alpha/issues/42" }));
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const res = await postIssue(cookie);
+    expect(res.status).toBe(201);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("blocks an identical resubmission (re-tap / timeout retry) without calling GitHub again", async () => {
+    const cookie = await loginSession();
+    const fetchSpy = vi.fn(async () => jsonResponse(201, { number: 43, html_url: "https://github.com/kai-kou/alpha/issues/43" }));
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const first = await postIssue(cookie);
+    expect(first.status).toBe(201);
+
+    const second = await postIssue(cookie);
+    expect(second.status).toBe(409);
+    const body = (await second.json()) as { error: { code: string } };
+    expect(body.error.code).toBe("duplicate_submission");
+
+    // GitHub には最初の 1 回しか呼ばれていない（二重作成なし）。
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not block a resubmission with different content from the same user/repo", async () => {
+    const cookie = await loginSession();
+    const fetchSpy = vi.fn(async () => jsonResponse(201, { number: 44, html_url: "https://github.com/kai-kou/alpha/issues/44" }));
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const first = await postIssue(cookie, { title: "first" });
+    expect(first.status).toBe(201);
+
+    const second = await postIssue(cookie, { title: "second" });
+    expect(second.status).toBe(201);
+
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not log a failed attempt, so a retry after a genuine failure is allowed through", async () => {
+    const cookie = await loginSession();
+    // Response は生成元リクエストの I/O コンテキストに紐づくため、他リクエスト（2 回目の SELF.fetch）から
+    // 読むと Workers ランタイムが例外を投げる。呼び出しごとに新しい Response を作る factory にする。
+    let call = 0;
+    const fetchSpy = vi.fn(async () =>
+      call++ === 0
+        ? jsonResponse(502, { message: "boom" })
+        : jsonResponse(201, { number: 45, html_url: "https://github.com/kai-kou/alpha/issues/45" }),
+    );
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const first = await postIssue(cookie);
+    expect(first.status).toBe(502);
+
+    const second = await postIssue(cookie);
+    expect(second.status).toBe(201);
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
   });
 });

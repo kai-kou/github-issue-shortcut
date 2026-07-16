@@ -36,6 +36,14 @@ export const SCHEMA_STATEMENTS: string[] = [
     updated_at INTEGER NOT NULL,
     refreshing_until INTEGER
   )`,
+  `CREATE TABLE IF NOT EXISTS issue_log (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id),
+    repo TEXT NOT NULL,
+    content_hash TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_issue_log_dedup ON issue_log(user_id, repo, content_hash, created_at)`,
 ];
 
 export interface UserRow {
@@ -207,4 +215,32 @@ export async function getUserBySessionHash(db: D1Database, idHash: string): Prom
 /** セッションを削除する（ログアウト）。 */
 export async function deleteSession(db: D1Database, idHash: string): Promise<void> {
   await db.prepare(`DELETE FROM sessions WHERE id_hash = ?`).bind(idHash).run();
+}
+
+/** GitHub への Issue 作成成功を issue_log に記録する（二重送信防止・FR-24）。タイトル・本文の平文は保存しない。 */
+export async function recordIssueLog(db: D1Database, userId: string, repo: string, contentHash: string): Promise<void> {
+  await db
+    .prepare(`INSERT INTO issue_log (id, user_id, repo, content_hash, created_at) VALUES (?, ?, ?, ?, ?)`)
+    .bind(crypto.randomUUID(), userId, repo, contentHash, nowSeconds())
+    .run();
+}
+
+/**
+ * 直近の短時間ウィンドウ内に、同一ユーザー・リポジトリ・内容ハッシュの送信記録があるかを返す（FR-24）。
+ * 送信中の再タップ抑止（client 側）だけではタイムアウト後の再送信を防げないため、サーバー側でも照合する。
+ */
+export async function hasRecentIssueLog(
+  db: D1Database,
+  userId: string,
+  repo: string,
+  contentHash: string,
+  sinceUnixSeconds: number,
+): Promise<boolean> {
+  const row = await db
+    .prepare(
+      `SELECT 1 FROM issue_log WHERE user_id = ? AND repo = ? AND content_hash = ? AND created_at >= ? LIMIT 1`,
+    )
+    .bind(userId, repo, contentHash, sinceUnixSeconds)
+    .first();
+  return row !== null;
 }
