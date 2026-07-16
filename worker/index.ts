@@ -21,6 +21,7 @@ import {
   fetchAccessibleRepos,
   fetchGitHubUser,
   fetchInstallationCount,
+  fetchRepoLabels,
   GitHubApiError,
 } from "./github";
 import {
@@ -269,6 +270,29 @@ app.get("/api/repos", async (c) => {
   }
 });
 
+// GET /api/labels: 選択リポジトリのラベル一覧（B3-2・FR-14）。UI が開かれたときのみ呼ばれ、
+// 起票フローの初期表示（タイトルのみ起票）を遅くしない。
+app.get("/api/labels", async (c) => {
+  const user = await resolveSessionUser(c);
+  if (user instanceof Response) return user;
+
+  const repo = c.req.query("repo")?.trim() ?? "";
+  if (!repo) {
+    return c.json(jsonError("invalid_request", "repo query parameter is required"), 400);
+  }
+
+  try {
+    const accessToken = await getValidAccessToken(c.env, user.id);
+    const labels = await fetchRepoLabels(c.env.GITHUB_API_BASE ?? DEFAULT_API_BASE, accessToken, repo);
+    return c.json({ labels });
+  } catch (err) {
+    if (err instanceof GitHubApiError && err.status === 404) {
+      return c.json(jsonError("not_found", "repository not found or not accessible"), 404);
+    }
+    return c.json(jsonError("upstream_failed", "could not fetch labels"), 502);
+  }
+});
+
 // POST /api/issues: 選択リポジトリへ Issue を作成する（B4-1・FR-6・CSRF: 同一 Origin を要求）。
 app.post("/api/issues", async (c) => {
   const csrfRejection = requireSameOrigin(c);
@@ -291,10 +315,13 @@ app.post("/api/issues", async (c) => {
   if (typeof payload !== "object" || payload === null) {
     return c.json(jsonError("invalid_request", "invalid JSON body"), 400);
   }
-  const { repo: repoValue, title: titleValue, body: bodyValue } = payload as Record<string, unknown>;
+  const { repo: repoValue, title: titleValue, body: bodyValue, labels: labelsValue } = payload as Record<string, unknown>;
   const repo = typeof repoValue === "string" ? repoValue.trim() : "";
   const title = typeof titleValue === "string" ? titleValue.trim() : "";
   const body = typeof bodyValue === "string" ? bodyValue.trim() : "";
+  const labels = Array.isArray(labelsValue)
+    ? labelsValue.filter((l): l is string => typeof l === "string" && l.trim().length > 0)
+    : [];
   if (!repo || !title) {
     return c.json(jsonError("invalid_request", "repo and title are required"), 400);
   }
@@ -304,7 +331,7 @@ app.post("/api/issues", async (c) => {
   // 送信枠をサーバー側で原子的に予約してから GitHub を呼ぶ（MUST・FR-24）。GitHub API には
   // 冪等性キーがないため自前で担保する。JSON 配列でハッシュ化し、フィールド境界の曖昧さ
   // （例: repo="a", title="b\nc" と repo="a\nb", title="c" が同一ハッシュになる）を避ける。
-  const contentHash = await sha256Base64url(JSON.stringify([repo, title, body]));
+  const contentHash = await sha256Base64url(JSON.stringify([repo, title, body, labels]));
   const reserved = await reserveIssueLog(c.env.DB, user.id, repo, contentHash, DUPLICATE_SUBMISSION_WINDOW);
   if (!reserved) {
     return c.json(
@@ -315,7 +342,7 @@ app.post("/api/issues", async (c) => {
 
   try {
     const accessToken = await getValidAccessToken(c.env, user.id);
-    const issue = await createIssue(c.env.GITHUB_API_BASE ?? DEFAULT_API_BASE, accessToken, repo, { title, body });
+    const issue = await createIssue(c.env.GITHUB_API_BASE ?? DEFAULT_API_BASE, accessToken, repo, { title, body, labels });
     return c.json({ number: issue.number, htmlUrl: issue.htmlUrl }, 201);
   } catch (err) {
     // 予約したまま失敗すると、正当な再試行まで duplicate_submission でブロックし続けてしまうため解放する。
