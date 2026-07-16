@@ -51,6 +51,14 @@ interface Translations {
     searchPlaceholder: string;
     empty: string;
   };
+  issueForm: {
+    targetRepoLabel: string;
+    titleLabel: string;
+    titlePlaceholder: string;
+    bodyLabel: string;
+    bodyPlaceholder: string;
+    submitButton: string;
+  };
   terms: LegalPage;
   privacy: LegalPage;
 }
@@ -91,6 +99,14 @@ export const translations = {
       searchLabel: "リポジトリを検索",
       searchPlaceholder: "owner/repo",
       empty: "該当するリポジトリがありません",
+    },
+    issueForm: {
+      targetRepoLabel: "起票先",
+      titleLabel: "タイトル",
+      titlePlaceholder: "Issue のタイトル（必須）",
+      bodyLabel: "本文（任意）",
+      bodyPlaceholder: "詳細があれば入力してください",
+      submitButton: "Issue を作成",
     },
     terms: {
       title: "利用規約",
@@ -220,6 +236,14 @@ export const translations = {
       searchLabel: "Search repositories",
       searchPlaceholder: "owner/repo",
       empty: "No matching repositories",
+    },
+    issueForm: {
+      targetRepoLabel: "Target repository",
+      titleLabel: "Title",
+      titlePlaceholder: "Issue title (required)",
+      bodyLabel: "Body (optional)",
+      bodyPlaceholder: "Add details if you have any",
+      submitButton: "Create issue",
     },
     terms: {
       title: "Terms of Service",
