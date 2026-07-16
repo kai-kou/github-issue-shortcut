@@ -92,6 +92,19 @@ function issueCreationErrorResponse(c: Context<{ Bindings: Env }>, err: unknown)
 }
 
 /**
+ * CSRF 対策: state を変更するエンドポイントで同一 Origin を要求する。Origin ヘッダーが
+ * ない場合はブラウザ外からの直接呼び出し（curl 等）として通す（クロスサイトブラウザ由来の
+ * 偽装が本チェックの対象）。
+ */
+function requireSameOrigin(c: Context<{ Bindings: Env }>): Response | null {
+  const origin = c.req.header("Origin");
+  if (origin && origin !== originOf(c.req.url)) {
+    return c.json(jsonError("forbidden", "cross-origin request rejected"), 403);
+  }
+  return null;
+}
+
+/**
  * セッション Cookie からログインユーザーを解決する。
  * Cookie 欠落・セッション失効時は、対応する 401 レスポンスをそのまま返す（呼び出し側は user が
  * null かどうかで分岐する）。
@@ -250,10 +263,8 @@ app.get("/api/repos", async (c) => {
 
 // POST /api/issues: 選択リポジトリへ Issue を作成する（B4-1・FR-6・CSRF: 同一 Origin を要求）。
 app.post("/api/issues", async (c) => {
-  const origin = c.req.header("Origin");
-  if (origin && origin !== originOf(c.req.url)) {
-    return c.json(jsonError("forbidden", "cross-origin request rejected"), 403);
-  }
+  const csrfRejection = requireSameOrigin(c);
+  if (csrfRejection) return csrfRejection;
   const user = await resolveSessionUser(c);
   if (user instanceof Response) return user;
 
@@ -301,10 +312,8 @@ app.post("/api/issues", async (c) => {
 
 // POST /auth/logout: サーバー側セッションを無効化（CSRF: 同一 Origin を要求）。
 app.post("/auth/logout", async (c) => {
-  const origin = c.req.header("Origin");
-  if (origin && origin !== originOf(c.req.url)) {
-    return c.json(jsonError("forbidden", "cross-origin request rejected"), 403);
-  }
+  const csrfRejection = requireSameOrigin(c);
+  if (csrfRejection) return csrfRejection;
   const sessionId = getCookie(c, SESSION_COOKIE);
   if (sessionId) await deleteSession(c.env.DB, await hashSessionId(sessionId));
   deleteCookie(c, SESSION_COOKIE, { path: "/", secure: true });
@@ -314,10 +323,8 @@ app.post("/auth/logout", async (c) => {
 // DELETE /api/account: アカウント削除（FR-12・PR-3）。全テーブルの該当ユーザー行を削除し
 // セッション Cookie を破棄する（CSRF: 同一 Origin を要求）。
 app.delete("/api/account", async (c) => {
-  const origin = c.req.header("Origin");
-  if (origin && origin !== originOf(c.req.url)) {
-    return c.json(jsonError("forbidden", "cross-origin request rejected"), 403);
-  }
+  const csrfRejection = requireSameOrigin(c);
+  if (csrfRejection) return csrfRejection;
   const user = await resolveSessionUser(c);
   if (user instanceof Response) return user;
 
