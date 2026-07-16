@@ -43,6 +43,12 @@ export const SCHEMA_STATEMENTS: string[] = [
     created_at INTEGER NOT NULL,
     PRIMARY KEY (user_id, repo, content_hash)
   )`,
+  `CREATE TABLE IF NOT EXISTS rate_limits (
+    user_id TEXT NOT NULL REFERENCES users(id),
+    window_start INTEGER NOT NULL,
+    count INTEGER NOT NULL,
+    PRIMARY KEY (user_id, window_start)
+  )`,
 ];
 
 export interface UserRow {
@@ -271,8 +277,47 @@ export async function releaseIssueLogReservation(
 export async function deleteAccount(db: D1Database, userId: string): Promise<void> {
   await db.batch([
     db.prepare(`DELETE FROM issue_log WHERE user_id = ?`).bind(userId),
+    db.prepare(`DELETE FROM rate_limits WHERE user_id = ?`).bind(userId),
     db.prepare(`DELETE FROM tokens WHERE user_id = ?`).bind(userId),
     db.prepare(`DELETE FROM sessions WHERE user_id = ?`).bind(userId),
     db.prepare(`DELETE FROM users WHERE id = ?`).bind(userId),
   ]);
+}
+
+export interface RateLimitResult {
+  /** ウィンドウ内の上限（含む）以内であれば true。 */
+  allowed: boolean;
+  /** 次のウィンドウが始まるまでの残り秒数（429 応答の Retry-After に使う）。 */
+  retryAfterSeconds: number;
+}
+
+/**
+ * 固定ウィンドウのレート制限カウンタ（不正利用対策・PR-4・OQ-6）。ユーザー・ウィンドウ単位で
+ * 原子的にカウントをインクリメントし、上限を超えていれば `allowed: false` を返す。
+ * Durable Object は導入しない（OQ-3 と同じ理由でバインディングを増やさない方針）ため、
+ * `reserveIssueLog` と同様の `INSERT ... ON CONFLICT DO UPDATE ... RETURNING` で実装する。
+ * 呼び出しのついでに同一ユーザーの過去ウィンドウ分の行を削除し、無期限増加を避ける（#71 と同型のリスク対応）。
+ */
+export async function checkRateLimit(
+  db: D1Database,
+  userId: string,
+  windowSeconds: number,
+  limit: number,
+): Promise<RateLimitResult> {
+  const now = nowSeconds();
+  const windowStart = Math.floor(now / windowSeconds) * windowSeconds;
+  const row = await db
+    .prepare(
+      `INSERT INTO rate_limits (user_id, window_start, count) VALUES (?, ?, 1)
+       ON CONFLICT(user_id, window_start) DO UPDATE SET count = count + 1
+       RETURNING count`,
+    )
+    .bind(userId, windowStart)
+    .first<{ count: number }>();
+  await db
+    .prepare(`DELETE FROM rate_limits WHERE user_id = ? AND window_start < ?`)
+    .bind(userId, windowStart)
+    .run();
+  const count = row?.count ?? 1;
+  return { allowed: count <= limit, retryAfterSeconds: windowStart + windowSeconds - now };
 }
