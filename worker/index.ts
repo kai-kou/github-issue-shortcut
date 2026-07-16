@@ -16,6 +16,7 @@ import {
   DEFAULT_API_BASE,
   DEFAULT_OAUTH_BASE,
   exchangeCodeForToken,
+  fetchAccessibleRepos,
   fetchGitHubUser,
   fetchInstallationCount,
 } from "./github";
@@ -193,6 +194,20 @@ app.get("/api/installations", async (c) => {
     return c.json({ installed: count > 0 });
   } catch {
     return c.json(jsonError("upstream_failed", "could not check GitHub App installations"), 502);
+  }
+});
+
+// GET /api/repos: ログインユーザーが起票できるリポジトリ一覧（App インストール済み ∩ アクセス可能・B2-1/B2-2）。
+app.get("/api/repos", async (c) => {
+  const user = await resolveSessionUser(c);
+  if (user instanceof Response) return user;
+
+  try {
+    const accessToken = await getValidAccessToken(c.env, user.id);
+    const repos = await fetchAccessibleRepos(c.env.GITHUB_API_BASE ?? DEFAULT_API_BASE, accessToken);
+    return c.json({ repos });
+  } catch {
+    return c.json(jsonError("upstream_failed", "could not fetch repositories"), 502);
   }
 });
 
