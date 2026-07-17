@@ -193,7 +193,7 @@ export function RepoPicker({ prefill = null }: RepoPickerProps) {
       {/* ボトムシート（B1-3）: リポジトリ選択と同時に開き、起動直後の 1 タップで
           IssueForm 内タイトル欄へネイティブ autofocus 連携させる（interactive-widget=resizes-content
           は index.html の viewport meta で設定済み・キーボード表示時も送信ボタンが隠れない）。 */}
-      <dialog ref={dialogRef} className="issue-sheet">
+      <dialog ref={dialogRef} className="issue-sheet" aria-label={t.issueForm.targetRepoLabel}>
         {selected ? (
           <>
             <div className="issue-sheet-header">
@@ -202,6 +202,7 @@ export function RepoPicker({ prefill = null }: RepoPickerProps) {
                 className="issue-sheet-close"
                 onClick={() => dialogRef.current?.close()}
                 aria-label={t.issueForm.closeButton}
+                disabled={submitState.status === "submitting"}
               >
                 ✕
               </button>

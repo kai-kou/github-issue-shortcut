@@ -468,7 +468,8 @@ a.btn-primary {
 .issue-sheet .issue-form {
   padding: 0 16px calc(16px + env(safe-area-inset-bottom));
   overflow-y: auto;
-  max-height: calc(85dvh - 44px);
+  /* ヘッダー実高さ = padding-top 4px + 閉じるボタン 44px */
+  max-height: calc(85dvh - 48px);
 }
 
 /* ---- 送信結果 ---- */
