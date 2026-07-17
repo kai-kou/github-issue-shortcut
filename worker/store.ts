@@ -49,6 +49,15 @@ export const SCHEMA_STATEMENTS: string[] = [
     count INTEGER NOT NULL,
     PRIMARY KEY (user_id, window_start)
   )`,
+  `CREATE TABLE IF NOT EXISTS shortcuts (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id),
+    repo TEXT NOT NULL,
+    labels TEXT NOT NULL,
+    title TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_shortcuts_user_id ON shortcuts(user_id)`,
 ];
 
 export interface UserRow {
@@ -272,16 +281,90 @@ export async function releaseIssueLogReservation(
 
 /**
  * アカウント削除（FR-12・§6.2）: 該当ユーザーの行を全テーブルから削除する（論理削除ではなく物理削除）。
- * shortcuts（M2 未実装）は現時点でテーブル自体が存在しないため対象外。着地後に削除対象へ追加すること。
  */
 export async function deleteAccount(db: D1Database, userId: string): Promise<void> {
   await db.batch([
+    db.prepare(`DELETE FROM shortcuts WHERE user_id = ?`).bind(userId),
     db.prepare(`DELETE FROM issue_log WHERE user_id = ?`).bind(userId),
     db.prepare(`DELETE FROM rate_limits WHERE user_id = ?`).bind(userId),
     db.prepare(`DELETE FROM tokens WHERE user_id = ?`).bind(userId),
     db.prepare(`DELETE FROM sessions WHERE user_id = ?`).bind(userId),
     db.prepare(`DELETE FROM users WHERE id = ?`).bind(userId),
   ]);
+}
+
+export interface ShortcutRow {
+  id: string;
+  repo: string;
+  labels: string[];
+  title: string;
+}
+
+/** labels は JSON 配列としてシリアライズする（カンマ区切り文字列だと、ラベル名自体にカンマを
+ * 含む場合に分割数がずれて元のラベル配列を復元できない・#86 セルフレビュー指摘）。 */
+function serializeLabels(labels: string[]): string {
+  return JSON.stringify(labels);
+}
+
+function deserializeLabels(raw: string): string[] {
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((l): l is string => typeof l === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+function toShortcutRow(row: { id: string; repo: string; labels: string; title: string }): ShortcutRow {
+  return {
+    id: row.id,
+    repo: row.repo,
+    labels: deserializeLabels(row.labels),
+    title: row.title,
+  };
+}
+
+/** ユーザーのショートカットプリセット一覧を作成日時の昇順で返す（C1-1・FR-16）。 */
+export async function listShortcuts(db: D1Database, userId: string): Promise<ShortcutRow[]> {
+  const result = await db
+    .prepare(`SELECT id, repo, labels, title FROM shortcuts WHERE user_id = ? ORDER BY created_at ASC`)
+    .bind(userId)
+    .all<{ id: string; repo: string; labels: string; title: string }>();
+  return (result.results ?? []).map(toShortcutRow);
+}
+
+/** ショートカットプリセットを作成する（repo/labels/title は呼び出し側で少なくとも1つ非空であることを検証済みとする）。 */
+export async function createShortcut(
+  db: D1Database,
+  userId: string,
+  input: { repo: string; labels: string[]; title: string },
+): Promise<ShortcutRow> {
+  const id = crypto.randomUUID();
+  await db
+    .prepare(`INSERT INTO shortcuts (id, user_id, repo, labels, title, created_at) VALUES (?, ?, ?, ?, ?, ?)`)
+    .bind(id, userId, input.repo, serializeLabels(input.labels), input.title, nowSeconds())
+    .run();
+  return { id, repo: input.repo, labels: input.labels, title: input.title };
+}
+
+/** ショートカットプリセットを更新する（所有者一致が条件。0 行更新なら false を返す）。 */
+export async function updateShortcut(
+  db: D1Database,
+  userId: string,
+  id: string,
+  input: { repo: string; labels: string[]; title: string },
+): Promise<boolean> {
+  const result = await db
+    .prepare(`UPDATE shortcuts SET repo = ?, labels = ?, title = ? WHERE id = ? AND user_id = ?`)
+    .bind(input.repo, serializeLabels(input.labels), input.title, id, userId)
+    .run();
+  return result.meta.changes === 1;
+}
+
+/** ショートカットプリセットを削除する（所有者一致が条件。0 行削除なら false を返す）。 */
+export async function deleteShortcut(db: D1Database, userId: string, id: string): Promise<boolean> {
+  const result = await db.prepare(`DELETE FROM shortcuts WHERE id = ? AND user_id = ?`).bind(id, userId).run();
+  return result.meta.changes === 1;
 }
 
 export interface RateLimitResult {
