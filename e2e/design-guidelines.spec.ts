@@ -137,7 +137,7 @@ test.describe("デザインガイドライン: ダークモード smoke", () => 
     // light-dark() 等で明示指定されたダーク色のどちらも正。白背景固定（明るい色）だと
     // 白背景に黒文字のまま崩れる回帰なので検出する。
     const bodyBg = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
-    const isTransparent = bodyBg === "rgba(0, 0, 0, 0)";
+    const isTransparent = bodyBg === "rgba(0, 0, 0, 0)" || bodyBg === "transparent";
     const channels = (bodyBg.match(/\d+(\.\d+)?/g) ?? []).map(Number);
     const [r = 255, g = 255, b = 255] = channels;
     const luminance = r * 0.299 + g * 0.587 + b * 0.114;
