@@ -1,10 +1,17 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import "./App.css";
 import TermsOfService from "./pages/TermsOfService";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
 import { LanguageProvider, useLanguage } from "./i18n/LanguageContext";
 import { SUPPORTED_LOCALES } from "./i18n/translations";
 import { RepoPicker } from "./repos/RepoPicker";
+import {
+  consumePendingRedirect,
+  hasPrefillParams,
+  parsePrefillParams,
+  savePendingRedirect,
+  type PrefillParams,
+} from "./issues/prefillParams";
 
 type ApiStatus = "checking" | "unreachable" | string;
 
@@ -93,7 +100,13 @@ function AccountDeletion({ onDeleted }: { onDeleted: () => void }) {
   );
 }
 
-function AuthPanel() {
+interface AuthPanelProps {
+  prefill: PrefillParams | null;
+  /** ログイン後の復元用に保存する遷移先（`/new?...`）。プレフィルが無ければ null（B1-2・FR-15）。 */
+  pendingRedirectTarget: string | null;
+}
+
+function AuthPanel({ prefill, pendingRedirectTarget }: AuthPanelProps) {
   const { t } = useLanguage();
   const [auth, setAuth] = useState<AuthState>({ status: "checking" });
   const [installed, setInstalled] = useState<InstallState>(null);
@@ -156,19 +169,31 @@ function AuthPanel() {
           </button>
         </p>
         {installed === false ? <InstallGuidance /> : null}
-        {installed === true ? <RepoPicker /> : null}
+        {installed === true ? <RepoPicker prefill={prefill} /> : null}
         <AccountDeletion onDeleted={() => setAccountDeleted(true)} />
       </>
     );
   }
   return (
     <p>
-      <a href="/auth/login">{t.auth.loginButton}</a>
+      <a
+        href="/auth/login"
+        onClick={() => {
+          if (pendingRedirectTarget) savePendingRedirect(pendingRedirectTarget);
+        }}
+      >
+        {t.auth.loginButton}
+      </a>
     </p>
   );
 }
 
-function Home() {
+interface HomeProps {
+  prefill: PrefillParams | null;
+  pendingRedirectTarget: string | null;
+}
+
+function Home({ prefill, pendingRedirectTarget }: HomeProps) {
   const { t } = useLanguage();
   const [apiStatus, setApiStatus] = useState<ApiStatus>("checking");
 
@@ -196,7 +221,7 @@ function Home() {
       <p>
         {t.home.apiStatusLabel}: {apiStatusText}
       </p>
-      <AuthPanel />
+      <AuthPanel prefill={prefill} pendingRedirectTarget={pendingRedirectTarget} />
     </>
   );
 }
@@ -219,8 +244,24 @@ function LanguageSwitcher() {
 }
 
 function AppContent() {
-  const path = window.location.pathname;
+  const [path, setPath] = useState(() => window.location.pathname);
+  const [search, setSearch] = useState(() => window.location.search);
   const { t } = useLanguage();
+
+  // /auth/callback は常に "/" へ戻すため、未ログイン時に `/new?...` から離脱していた場合は
+  // ここで遷移先を復元する（B1-2・FR-15「未ログイン時はログイン後に復元」）。
+  useEffect(() => {
+    if (window.location.pathname !== "/") return;
+    const pending = consumePendingRedirect();
+    if (!pending) return;
+    window.history.replaceState(null, "", pending);
+    const restored = new URL(pending, window.location.origin);
+    setPath(restored.pathname);
+    setSearch(restored.search);
+  }, []);
+
+  const prefill = useMemo(() => (path === "/new" ? parsePrefillParams(search) : null), [path, search]);
+  const pendingRedirectTarget = prefill && hasPrefillParams(prefill) ? `${path}${search}` : null;
 
   return (
     <>
@@ -229,7 +270,7 @@ function AppContent() {
       ) : path === "/privacy" ? (
         <PrivacyPolicy />
       ) : (
-        <Home />
+        <Home prefill={prefill} pendingRedirectTarget={pendingRedirectTarget} />
       )}
       <footer>
         <a href="/terms">{t.footer.terms}</a> / <a href="/privacy">{t.footer.privacy}</a>
