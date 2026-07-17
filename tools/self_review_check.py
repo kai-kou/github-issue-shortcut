@@ -65,6 +65,18 @@ except Exception as _e:  # noqa: BLE001
           file=sys.stderr)
     _scan_py = None
 
+# デザインルール静的チェッカー（モバイル最速起票 PWA 向け・本プロジェクト固有）。
+try:
+    from check_design_rules import file_violations as _design_file_violations
+except ImportError:
+    # ツール自体が無い場合のみ黙って無効化（任意機能）
+    _design_file_violations = None
+except Exception as _e:  # noqa: BLE001
+    # ツールはあるが壊れている → 黙殺すると再発防止が機能しないので原因を出す
+    print(f"[self-review] Warning: check_design_rules の読み込みに失敗（デザインルール検査を無効化）: {_e}",
+          file=sys.stderr)
+    _design_file_violations = None
+
 
 def cjk_violation_lines(text: str) -> list[int]:
     """CJK 半角スペース違反のある行番号一覧を返す（チェッカー不在時は空）。"""
@@ -191,6 +203,20 @@ def main() -> int:
                     f"CJK 半角スペース違反: {f}（{len(cjk_lines)} 行: {shown}{ellipsis}）"
                     f" → python3 tools/check_cjk_markdown.py --fix {f}"
                 )
+
+        # デザインルール静的チェック（モバイル最速起票 PWA 向け・本プロジェクト固有）
+        # font-size 16px 未満・enterkeyhint 欠落・placeholder のみラベル・
+        # prefers-reduced-motion 欠落・viewport ズーム禁止を検出（全て Warning・非ブロッキング）
+        if _design_file_violations is not None and (
+            f.endswith((".tsx", ".css")) or Path(f).name == "index.html"
+        ):
+            try:
+                design_violations = _design_file_violations(f, text)
+            except Exception as e:  # noqa: BLE001
+                warnings.append(f"デザインルール検査でエラー: {f}: {e}")
+            else:
+                for ln, msg in design_violations:
+                    warnings.append(f"[design] {f}:{ln}: {msg}")
 
         # Python 危険パターン（FAIR Layer 0 強化・#56）
         # ERROR=コマンドインジェクション/eval/pickle 等の高危険（ブロック）、WARNING=資格情報ハードコード等。
