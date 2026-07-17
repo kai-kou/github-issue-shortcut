@@ -111,4 +111,34 @@ test.describe("URL パラメータ起動（モック GitHub・モバイルエミ
     const lastIssue = await (await page.request.get(`${MOCK_GITHUB_URL}/mock/last-issue`)).json();
     expect(lastIssue.labels).toBeUndefined();
   });
+
+  // B3-4: Web Share Target は manifest の params マッピング（vite.config.ts）で
+  // /new?title=&body=&url= へのブラウザ GET 遷移を発生させる（共有シート自体は Playwright から
+  // 起動できないため、実機の共有操作が生成するのと同じ URL への遷移で検証する）。
+  test("Web Share Target 経由（title/body/url）で開くと本文にプレフィルされ、リポジトリ選択後も引き継がれる", async ({
+    page,
+  }) => {
+    await page.goto("/");
+    await page.getByRole("link", { name: /GitHub でログイン|Sign in with GitHub/ }).click();
+    await expect(page.getByText(/e2e-user/)).toBeVisible();
+
+    await page.goto(
+      "/new?title=%E3%82%B7%E3%82%A7%E3%82%A2%E3%81%97%E3%81%9F%E8%A8%98%E4%BA%8B&body=%E8%A6%8B%E3%81%A6%EF%BC%9A+https%3A%2F%2Fexample.com%2Fpost&url=https%3A%2F%2Fexample.com%2Fpost",
+    );
+
+    // repo が無いプレフィルなのでリポジトリ未選択（フォーム自体は repo 選択後に表示される）
+    await expect(page.getByRole("button", { name: "kai-kou/alpha" })).toHaveAttribute("aria-pressed", "false");
+    await page.getByRole("button", { name: "kai-kou/alpha" }).click();
+
+    await expect(page.getByRole("textbox", { name: /タイトル|^Title$/ })).toHaveValue("シェアした記事");
+    // body に既に url が含まれているため重複追記されない
+    await expect(page.getByRole("textbox", { name: /本文|Body/ })).toHaveValue("見て： https://example.com/post");
+
+    await page.getByRole("button", { name: /Issue を作成|Create issue/ }).click();
+    await expect(page.getByText(/Issue を作成しました|Issue created/)).toBeVisible();
+
+    const lastIssue = await (await page.request.get(`${MOCK_GITHUB_URL}/mock/last-issue`)).json();
+    expect(lastIssue.title).toBe("シェアした記事");
+    expect(lastIssue.body).toBe("見て： https://example.com/post");
+  });
 });

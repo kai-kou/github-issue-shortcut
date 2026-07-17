@@ -4,9 +4,18 @@ const POST_LOGIN_REDIRECT_KEY = "issue-shortcut:post-login-redirect";
  * TTL と同じ 10 分）。 */
 const PENDING_REDIRECT_TTL_MS = 10 * 60 * 1000;
 
-export type PrefillParams = { repo: string | null; labels: string[]; title: string | null };
+export type PrefillParams = { repo: string | null; labels: string[]; title: string | null; body: string | null };
 
-/** `/new?repo=&labels=&title=` の URL パラメータから初期選択値を読み取る（B1-2・FR-15）。
+/** `body` と `url` を合成する（B3-4・FR-18）。Web Share Target は `text`（→`body` にマッピング済み）に
+ * 共有 URL が入ることが多く `url` は空なことが多いが、両方埋まっている場合は `body` が既に `url` を
+ * 含んでいなければ末尾に追記し、URL の重複・欠落を防ぐ。 */
+function mergeBodyAndUrl(body: string | null, url: string | null): string | null {
+  if (!url) return body;
+  if (body && body.includes(url)) return body;
+  return body ? `${body}\n\n${url}` : url;
+}
+
+/** `/new?repo=&labels=&title=&body=` の URL パラメータから初期選択値を読み取る（B1-2/B3-4・FR-15/FR-18）。
  * labels はカンマ区切り。読み取った値は初期選択にのみ使い、自動送信はしない（FR-19）。 */
 export function parsePrefillParams(search: string): PrefillParams {
   const params = new URLSearchParams(search);
@@ -19,11 +28,12 @@ export function parsePrefillParams(search: string): PrefillParams {
         .filter((l) => l.length > 0)
     : [];
   const title = params.get("title")?.trim() || null;
-  return { repo, labels, title };
+  const body = mergeBodyAndUrl(params.get("body")?.trim() || null, params.get("url")?.trim() || null);
+  return { repo, labels, title, body };
 }
 
 export function hasPrefillParams(params: PrefillParams): boolean {
-  return Boolean(params.repo || params.labels.length > 0 || params.title);
+  return Boolean(params.repo || params.labels.length > 0 || params.title || params.body);
 }
 
 type PendingRedirect = { target: string; savedAt: number };

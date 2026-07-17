@@ -180,6 +180,7 @@ export function RepoPicker({ prefill = null }: RepoPickerProps) {
             submitting={submitState.status === "submitting"}
             initialTitle={appliesPrefill ? prefill?.title : undefined}
             initialLabels={appliesPrefill ? prefill?.labels : undefined}
+            initialBody={appliesPrefill ? prefill?.body : undefined}
           />
           {submitState.status === "success" ? (
             <p>
