@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useLanguage } from "../i18n/LanguageContext";
 import type { Translations } from "../i18n/translations";
 import { loadRecentRepos, recordRecentRepo } from "./recentRepos";
@@ -62,6 +62,21 @@ export function RepoPicker({ prefill = null }: RepoPickerProps) {
   const [selected, setSelected] = useState<string | null>(() => loadDraft()?.repo ?? prefill?.repo ?? null);
   const [submitState, setSubmitState] = useState<SubmitState>({ status: "idle" });
   const [formKey, setFormKey] = useState(0);
+  const dialogRef = useRef<HTMLDialogElement>(null);
+
+  /** dialog がまだ開いていなければ開く（二重 showModal() は例外になるためガードする）。 */
+  function openDialog() {
+    const dialog = dialogRef.current;
+    if (dialog && !dialog.open) dialog.showModal();
+  }
+
+  // 下書き（B5-1）/ URL パラメータ起動（B1-2）でリポジトリが初期選択済みの場合も、
+  // ユーザー操作を待たずボトムシートを自動的に開く（B1-3）。state.status も依存に含めるのは、
+  // API 取得中（loading）は dialog 自体が早期 return で未レンダリングなため、
+  // ready 化で dialog が初めて DOM に現れたタイミングでも再評価する必要があるため。
+  useLayoutEffect(() => {
+    if (selected) openDialog();
+  }, [selected, state.status]);
 
   useEffect(() => {
     let active = true;
@@ -109,6 +124,10 @@ export function RepoPicker({ prefill = null }: RepoPickerProps) {
     setSelected(fullName);
     setRecent(recordRecentRepo(fullName));
     setSubmitState({ status: "idle" });
+    // クリックハンドラ内で同期的に開く（ユーザージェスチャのまま dialog を開くことで、
+    // 内部の autoFocus 要素へのネイティブ focus 連携がモバイル Chrome でも
+    // キーボード表示につながりやすくする・B1-3・research/mobile-ux-pwa §2 の緩和策）。
+    openDialog();
   }
 
   async function submitIssue(input: IssueInput) {
@@ -171,40 +190,55 @@ export function RepoPicker({ prefill = null }: RepoPickerProps) {
           ))}
         </ul>
       )}
-      {selected ? (
-        <>
-          <IssueForm
-            key={`${selected}-${formKey}`}
-            repoFullName={selected}
-            pushAccess={selectedPushAccess}
-            onSubmit={submitIssue}
-            submitting={submitState.status === "submitting"}
-            initialTitle={appliesPrefill ? prefill?.title : undefined}
-            initialLabels={appliesPrefill ? prefill?.labels : undefined}
-            initialBody={appliesPrefill ? prefill?.body : undefined}
-          >
-            {submitState.status === "success" ? (
-              <p className="submit-result success">
-                {t.issueForm.successMessage} #{submitState.number}{" "}
-                <a href={submitState.htmlUrl} target="_blank" rel="noreferrer">
-                  {t.issueForm.viewIssueLink}
-                </a>
-              </p>
-            ) : null}
-            {submitState.status === "error" ? (
-              <p className="submit-result error">
-                {submitErrorMessage(submitState.code, t)}
-                {submitState.code === "reauth_required" ? (
-                  <>
-                    {" "}
-                    <a href="/auth/login">{t.auth.loginButton}</a>
-                  </>
-                ) : null}
-              </p>
-            ) : null}
-          </IssueForm>
-        </>
-      ) : null}
+      {/* ボトムシート（B1-3）: リポジトリ選択と同時に開き、起動直後の 1 タップで
+          IssueForm 内タイトル欄へネイティブ autofocus 連携させる（interactive-widget=resizes-content
+          は index.html の viewport meta で設定済み・キーボード表示時も送信ボタンが隠れない）。 */}
+      <dialog ref={dialogRef} className="issue-sheet">
+        {selected ? (
+          <>
+            <div className="issue-sheet-header">
+              <button
+                type="button"
+                className="issue-sheet-close"
+                onClick={() => dialogRef.current?.close()}
+                aria-label={t.issueForm.closeButton}
+              >
+                ✕
+              </button>
+            </div>
+            <IssueForm
+              key={`${selected}-${formKey}`}
+              repoFullName={selected}
+              pushAccess={selectedPushAccess}
+              onSubmit={submitIssue}
+              submitting={submitState.status === "submitting"}
+              initialTitle={appliesPrefill ? prefill?.title : undefined}
+              initialLabels={appliesPrefill ? prefill?.labels : undefined}
+              initialBody={appliesPrefill ? prefill?.body : undefined}
+            >
+              {submitState.status === "success" ? (
+                <p className="submit-result success">
+                  {t.issueForm.successMessage} #{submitState.number}{" "}
+                  <a href={submitState.htmlUrl} target="_blank" rel="noreferrer">
+                    {t.issueForm.viewIssueLink}
+                  </a>
+                </p>
+              ) : null}
+              {submitState.status === "error" ? (
+                <p className="submit-result error">
+                  {submitErrorMessage(submitState.code, t)}
+                  {submitState.code === "reauth_required" ? (
+                    <>
+                      {" "}
+                      <a href="/auth/login">{t.auth.loginButton}</a>
+                    </>
+                  ) : null}
+                </p>
+              ) : null}
+            </IssueForm>
+          </>
+        ) : null}
+      </dialog>
     </div>
   );
 }

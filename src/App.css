@@ -409,6 +409,68 @@ a.btn-primary {
   width: 100%;
 }
 
+/* ---- 起票フォーム（ボトムシート・B1-3） ---- */
+/* ブラウザ標準の <dialog> のみで実装（追加ライブラリなし・design-guidelines D-6）。 */
+
+.issue-sheet {
+  position: fixed;
+  inset: auto 0 0 0;
+  margin: 0 auto;
+  width: 100%;
+  max-width: 640px;
+  max-height: 85dvh;
+  border: none;
+  border-radius: var(--radius-l) var(--radius-l) 0 0;
+  background: var(--color-surface);
+  color: var(--color-text);
+  padding: 0;
+  box-shadow: var(--shadow-card);
+}
+
+.issue-sheet::backdrop {
+  background: rgb(0 0 0 / 0.4);
+}
+
+.issue-sheet[open] {
+  animation: issue-sheet-slide-up 0.2s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .issue-sheet[open] {
+    animation: none;
+  }
+}
+
+@keyframes issue-sheet-slide-up {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+.issue-sheet-header {
+  display: flex;
+  justify-content: flex-end;
+  padding: 4px 4px 0;
+}
+
+.issue-sheet-close {
+  border: none;
+  background: none;
+  font-size: 18px;
+  line-height: 1;
+  min-width: 44px;
+  min-height: 44px;
+}
+
+.issue-sheet .issue-form {
+  padding: 0 16px calc(16px + env(safe-area-inset-bottom));
+  overflow-y: auto;
+  max-height: calc(85dvh - 44px);
+}
+
 /* ---- 送信結果 ---- */
 
 .submit-result {
