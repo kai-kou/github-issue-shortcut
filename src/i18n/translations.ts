@@ -63,6 +63,7 @@ interface Translations {
     empty: string;
   };
   issueForm: {
+    closeButton: string;
     targetRepoLabel: string;
     titleLabel: string;
     titlePlaceholder: string;
@@ -174,6 +175,7 @@ export const translations = {
       empty: "該当するリポジトリがありません",
     },
     issueForm: {
+      closeButton: "閉じる",
       targetRepoLabel: "起票先",
       titleLabel: "タイトル",
       titlePlaceholder: "Issue のタイトル（必須）",
@@ -375,6 +377,7 @@ export const translations = {
       empty: "No matching repositories",
     },
     issueForm: {
+      closeButton: "Close",
       targetRepoLabel: "Target repository",
       titleLabel: "Title",
       titlePlaceholder: "Issue title (required)",

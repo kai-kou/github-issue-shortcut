@@ -84,7 +84,8 @@ test.describe("URL パラメータ起動（モック GitHub・モバイルエミ
     );
     await expect(page.getByRole("textbox", { name: /タイトル|^Title$/ })).toHaveValue("プレフィル起票");
 
-    // プレフィル対象外の別リポジトリへ手動で切り替える
+    // プレフィル対象外の別リポジトリへ手動で切り替える（ボトムシートを閉じてから選び直す・B1-3）
+    await page.getByRole("button", { name: /閉じる|Close/ }).click();
     await page.getByRole("button", { name: "kai-kou/beta" }).click();
 
     // 切り替え後のフォームはプレフィルを引き継がず空のまま
