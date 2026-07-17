@@ -63,6 +63,8 @@ interface Translations {
     empty: string;
     smartTokenListLabel: string;
     removeSmartTokenLabel: string;
+    offlineQueuePending: string;
+    offlineQueueFailed: string;
   };
   issueForm: {
     closeButton: string;
@@ -76,6 +78,7 @@ interface Translations {
     successMessage: string;
     viewIssueLink: string;
     errorMessage: string;
+    queuedMessage: string;
     smartTokenListLabel: string;
     removeSmartTokenLabel: string;
     errors: {
@@ -179,6 +182,8 @@ export const translations = {
       empty: "該当するリポジトリがありません",
       smartTokenListLabel: "認識されたリポジトリ指定",
       removeSmartTokenLabel: "指定を解除",
+      offlineQueuePending: "送信待ちのオフラインキュー:",
+      offlineQueueFailed: "送信に失敗した起票（手動対応が必要）:",
     },
     issueForm: {
       closeButton: "閉じる",
@@ -192,6 +197,7 @@ export const translations = {
       successMessage: "Issue を作成しました",
       viewIssueLink: "GitHub で開く",
       errorMessage: "Issue を作成できませんでした",
+      queuedMessage: "オフラインです。接続回復後に自動で再送します（下書き保存済み）。",
       smartTokenListLabel: "認識されたラベル指定",
       removeSmartTokenLabel: "ラベル指定を解除",
       errors: {
@@ -385,6 +391,8 @@ export const translations = {
       empty: "No matching repositories",
       smartTokenListLabel: "Recognized repository",
       removeSmartTokenLabel: "Remove",
+      offlineQueuePending: "Pending offline queue:",
+      offlineQueueFailed: "Failed to send (needs manual action):",
     },
     issueForm: {
       closeButton: "Close",
@@ -398,6 +406,7 @@ export const translations = {
       successMessage: "Issue created",
       viewIssueLink: "Open on GitHub",
       errorMessage: "Could not create the issue",
+      queuedMessage: "You're offline. This will be sent automatically once you're back online (saved as a draft).",
       smartTokenListLabel: "Recognized labels",
       removeSmartTokenLabel: "Remove label",
       errors: {
