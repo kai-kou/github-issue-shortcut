@@ -104,7 +104,8 @@ GitHub Issue Shortcut
 `problem-investigation-protocol.md` / `harness-escalation.md` / `lessons-management.md` /
 `pr-review-flow.md` / `claude-code-optimization.md` / `token-optimization-rules.md` /
 `github-mcp-fallback-patterns.md` / `native-fallback-rules.md`（Web 未提供機能の claude -p フォールバック標準形）/ `slack-notification-rules.md` /
-`security-posture-controls.md` / `sandbox-rules.md` / `env-vars.md` ほか。
+`security-posture-controls.md` / `sandbox-rules.md` / `env-vars.md` /
+`design-rules.md`（**フロントエンド（`src/`・`index.html`・manifest・CSS）変更タスクの着手前に必ず Read**。SSOT は `docs/design/design-guidelines.md`・レビュー観点は `design-review-checklist.md`）ほか。
 
 > **`session-concurrency-rules.md` の Hot 化可否（E-B #20）**: マルチセッション並行運用（Scheduled Tasks）を
 > 使わないプロジェクトでは Warm のままでよい（`tools/check_rules_sync.sh` の `ESSENTIAL_RULES` から外して
@@ -165,6 +166,7 @@ GitHub Issue Shortcut
 | `research-runner` | ディープリサーチの完全自動化（`/deep-research` 直接実行・Opus orchestrator → Gemini → DIY） |
 | `pr-review-watcher` | PR の AI レビュー監視・指摘対応・自動マージ |
 | `discussion-review` | 議論型レビュー（敵対的相互レビュー）のネイティブ実行（name 付き Agent + SendMessage + ホワイトボード）。「専門チームを組成して」の既定経路 |
+| `design-review` | フロントエンド変更のデザイン準拠レビュー（静的チェック + E2E + チェックリスト目視の 3 層）。SSOT は `docs/design/design-guidelines.md` |
 | `self-reviewer` | PR 作成前のセルフレビュー |
 | `project-manager` | Issue / ラベル / マイルストーン管理 |
 | `project-sync` | リポジトリ衛生（Stale Issue・Orphan PR） |
@@ -192,6 +194,7 @@ frontmatter は公式仕様（`name` / `description` 必須・`model` / `tools` 
 | エージェント | 役割 |
 |------------|------|
 | `owner` | プロダクトオーナー（PO）ロール。バックログ優先順位（`priority:*`）と見積もり妥当性（`sp:*`）を判定・実行する。ラベル操作は `sp:*` / `priority:*` のみ許可（`status:*` 操作・Issue クローズ・本文書き換え・A-1〜A-6 自動承認は禁止）。詳細は `docs/rules/session-sprint-rules.md` §4 |
+| `design-reviewer` | UI/UX デザインレビュー役（Lv2）。フロントエンド変更のデザインガイドライン準拠（D-1〜D-10・数値基準）を検証。議論型レビューのデザイン観点担当 |
 
 プロジェクト固有のレビュー役・監修役（例: 技術正確性レビュー役・初心者目線チェック役）も
 `.claude/agents/<name>.md` に追加してよい（参加レベル Lv1/Lv2/Lv3 は `agent-team-summary.md` 参照）。
