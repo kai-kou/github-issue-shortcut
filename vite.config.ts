@@ -24,6 +24,18 @@ export default defineConfig({
           { src: "/icons/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
           { src: "/icons/icon-512-maskable.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
         ],
+        // Android 共有シートからの受け（B3-4・FR-18）。GET のためブラウザが action にクエリ文字列を
+        // 付けて遷移するだけで、専用エンドポイントは不要（/new のプレフィル解析に合流させる・§4.4）。
+        // text は共有元アプリの本文（共有 URL がここに入ることが多い）をそのまま body 扱いにする。
+        share_target: {
+          action: "/new",
+          method: "GET",
+          params: {
+            title: "title",
+            text: "body",
+            url: "url",
+          },
+        },
       },
       workbox: {
         // /auth/* は SW のナビゲーションフォールバック対象外にする（MUST・OAuth コールバックのキャッシュ応答による破壊を防止）。

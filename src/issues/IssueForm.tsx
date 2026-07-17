@@ -14,6 +14,8 @@ interface IssueFormProps {
   /** URL パラメータ起動（B1-2・FR-15）の初期値。下書き（B5-1）が存在する場合はそちらを優先する。 */
   initialTitle?: string | null;
   initialLabels?: string[];
+  /** URL パラメータ起動 / Web Share Target（B1-2・B3-4・FR-15・FR-18）の本文初期値。 */
+  initialBody?: string | null;
 }
 
 /** 対象リポジトリ向けの下書きがあれば初期値として使う（自リポジトリ以外の下書きは復元しない）。 */
@@ -31,11 +33,12 @@ export function IssueForm({
   submitting = false,
   initialTitle,
   initialLabels,
+  initialBody,
 }: IssueFormProps) {
   const { t } = useLanguage();
   const [initialDraft] = useState(() => draftFor(repoFullName));
   const [title, setTitle] = useState(() => initialDraft?.title ?? initialTitle ?? "");
-  const [body, setBody] = useState(() => initialDraft?.body ?? "");
+  const [body, setBody] = useState(() => initialDraft?.body ?? initialBody ?? "");
   const [labels, setLabels] = useState<string[]>(() => initialLabels ?? []);
 
   const canSubmit = title.trim().length > 0 && !submitting;
