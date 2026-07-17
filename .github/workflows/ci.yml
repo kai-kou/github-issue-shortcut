@@ -74,9 +74,12 @@ jobs:
 
       - run: npx wrangler d1 migrations apply DB --local
 
-      # ログイン前トップページの performance / accessibility スコアを Lighthouse で監査する
-      # （design-guidelines.md §5「後続導入」の消化・lighthouserc.json で minScore を assert）。
-      - uses: treosh/lighthouse-ci-action@v12
+      # ログイン前トップページ（未認証）の performance / accessibility スコアを Lighthouse で
+      # 監査する（design-guidelines.md §5「後続導入」の消化・lighthouserc.json で minScore を
+      # assert）。このジョブはモック GitHub（e2e/mock-github.mjs）を起動しないため、
+      # lighthouserc.json の collect.url に認証後ページを追加する場合は e2e ジョブと同様に
+      # モック GitHub の起動を追加すること（現状は /api/me 等が 401 を返すだけの未認証ページのみが対象）。
+      - uses: treosh/lighthouse-ci-action@3e7e23fb74242897f95c0ba9cabad3d0227b9b18 # v12
         with:
           configPath: "./lighthouserc.json"
           uploadArtifacts: true
@@ -104,7 +107,7 @@ jobs:
       # Vite の chunkSizeWarningLimit は warning のみで CI を失敗させないため size-limit で
       # ハード失敗させる（content/research/design-uiux-20260717_deep_research.md §7）。
       # install は上の npm ci 済みのためスキップし、action には build のみ行わせる。
-      - uses: andresz1/size-limit-action@v1
+      - uses: andresz1/size-limit-action@e7493a72a44b113341c0cf6186ab49c17c4b65c1 # v1
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           skip_step: install
