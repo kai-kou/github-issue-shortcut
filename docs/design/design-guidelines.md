@@ -36,7 +36,7 @@
 | 項目 | 基準値 | 根拠（一次情報） | 機械チェック |
 |------|--------|-----------------|--------------|
 | タップターゲット最低 | **24×24 CSS px**（AA） | WCAG 2.2 SC 2.5.8 | `e2e/design-guidelines.spec.ts`（boundingBox） |
-| タップターゲット推奨 | 44px（HIG）/ 48px（M3・主要操作） | Apple HIG / Google | 同上（送信ボタン 44px 以上を assert） |
+| タップターゲット推奨 | 44px（HIG）/ 48px（M3・主要操作） | Apple HIG / Google | 同上（送信ボタン 48px 以上を assert・ベースライン CSS は `button[type="submit"]` 48px / その他コントロール 44px） |
 | ターゲット間隔 | 8px 以上 | M3（Android Accessibility） | レビュー目視（チェックリスト） |
 | フォームコントロール font-size | **16px 以上** | iOS Safari 自動ズーム防止（業界標準・要注意 B ランク） | `tools/check_design_rules.py` + E2E |
 | コントラスト比 | 通常テキスト **4.5:1** / 18pt 以上 3:1 | WCAG AA・Apple HIG 同値 | レビュー目視（axe-core 導入後は自動・#後続） |
@@ -48,6 +48,8 @@
 | manifest shortcuts | 最優先アクションを先頭・**3 件以内**（Chrome for Android の実装値・仕様保証なし・要実機再確認） | web.dev（2020 年記事・fact_check_flags #1） | レビュー目視 + `e2e/pwa.spec.ts` |
 | アイコン | 512×512 + 192×192（maskable） | web.dev manifest | `e2e/pwa.spec.ts` |
 | ズーム禁止の禁止 | `maximum-scale=1` / `user-scalable=no` を書かない | WCAG（拡大の妨害） | `tools/check_design_rules.py` |
+
+> **既知の例外（SSOT・ドリフト防止）**: `input[type="checkbox"]` / `input[type="radio"]` はネイティブ描画サイズが崩れるため、ベースライン CSS（`src/index.css`）・E2E の font-size 検査の **対象外** としている。現状これらはラベルピッカー（既定で閉じた `<details>` 内）にのみ存在し、E2E のタップターゲット検査は「可視要素のみ」を見るため **ピッカーを開いた状態の実寸は未検証**。ピッカー UI を本格実装する際に、チェックボックスの実効タップ領域（ラベル行全体を 24px 以上のタップ対象にする等・WCAG Spacing 例外の適用可否）を設計・検証すること（デザイン負債として明記）。
 
 ## 3. 画面・フローの設計パターン
 

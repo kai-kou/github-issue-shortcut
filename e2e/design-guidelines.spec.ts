@@ -74,15 +74,15 @@ test.describe("デザインガイドライン: タップターゲット / フォ
     expect(undersized, `24x24px 未満のタップターゲットが見つかった:\n${undersized.join("\n")}`).toEqual([]);
   });
 
-  test("送信ボタンは44px以上（Apple HIG 推奨の主要操作サイズ）", async ({ page }) => {
+  test("送信ボタンは48px以上（M3 の主要操作サイズ・design-guidelines.md D-4）", async ({ page }) => {
     await gotoIssueFormScreen(page);
 
     const submit = page.getByRole("button", { name: /Issue を作成|Create issue/ });
     await expect(submit).toBeVisible();
     const box = await submit.boundingBox();
     expect(box).not.toBeNull();
-    expect(box!.width).toBeGreaterThanOrEqual(44);
-    expect(box!.height).toBeGreaterThanOrEqual(44);
+    expect(box!.width).toBeGreaterThanOrEqual(48);
+    expect(box!.height).toBeGreaterThanOrEqual(48);
   });
 
   test("フォームコントロール（input/textarea）の computed font-size は16px以上（iOS自動ズーム防止）", async ({

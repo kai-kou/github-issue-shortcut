@@ -29,3 +29,8 @@ a,
   align-items: center;
   min-height: 24px;
 }
+
+/* 主要操作（送信）は 48px（M3 の最小タッチターゲット・design-guidelines.md D-4）。 */
+button[type="submit"] {
+  min-height: 48px;
+}
