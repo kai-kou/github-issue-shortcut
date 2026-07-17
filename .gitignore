@@ -17,4 +17,5 @@ playwright-report/
 content/pipeline-state/cost_log.jsonl
 content/pipeline-state/daily_cost_stats.json
 content/pipeline-state/.cost_telemetry_pr_date
+content/pipeline-state/.cost_telemetry_push_date
 content/analytics/cost_monthly/

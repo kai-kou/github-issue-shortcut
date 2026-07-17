@@ -5,7 +5,7 @@
 SessionStart フックがこの出力を stdout でセッションコンテキストに注入し、
 セッション開始時の現状把握コスト（gh issue list 等の手動実行）を削減する。
 
-収集内容（gh CLI 経由・GH_TOKEN 必須）:
+収集内容（repo スコープ REST＝`gh api repos/...` 経由。ローカル・クラウド共通経路・Issue #254）:
   - status:in-progress の Issue
   - status:waiting-claude の Issue（上位 N 件）
   - status:waiting-user の Issue
@@ -46,43 +46,66 @@ OUT = _anchored_out()
 WAITING_LIMIT = int(os.environ.get("PROJECT_CONTEXT_WAITING_LIMIT", "15"))
 
 
-def gh_json(args: list[str], default):
-    """gh を実行して JSON を返す。取得失敗（クラウド 403 等）は None を返し「0 件」と区別する。
+def rest_json(path_qs: str):
+    """repo スコープ REST（gh api）で JSON を取得。失敗は None（0 件と区別）。
 
-    クラウドでは gh issue/pr list が egress プロキシに 403 でブロックされる（L-114・Issue #133）。
-    失敗を default（空リスト）に縮退させるとスナップショットが「（なし）」と誤表示され、
-    現状把握を静かに壊すため、None（取得失敗）をセンチネルとして呼び出し元へ伝える。
+    repo スコープ REST はローカル・クラウド両方で動作する唯一の共通経路
+    （クラウドは 2026-07-14 実測で許可・Issue #254。GraphQL 依存の gh issue/pr list は
+    クラウドで 403 のため使わない）。失敗を空リストに縮退させるとスナップショットが
+    「（なし）」と誤表示され現状把握を静かに壊すため、None をセンチネルとして返す。
     """
     try:
         out = subprocess.run(
-            ["gh", *args], capture_output=True, text=True, timeout=20
+            ["gh", "api", path_qs], capture_output=True, text=True, timeout=20
         )
         if out.returncode != 0:
             return None
-        return json.loads(out.stdout or "null") or default
+        return json.loads(out.stdout or "null")
     except Exception:
         return None
 
 
-def issues(label: str, limit: int):
-    return gh_json(
-        [
-            "issue", "list", "-R", REPO, "--state", "open",
-            "--label", label, "--limit", str(limit),
-            "--json", "number,title,updatedAt",
-        ],
-        [],
-    )
+def fetch_open_issues():
+    """open Issue 全件（最大 300 件）を取得し PR を除外する。取得失敗は None。
+
+    ラベル別に 3 回クエリせず 1 回の取得系列でまとめて取り、Python 側でラベル振り分けする
+    （SessionStart のタイムアウト内に収める + ラベル付き PR がページ枠を食って Issue が
+    無警告欠落する過少報告を防ぐ）。
+    """
+    items: list = []
+    for page in (1, 2, 3):
+        chunk = rest_json(f"repos/{REPO}/issues?state=open&per_page=100&page={page}")
+        if chunk is None:
+            if page == 1:
+                return None  # 初回失敗は「取得失敗」（0 件と区別）
+            break  # 2 ページ目以降の失敗は取得済み分で打ち切る（部分欠落を許容）
+        items.extend(chunk)
+        if len(chunk) < 100:
+            break
+    return [i for i in items if "pull_request" not in i]
+
+
+def by_label(open_issues, label: str, limit: int):
+    """取得済み open Issue からラベル該当分を抽出する（open_issues が None なら None）。"""
+    if open_issues is None:
+        return None
+    return [
+        {"number": i.get("number"), "title": i.get("title"),
+         "updatedAt": i.get("updated_at")}
+        for i in open_issues
+        if any(l.get("name") == label for l in i.get("labels", []))
+    ][:limit]
 
 
 def open_prs():
-    return gh_json(
-        [
-            "pr", "list", "-R", REPO, "--state", "open", "--limit", "30",
-            "--json", "number,title,updatedAt,isDraft",
-        ],
-        [],
-    )
+    raw = rest_json(f"repos/{REPO}/pulls?state=open&per_page=30")
+    if raw is None:
+        return None
+    return [
+        {"number": p.get("number"), "title": p.get("title"),
+         "updatedAt": p.get("updated_at"), "isDraft": p.get("draft", False)}
+        for p in raw
+    ]
 
 
 FETCH_FAILED = (
@@ -114,12 +137,41 @@ def fmt(items, empty="（なし）"):
     return "\n".join(lines) + "\n"
 
 
-def main():
-    now = datetime.now(JST).strftime("%Y-%m-%d %H:%M JST")
-    in_progress = issues("status:in-progress", 20)
-    waiting_claude = issues("status:waiting-claude", WAITING_LIMIT)
-    waiting_user = issues("status:waiting-user", 20)
+def render_remote(now: str) -> str:
+    """縮退スナップショット（REST が全滅した場合のフォールバック）。
+
+    通常のクラウドセッションは repo スコープ REST（2026-07-14 実測で許可・Issue #254）により
+    完全スナップショットを生成できる。本関数はプロキシ挙動が 403 に回帰して Issue/PR が
+    一切取得できなくなった場合にのみ使い、4 ブロックの無情報警告を注入する代わりに
+    MCP 経由確認を促す 1 行ポインタ + git 由来の直近コミットだけを注入する（Issue #249）。
+    """
+    commits = recent_commits()
+    md = [
+        f"# プロジェクト状態スナップショット（{now} 更新）\n",
+        "> SessionStart フックが自動注入。最新化は `python3 tools/generate_project_context.py`。\n",
+        "\n## Issue / PR\n",
+        "クラウドでは gh が 403 のため未取得。`mcp__github__list_issues` / "
+        "`mcp__github__list_pull_requests` で直接確認する（status:in-progress / "
+        "status:waiting-claude / status:waiting-user / open PR・L-114）。\n",
+        "\n## 直近のコミット\n",
+        ("\n".join(f"- {c}" for c in commits) + "\n") if commits else "（なし）\n",
+    ]
+    return "".join(md)
+
+
+def render_full(now: str) -> str | None:
+    """完全スナップショット（全環境共通・repo スコープ REST で収集）。
+
+    REST が全滅（クラウドのプロキシ 403 回帰・ローカルの gh 未認証等）した場合は None を
+    返し、呼び出し元が render_remote（縮退版）へフォールバックする。
+    """
+    open_issues = fetch_open_issues()
+    in_progress = by_label(open_issues, "status:in-progress", 20)
+    waiting_claude = by_label(open_issues, "status:waiting-claude", WAITING_LIMIT)
+    waiting_user = by_label(open_issues, "status:waiting-user", 20)
     prs = open_prs()
+    if open_issues is None and prs is None:
+        return None
     commits = recent_commits()
 
     md = []
@@ -144,9 +196,16 @@ def main():
         md.append("（なし）\n")
     md.append("\n## 直近のコミット\n")
     md.append(("\n".join(f"- {c}" for c in commits) + "\n") if commits else "（なし）\n")
+    return "".join(md)
 
+
+def main():
+    now = datetime.now(JST).strftime("%Y-%m-%d %H:%M JST")
+    # クラウドも repo スコープ REST で完全スナップショットを生成する（Issue #254）。
+    # REST が 403 に回帰して全滅した場合のみ縮退版へフォールバック（Issue #249 のノイズ削減を維持）。
+    content = render_full(now) or render_remote(now)
     OUT.parent.mkdir(parents=True, exist_ok=True)
-    OUT.write_text("".join(md), encoding="utf-8")
+    OUT.write_text(content, encoding="utf-8")
     print(f"[project-context] wrote {OUT} ({OUT.stat().st_size} bytes)")
 
 

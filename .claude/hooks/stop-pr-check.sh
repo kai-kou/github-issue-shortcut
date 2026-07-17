@@ -72,8 +72,9 @@ elif [[ $git_ls_exit -eq 2 ]]; then
 else
   # 判定不能（timeout/認証/ネットワーク等） → gh api フォールバック
   # ブランチ名に / を含む場合のためURL エンコードを適用
-  # クラウドでは gh api repos/... が 403（L-114）のため試行しない（unknown のまま PR チェックへ）
-  if [[ "${CLAUDE_CODE_REMOTE:-}" != "true" ]] && command -v gh >/dev/null 2>&1; then
+  # クラウドでも repo スコープ REST は 2026-07-14 実測で許可（プロキシ挙動変化・Issue #254）。
+  # 403 に回帰した場合は空が返り unknown のまま PR チェックへ進む（安全側）。
+  if command -v gh >/dev/null 2>&1; then
     branch_api_result=$(timeout 10s gh api \
       "repos/${REPO_SLUG}/branches/$(printf -- '%s' "$current_branch" | jq -Rr @uri)" \
       --jq '.name' 2>/dev/null || echo "")
@@ -99,20 +100,27 @@ if ! command -v gh >/dev/null 2>&1; then
 fi
 
 total="unknown"
-# クラウドでは gh api repos/.../pulls が確定で 403（L-114）のため試行せず unknown 分岐
-# （MCP 検証への誘導）へ直行する。ローカルでは従来どおり gh api で確認する。
-if [[ "${CLAUDE_CODE_REMOTE:-}" != "true" ]]; then
-  for attempt in 1 2; do
-    result=$(timeout 15s gh api --method GET "repos/${REPO_SLUG}/pulls" \
-      -f head="${REPO_OWNER}:${current_branch}" -f state=all -f per_page=100 \
-      --jq '[.[] | select(.state == "open" or .merged_at != null)] | length' 2>/dev/null || echo "")
-    if [[ "$result" =~ ^[0-9]+$ ]]; then
-      total="$result"
-      break
-    fi
-    [[ $attempt -lt 2 ]] && sleep 2
-  done
-fi
+# repo スコープ REST はクラウドでも 2026-07-14 実測で許可（プロキシ挙動変化・Issue #254）。
+# クラウド・ローカルとも gh api で実確認する。403 に回帰した場合は結果が空になり
+# unknown 分岐（MCP 検証への誘導）へ落ちる（サイレント素通りしない・従来の安全側維持）。
+for attempt in 1 2; do
+  gh_err=$(mktemp)
+  result=$(timeout 15s gh api --method GET "repos/${REPO_SLUG}/pulls" \
+    -f head="${REPO_OWNER}:${current_branch}" -f state=all -f per_page=100 \
+    --jq '[.[] | select(.state == "open" or .merged_at != null)] | length' 2>"$gh_err" || echo "")
+  if [[ "$result" =~ ^[0-9]+$ ]]; then
+    rm -f "$gh_err"
+    total="$result"
+    break
+  fi
+  # 4xx（プロキシ 403 回帰・権限不足等）は決定的失敗なのでリトライしない（即 unknown 分岐へ）
+  if grep -qE 'HTTP 4[0-9][0-9]' "$gh_err" 2>/dev/null; then
+    rm -f "$gh_err"
+    break
+  fi
+  rm -f "$gh_err"
+  [[ $attempt -lt 2 ]] && sleep 2
+done
 
 if [[ "$total" == "0" ]]; then
   if [[ "$branch_check_status" == "exists" ]]; then

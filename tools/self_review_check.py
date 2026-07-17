@@ -40,6 +40,11 @@ DESTRUCTIVE_SCOPE = (
 # ここに現れる（新規追加 A の代理シグナル）。
 WIRING_FILES = ("modules.yaml", ".claude/settings.json", "CLAUDE.md")
 
+# アップデート確認の基準点マーカー（apply-to-repo.sh が下流リポジトリに生成・Issue #205/#206）。
+# コミット漏れは次回 apply-base 実行時に「初回適用」への無警告退行を招くため、
+# PR 差分に含まれるかを問わず git status で直接検出する。
+BASE_SYNC_STATE = ".claude/base-sync-state.json"
+
 # CJK Markdown チェッカー（同ディレクトリの check_cjk_markdown.py）を再利用する。
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 try:
@@ -64,18 +69,6 @@ except Exception as _e:  # noqa: BLE001
     print(f"[self-review] Warning: scan_dangerous_patterns の読み込みに失敗（危険パターン検査を無効化）: {_e}",
           file=sys.stderr)
     _scan_py = None
-
-# デザインルール静的チェッカー（モバイル最速起票 PWA 向け・本プロジェクト固有）。
-try:
-    from check_design_rules import file_violations as _design_file_violations
-except ImportError:
-    # ツール自体が無い場合のみ黙って無効化（任意機能）
-    _design_file_violations = None
-except Exception as _e:  # noqa: BLE001
-    # ツールはあるが壊れている → 黙殺すると再発防止が機能しないので原因を出す
-    print(f"[self-review] Warning: check_design_rules の読み込みに失敗（デザインルール検査を無効化）: {_e}",
-          file=sys.stderr)
-    _design_file_violations = None
 
 
 def cjk_violation_lines(text: str) -> list[int]:
@@ -163,6 +156,24 @@ def update_notes_reminder(files: list[str]) -> str | None:
     )
 
 
+def base_sync_state_reminder() -> str | None:
+    """base-sync-state.json が存在するのに未コミットならリマインドを返す（Issue #206）。
+
+    PR 差分（changed_files）に載るとは限らない（別セッションで生成されたまま放置される
+    ケースがある）ため、対象パス限定の git status で独立に検査する。
+    """
+    if not Path(BASE_SYNC_STATE).is_file():
+        return None
+    r = sh(["git", "status", "--porcelain", "--", BASE_SYNC_STATE])
+    if r.returncode != 0 or not r.stdout.strip():
+        return None
+    return (
+        f"{BASE_SYNC_STATE}（アップデート確認の基準点マーカー）が未コミットです"
+        " → コミットに含めないと次回の apply-base 実行が基準点を見失い、"
+        "無警告で初回適用扱いに退行します（UPDATE NOTES の手動手順確認もスキップされます）"
+    )
+
+
 def main() -> int:
     if not Path(".git").exists() and sh(["git", "rev-parse", "--git-dir"]).returncode != 0:
         return 2
@@ -204,20 +215,6 @@ def main() -> int:
                     f" → python3 tools/check_cjk_markdown.py --fix {f}"
                 )
 
-        # デザインルール静的チェック（モバイル最速起票 PWA 向け・本プロジェクト固有）
-        # font-size 16px 未満・enterkeyhint 欠落・placeholder のみラベル・
-        # prefers-reduced-motion 欠落・viewport ズーム禁止を検出（全て Warning・非ブロッキング）
-        if _design_file_violations is not None and (
-            f.endswith((".tsx", ".css")) or Path(f).name == "index.html"
-        ):
-            try:
-                design_violations = _design_file_violations(f, text)
-            except Exception as e:  # noqa: BLE001
-                warnings.append(f"デザインルール検査でエラー: {f}: {e}")
-            else:
-                for ln, msg in design_violations:
-                    warnings.append(f"[design] {f}:{ln}: {msg}")
-
         # Python 危険パターン（FAIR Layer 0 強化・#56）
         # ERROR=コマンドインジェクション/eval/pickle 等の高危険（ブロック）、WARNING=資格情報ハードコード等。
         # SELF_REVIEW_SECURITY=warn で ERROR を非ブロック化する逃げ道を用意（保守的運用）。
@@ -238,16 +235,34 @@ def main() -> int:
     if note_warn:
         warnings.append(note_warn)
 
-    # 月次コストテレメトリの feature PR 混入チェック（#106 回帰検知）
-    # cost_monthly は専用 PR（commit_cost_telemetry.py）でのみ main に永続化する。
-    # それ以外のブランチの差分に現れたら、Stop hook の WIP 除外が壊れた回帰シグナル。
-    cur_branch = sh(["git", "rev-parse", "--abbrev-ref", "HEAD"]).stdout.strip()
-    if not cur_branch.startswith("chore/cost-telemetry"):
-        tele = [f for f in files if f.startswith("content/analytics/cost_monthly/")]
+    # base-sync-state マーカー未コミット検出（Issue #206）
+    state_warn = base_sync_state_reminder()
+    if state_warn:
+        warnings.append(state_warn)
+
+    # 月次コストテレメトリの feature PR 混入チェック（#106・#242 回帰検知）
+    # cost_monthly は gitignore 対象で、telemetry/cost-data ブランチへのみ永続化する（#242）。
+    # 回帰シグナルは 2 種（#243 レビュー）:
+    #   a) ブランチのコミット済み差分に追加/変更(A/M/R/C)として現れた（WIP 除外の破れ）
+    #   b) 未追跡かつ非 ignore で現れた（gitignore エントリの破れ。--flush が再生成する）
+    # 追跡解除（削除差分）と、旧ブランチ上の未コミット worktree 変更では発火させない。
+    tele_prefix = "content/analytics/cost_monthly/"
+    if any(f.startswith(tele_prefix) for f in files):
+        ns = sh(["git", "diff", "--name-status", f"origin/{default_branch()}...HEAD"]).stdout
+        committed = set()
+        for line in ns.splitlines():
+            parts = line.split("\t")
+            if parts and parts[0][:1] in "AMRC" and parts[-1].startswith(tele_prefix):
+                committed.add(parts[-1])
+        untracked = set(
+            sh(["git", "ls-files", "--others", "--exclude-standard", "--", tele_prefix])
+            .stdout.splitlines()
+        )
+        tele = sorted({f for f in files if f in committed or f in untracked})
         if tele:
             warnings.append(
-                "月次コストテレメトリが feature 差分に混入しています（#106 回帰）: "
-                f"{', '.join(tele)} → Stop hook の WIP add 除外を確認し、差分から外してください"
+                "月次コストテレメトリが feature 差分に混入しています（#106・#242 回帰）: "
+                f"{', '.join(tele)} → gitignore と Stop hook の WIP add 除外を確認し、差分から外してください"
             )
 
     # ruff 補助セキュリティチェック（FAIR Layer 0 補完・#56・opt-in）

@@ -59,6 +59,10 @@ effort: low
   └─ python3 tools/check_pending_pr_reviews.py --actionable-only を実行
   └─ needs_response → pr-review-watcher フローに復帰（指摘対応）
   └─ awaiting_review → 経過時間チェック → 催促 or 問題なし判定 → pr-review-watcher への引き継ぎ（自動マージは行わない）
+  └─ ⚠️ クラウドで gh 取得自体が失敗した場合、本スクリプトは `NO_PENDING_PRS`（exit 0）ではなく
+     **exit code 3** で終了する（「0件」と誤解釈しない・Issue #130）。exit code 3 のときは
+     mcp__github__list_pull_requests(owner, repo, state="open") で直接オープン PR を確認する
+     （詳細: docs/rules/github-mcp-fallback-patterns.md §4）
 ```
 
 ### Step 2: Issue 状態監査
@@ -104,6 +108,15 @@ effort: low
   └─ 24h 以内に同一 worst_status の通知を出していたら無音スキップ（重複抑制・throttle）
   └─ --auto-recover 指定時はプロジェクト定義の収集スクリプトを 1 回だけ手動実行して復旧を試み、成功したら鮮度を再評価して exit code・report を更新する（成功時は Slack に「自動復旧成功」を報告）
   └─ type:bug Issue の自動起票は本ステップのスコープ外（Slack 通知のみ。Issue 化が必要な場合は手動 or self-improvement-loop で対応）
+
+2-h: owner ロール権限逸脱の事後監査（完全版のみ）
+  └─ 対象範囲: 直近 7 日以内に更新されたオープン Issue のコメント
+  └─ 上記範囲内のコメントから `(owner)` プレフィックスのコメントを検出する
+  └─ 該当コメント本文に `status:` 文字列が含まれる（sp:/priority: 以外のラベル操作を示唆）場合、
+     境界逸脱の疑いとして Issue にコメント投稿（「owner ロールの権限境界（sp:/priority: のみ許可）
+     を逸脱した可能性。要確認」）
+  └─ 本ステップは `.claude/agents/owner.md` の自己申告コメント（操作記録義務）に依拠するため、
+     コメントが省略された逸脱は検出できない（既知の限界。機械強制は #150 の議論で却下済み）
 ```
 
 ### Step 3〜6（完全版のみ・週次監査スロット限定）

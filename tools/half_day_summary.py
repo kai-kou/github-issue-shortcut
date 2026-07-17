@@ -124,6 +124,7 @@ def collect_cost(since: datetime) -> dict:
     sessions = 0
     cost = 0.0
     has_cost = False
+    per_sid: dict = {}  # session_id -> (ts, cost) 最新スナップショット（#244 重複排除）
     try:
         for line in log.read_text(encoding="utf-8").splitlines():
             line = line.strip()
@@ -150,14 +151,30 @@ def collect_cost(since: datetime) -> dict:
                         continue
                 except ValueError:
                     pass  # パース不可なら期間判定せずカウント（ベストエフォート）
-            sessions += 1
+            row_cost = None
             for k in ("cost_usd", "cost", "total_cost", "total_cost_usd"):
                 if isinstance(row.get(k), (int, float)):
-                    cost += float(row[k])
-                    has_cost = True
+                    row_cost = float(row[k])
                     break
+            # 同一セッションの累積スナップショット行は最新行（ts 最大）に畳む（#244）。
+            # session_id 欠落行は従来どおり 1 行 = 1 セッション扱い。
+            sid = row.get("session_id")
+            if sid:
+                cur = per_sid.get(sid)
+                if cur is None or ts >= cur[0]:
+                    per_sid[sid] = (ts, row_cost)
+            else:
+                sessions += 1
+                if row_cost is not None:
+                    cost += row_cost
+                    has_cost = True
     except OSError:
         return {}
+    sessions += len(per_sid)
+    for _ts, row_cost in per_sid.values():
+        if row_cost is not None:
+            cost += row_cost
+            has_cost = True
     out = {"sessions": sessions}
     if has_cost:
         out["cost"] = cost
@@ -256,6 +273,7 @@ def _sum_tokens(since: datetime) -> int:
     if not log.exists():
         return 0
     total = 0
+    per_sid: dict = {}  # session_id -> (ts, tokens) 最新スナップショット（#244 重複排除）
     try:
         with log.open(encoding="utf-8") as f:
             for line in f:
@@ -283,12 +301,20 @@ def _sum_tokens(since: datetime) -> int:
                         continue
                 except (ValueError, TypeError):
                     continue
-                for k in ("input_tokens", "output_tokens"):
-                    if isinstance(row.get(k), (int, float)):
-                        total += int(row[k])
+                row_tokens = sum(int(row[k]) for k in ("input_tokens", "output_tokens")
+                                 if isinstance(row.get(k), (int, float)))
+                # 同一セッションの累積スナップショット行は最新行（ts 最大）に畳む（#244）。
+                # session_id 欠落行は従来どおり行単位で加算する。
+                sid = row.get("session_id")
+                if sid:
+                    cur = per_sid.get(sid)
+                    if cur is None or ts >= cur[0]:
+                        per_sid[sid] = (ts, row_tokens)
+                else:
+                    total += row_tokens
     except OSError:
         return 0
-    return total
+    return total + sum(tok for _ts, tok in per_sid.values())
 
 
 def collect_sprint(since: datetime, cost: dict) -> dict:

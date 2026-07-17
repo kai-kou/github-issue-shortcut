@@ -124,14 +124,13 @@ modules:
   # ── リサーチ自動化（任意）──────────────────────────────
   research-runner:
     enabled: true
-    description: "Deep Research 自動実行（ネイティブ /deep-research 主・Gemini/DIY フォールバック）"
+    description: "Deep Research 自動実行（ネイティブ /deep-research 主・claude -p → DIY フォールバック）"
     rules:
       - research-rules.md
     skills:
       - research-runner
     tools:
       - run_deep_research.py
-      - run_deep_research_gemini.py
       - run_deep_research_workflow.py
       - research_schema.json
 
@@ -160,7 +159,6 @@ modules:
       - discussion_specs/loop_engineering_analysis.json
       - discussion_specs/pdf_anthropic_teams_adoption.json
       - discussion_specs/prompt_structuring_design.json
-      - discussion_specs/public_readiness_audit.json
       - discussion_specs/skill_inventory_audit.json
       - discussion_specs/sp_estimation_redesign.json
       - discussion_specs/workflow_base_audit.json

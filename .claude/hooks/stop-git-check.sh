@@ -24,8 +24,17 @@ if ! git rev-parse --git-dir >/dev/null 2>&1; then
   exit 0
 fi
 
+# pathspec（`-- .` / ls-files）は cwd 相対のため、サブディレクトリ起動でも
+# リポジトリ全体を対象にするようリポジトリルートへ固定する（#243 レビュー）
+cd "$(git rev-parse --show-toplevel)" || exit 0
+
+# 月次コストテレメトリは検知対象から除外する（#242）。
+# 新ブランチでは gitignore 対象だが、gitignore 反映前の旧ブランチで追跡されたまま
+# --flush 更新されると毎セッション誤検知するため、pathspec でも明示除外する。
+TELEMETRY_EXCLUDE=':(exclude)content/analytics/cost_monthly/'
+
 # --- 未追跡ファイルを事前取得（関数とメインチェックの両方で再利用） ---
-_untracked_files=$(git ls-files --others --exclude-standard 2>/dev/null)
+_untracked_files=$(git ls-files --others --exclude-standard -- . "$TELEMETRY_EXCLUDE" 2>/dev/null)
 
 # --- 残留ファイル判別関数 ---
 # ワーキングディレクトリの変更が origin/main に既に存在するかチェックする。
@@ -39,10 +48,10 @@ check_residual_files() {
   local has_new_changes=false
 
   # 変更されたファイル（追跡済み）: mainとの差分で判別
-  if ! git diff --quiet 2>/dev/null || ! git diff --cached --quiet 2>/dev/null; then
+  if ! git diff --quiet -- . "$TELEMETRY_EXCLUDE" 2>/dev/null || ! git diff --cached --quiet -- . "$TELEMETRY_EXCLUDE" 2>/dev/null; then
     # ワーキングツリー + インデックス の両方を origin/main と比較
     # --quiet の終了コードで判定（grep パースより堅牢）
-    if ! git diff --quiet origin/main -- . 2>/dev/null || ! git diff --cached --quiet origin/main -- . 2>/dev/null; then
+    if ! git diff --quiet origin/main -- . "$TELEMETRY_EXCLUDE" 2>/dev/null || ! git diff --cached --quiet origin/main -- . "$TELEMETRY_EXCLUDE" 2>/dev/null; then
       has_new_changes=true
     fi
   fi
@@ -77,7 +86,7 @@ check_residual_files() {
 
 # Check for uncommitted changes (both staged and unstaged)
 has_uncommitted=false
-if ! git diff --quiet 2>/dev/null || ! git diff --cached --quiet 2>/dev/null; then
+if ! git diff --quiet -- . "$TELEMETRY_EXCLUDE" 2>/dev/null || ! git diff --cached --quiet -- . "$TELEMETRY_EXCLUDE" 2>/dev/null; then
   has_uncommitted=true
 fi
 

@@ -14,16 +14,16 @@ Stop フックの stdin JSON（transcript_path を含む）またはコマンド
                    → さらに月次集計レポートを content/analytics/cost_monthly/ に書き出し
   Slack サマリー : aggregate_daily_stats_from_log() でリアルタイム集計
 
-【永続化方針（#2263・#106）】
+【永続化方針（#2263・#106・#242）】
   - cost_log.jsonl / daily_cost_stats.json は「揮発する非追跡 state file」
     （.gitignore 対象・git 追跡しない）。クラウドのコンテナ再生成で消える前提。
     直近 30 日のローリング保持のみで、デバッグ・当日予算監視の一次データとして使う。
   - コスト履歴のトレンド分析に必要な一次資料は、月次集計レポート
     content/analytics/cost_monthly/YYYY-MM.json として永続化する。
-  - 【重要・#106】月次レポートの main への commit は tools/commit_cost_telemetry.py が
-    「1 日 1 回の専用 PR」で行う。Stop hook の WIP 自動コミット（git add -A）には相乗り
-    させない（feature ブランチへ churn が混入し、レビューセッションが破棄する不健全な
-    ループに陥るため）。--flush はローカルの月次 JSON を更新するだけで、commit はしない。
+  - 【重要・#242】月次レポートも gitignore 対象（main では追跡しない）。永続化は
+    tools/commit_cost_telemetry.py がテレメトリ専用データブランチ telemetry/cost-data へ
+    「1 日 1 回の plain git push」で行う（gh 非依存）。feature ブランチ・main には
+    一切混入させない。--flush はローカルの月次 JSON を更新するだけで、commit はしない。
 
 計算結果は content/pipeline-state/cost_log.jsonl に追記保存し、
 --summary-only オプションで当日サマリー文字列を標準出力に返す。
@@ -66,6 +66,15 @@ DEFAULT_MODEL = "claude-sonnet-5"
 USD_TO_JPY = 150
 
 JST = timezone(timedelta(hours=9))
+
+
+def _safe_num(value, as_float: bool = False):
+    """破損行耐性の数値変換（"12.5" 等の文字列や None でも例外を出さない・#245 レビュー）。"""
+    try:
+        f = float(value or 0)
+    except (TypeError, ValueError):
+        f = 0.0
+    return f if as_float else int(f)
 
 
 def get_stats_file() -> Path:
@@ -221,8 +230,13 @@ def append_session_log(session_usage: dict, session_id: str) -> None:
 
 def aggregate_daily_stats_from_log(target_date: str | None = None) -> dict:
     """
-    cost_log.jsonl から target_date の行を全件読み込んで集計する。
+    cost_log.jsonl から target_date の行を読み込み、session_id 単位で重複排除して集計する。
     target_date が None の場合は当日（JST）。
+
+    【#244 修正】Stop hook はセッション中に何度も発火し、同一セッションの行は
+    「累積スナップショット」として複数回追記される。行を無条件に合算すると
+    1 セッションが行数分のセッション数・コスト和に水増しされるため、
+    session_id 毎にフィールド毎 max（= 最新スナップショット）へ畳んでから合算する。
     """
     today = target_date or datetime.now(JST).strftime("%Y-%m-%d")
     log_file = get_log_file()
@@ -240,8 +254,9 @@ def aggregate_daily_stats_from_log(target_date: str | None = None) -> dict:
     if not log_file.exists():
         return totals
 
+    per_session: dict = {}
     with open(log_file, encoding="utf-8", errors="replace") as f:
-        for raw_line in f:
+        for i, raw_line in enumerate(f):
             line = raw_line.strip()
             if not line:
                 continue
@@ -250,17 +265,25 @@ def aggregate_daily_stats_from_log(target_date: str | None = None) -> dict:
             except json.JSONDecodeError:
                 continue
 
-            if record.get("date") != today:
-                continue
+            # session_id 欠落行は行番号で独立セッション扱い（旧形式ログとの互換）
+            sid = record.get("session_id") or f"line-{i}"
+            cur = per_session.get(sid)
+            # 最新行（timestamp 最大）が最終累積値。日跨ぎセッションも「最終行の date」
+            # に 1 回だけ帰属させる（date 毎に畳むと両日に重複計上される・#245 レビュー）
+            if cur is None or (record.get("timestamp") or "") >= (cur.get("timestamp") or ""):
+                per_session[sid] = record
 
-            totals["sessions"] += 1
-            totals["input_tokens"] += int(record.get("input_tokens", 0))
-            totals["output_tokens"] += int(record.get("output_tokens", 0))
-            totals["cache_write_tokens"] += int(record.get("cache_write_tokens", 0))
-            totals["cache_read_tokens"] += int(record.get("cache_read_tokens", 0))
-            totals["cost_usd"] = round(totals["cost_usd"] + float(record.get("cost_usd", 0.0)), 6)
-            if record.get("timestamp", "") > totals["last_updated"]:
-                totals["last_updated"] = record["timestamp"]
+    for record in per_session.values():
+        if record.get("date") != today:
+            continue
+        totals["sessions"] += 1
+        totals["input_tokens"] += _safe_num(record.get("input_tokens"))
+        totals["output_tokens"] += _safe_num(record.get("output_tokens"))
+        totals["cache_write_tokens"] += _safe_num(record.get("cache_write_tokens"))
+        totals["cache_read_tokens"] += _safe_num(record.get("cache_read_tokens"))
+        totals["cost_usd"] = round(totals["cost_usd"] + _safe_num(record.get("cost_usd"), as_float=True), 6)
+        if record.get("timestamp", "") > totals["last_updated"]:
+            totals["last_updated"] = record["timestamp"]
 
     return totals
 
@@ -277,10 +300,14 @@ def flush_to_stats_json() -> dict:
     stats_file = get_stats_file()
 
     # 1パスで全日付を集計（O(N) — aggregate_daily_stats_from_log の O(N×D) を回避）
-    accumulated: dict[str, dict] = {}
+    # 【#244 修正】同一セッションの累積スナップショット行を session_id 単位で
+    # 「最新行（timestamp 最大）」に畳んでから日次合算する（行数分の水増しを防ぐ）。
+    # 日跨ぎセッションも「最終行の date」に 1 回だけ帰属させる（date 毎に畳むと
+    # 両日に重複計上される・#245 レビュー）。
+    per_session: dict[str, dict] = {}
     if log_file.exists():
         with open(log_file, encoding="utf-8", errors="replace") as f:
-            for raw_line in f:
+            for i, raw_line in enumerate(f):
                 line = raw_line.strip()
                 if not line:
                     continue
@@ -296,26 +323,35 @@ def flush_to_stats_json() -> dict:
                 date = record.get("date", "")
                 if not date:
                     continue
-                if date not in accumulated:
-                    accumulated[date] = {
-                        "sessions": 0,
-                        "input_tokens": 0,
-                        "output_tokens": 0,
-                        "cache_write_tokens": 0,
-                        "cache_read_tokens": 0,
-                        "cost_usd": 0.0,
-                        "last_updated": "",
-                    }
-                acc = accumulated[date]
-                acc["sessions"] += 1
-                acc["input_tokens"] += int(record.get("input_tokens", 0))
-                acc["output_tokens"] += int(record.get("output_tokens", 0))
-                acc["cache_write_tokens"] += int(record.get("cache_write_tokens", 0))
-                acc["cache_read_tokens"] += int(record.get("cache_read_tokens", 0))
-                acc["cost_usd"] = round(acc["cost_usd"] + float(record.get("cost_usd", 0.0)), 6)
-                ts = record.get("timestamp", "")
-                if ts > acc["last_updated"]:
-                    acc["last_updated"] = ts
+                # session_id 欠落行は行番号で独立セッション扱い（旧形式ログとの互換）
+                sid = record.get("session_id") or f"line-{i}"
+                cur = per_session.get(sid)
+                if cur is None or (record.get("timestamp") or "") >= (cur.get("timestamp") or ""):
+                    per_session[sid] = record
+
+    accumulated: dict[str, dict] = {}
+    for record in per_session.values():
+        date = record.get("date", "")
+        if date not in accumulated:
+            accumulated[date] = {
+                "sessions": 0,
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "cache_write_tokens": 0,
+                "cache_read_tokens": 0,
+                "cost_usd": 0.0,
+                "last_updated": "",
+            }
+        acc = accumulated[date]
+        acc["sessions"] += 1
+        acc["input_tokens"] += _safe_num(record.get("input_tokens"))
+        acc["output_tokens"] += _safe_num(record.get("output_tokens"))
+        acc["cache_write_tokens"] += _safe_num(record.get("cache_write_tokens"))
+        acc["cache_read_tokens"] += _safe_num(record.get("cache_read_tokens"))
+        acc["cost_usd"] = round(acc["cost_usd"] + _safe_num(record.get("cost_usd"), as_float=True), 6)
+        ts = record.get("timestamp", "")
+        if ts > acc["last_updated"]:
+            acc["last_updated"] = ts
 
     # 既存 JSON を読み込んで JSONL 由来データで上書き
     stats: dict = {}
@@ -409,12 +445,13 @@ def rotate_log(keep_days: int = 30) -> int:
 
 
 # ──────────────────────────────────────────────────────────
-# 月次集計レポート（git 追跡・永続化対象）
+# 月次集計レポート（telemetry/cost-data ブランチへ永続化・#242）
 # ──────────────────────────────────────────────────────────
 # cost_log.jsonl / daily_cost_stats.json は揮発する非追跡 state file（クラウドの
 # コンテナ再生成で消える）。コスト履歴のトレンド分析に必要な一次資料は、
-# content/analytics/cost_monthly/YYYY-MM.json に「月次集計レポート」として
-# commit して永続化する（.gitignore 方針: 分析レポートは追跡する）。
+# content/analytics/cost_monthly/YYYY-MM.json に「月次集計レポート」として書き出し、
+# commit_cost_telemetry.py がテレメトリ専用データブランチへ永続化する
+# （gitignore 対象・main では追跡しない・#242）。
 # 19:00 スロットの --flush 後に呼び出し、当月分を upsert で更新する。
 
 _MONTHLY_TOTAL_KEYS = (
@@ -428,7 +465,7 @@ _MONTHLY_TOTAL_KEYS = (
 
 
 def get_monthly_report_dir() -> Path:
-    """月次コストレポートの出力ディレクトリ（git 追跡対象）を返す。"""
+    """月次コストレポートの出力ディレクトリ（gitignore 対象・データブランチへ永続化）を返す。"""
     project_dir = os.environ.get("CLAUDE_PROJECT_DIR", ".")
     return Path(project_dir) / "content" / "analytics" / "cost_monthly"
 
@@ -437,7 +474,8 @@ def write_monthly_reports() -> list[Path]:
     """
     daily_cost_stats.json を月単位で集計し、月次レポートを upsert する。
 
-    - 出力先: content/analytics/cost_monthly/YYYY-MM.json（git 追跡・commit 対象）
+    - 出力先: content/analytics/cost_monthly/YYYY-MM.json（gitignore 対象・
+      telemetry/cost-data ブランチへ commit_cost_telemetry.py が永続化・#242）
     - 既存レポートの daily を読み込み、daily_cost_stats.json 由来の最新日次データで
       上書きマージする（30 日ローテーションで生ログから消えた過去日を保全するため、
       既存 daily は破棄せず温存する）
@@ -591,7 +629,7 @@ def main() -> None:
     # --flush: 19:00 スロット用バッチ処理
     if args.flush:
         day = flush_to_stats_json()
-        # 月次集計レポートを永続化（content/analytics/cost_monthly/*.json・commit 対象）
+        # 月次集計レポートをローカル更新（永続化は commit_cost_telemetry.py・#242）
         reports = write_monthly_reports()
         if reports:
             print(f"[calc_daily_cost] 月次レポート更新: {', '.join(p.name for p in reports)}", file=sys.stderr)

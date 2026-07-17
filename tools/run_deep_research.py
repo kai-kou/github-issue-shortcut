@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
 """tools/run_deep_research.py
 
-Deep Research のフォールバックランナー（Gemini / DIY）。
+Deep Research の最終フォールバックランナー（DIY・ウェブリサーチ）。
 
-主エンジンはネイティブ /deep-research（`tools/run_deep_research_workflow.py`）。
-本ファイルは主エンジンが真に失敗したときの第2/最終フォールバックを担う:
-- 第2エンジン: Gemini Deep Research Max API（`tools/run_deep_research_gemini.py`）
-- 最終フォールバック: DIY (Sonnet 5 + WebSearch) 本ファイル内の DIY 実装
+主エンジンはネイティブ /deep-research（対話起動は Skill 直接呼び出し・
+自律起動は `tools/run_deep_research_workflow.py` の `claude -p` サブプロセス）。
+本ファイルはそれらが真に失敗したときの最終フォールバックを担う:
+- 最終フォールバック: DIY (Sonnet 5 + WebSearch/WebFetch) 本ファイル内の DIY 実装
+- 外部 LLM API（Gemini 等）によるディープリサーチは行わない（Issue #260 で廃止）
 - 月コスト上限（API 従量経路時）: $50（warning $45・breaker $50）
 
 呼び出し方法（{ID} は任意のリサーチ識別子 slug）:
     python3 tools/run_deep_research.py {ID}
-    python3 tools/run_deep_research.py {ID} --engine diy
-    python3 tools/run_deep_research.py {ID} --engine gemini  # デフォルト
     python3 tools/run_deep_research.py {ID} --dry-run
+    python3 tools/run_deep_research.py {ID} --fallback-reason "workflow EXIT=4" --dry-run  # 発動記録のみ
 
 出力:
     content/research/{ID}_deep_research.md (Markdown 正規形式)
@@ -40,14 +40,14 @@ JST = timezone(timedelta(hours=9))
 REPO_ROOT = Path(__file__).resolve().parent.parent
 RESEARCH_DIR = REPO_ROOT / "content" / "research"
 COST_LOG = REPO_ROOT / "content" / "pipeline-state" / "research_cost_log.jsonl"
-# Gemini→DIY フォールバック発動の記録（L-094 可視化・サイレントフォールバック防止）
+# /deep-research→DIY フォールバック発動の記録（L-094 可視化・サイレントフォールバック防止）
 FALLBACK_LOG = REPO_ROOT / "content" / "pipeline-state" / "research_fallback_log.jsonl"
 MONTHLY_BUDGET_USD = 50.0
 MONTHLY_WARNING_USD = 45.0
 
 # サブスク週次枠経路（#2562/#2563）: 実課金しない /deep-research のコストは
 # run_deep_research_workflow.py の log_cost が cost_usd=0.0 で記録する（対策A）。本ランナーは
-# Gemini/DIY（実課金）用のため check_budget はバイパスせず常に有効にしておく（対策B）。
+# DIY（実課金）用のため check_budget はバイパスせず常に有効にしておく（対策B）。
 
 
 @dataclass
@@ -241,20 +241,30 @@ def append_cost_log(result: RunResult) -> None:
         fp.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
 
-def append_fallback_log(research_id: str, reason: str) -> None:
-    """Gemini→DIY フォールバック発動を記録する（L-094 可視化）。
+def append_fallback_log(
+    research_id: str,
+    reason: str,
+    from_engine: str = "claude-deep-research-workflow",
+    to_engine: str = "diy-sonnet-websearch",
+    exit_code: int | None = None,
+) -> None:
+    """フォールバック発動を記録する（L-094 可視化）。
 
-    サイレントフォールバック（[WARN] のみで握りつぶし）により Gemini が数週間
-    一度も使われていない状態を見逃した（Issue #2364）。発動理由を JSON Lines に
-    永続記録し、フォールバック発動率の監視・恒久対応の判断材料にする。
+    サイレントフォールバック（[WARN] のみで握りつぶし）は発動状態の見逃しを招く
+    （Issue #2364 の教訓）。発動理由を JSON Lines に永続記録し、
+    フォールバック発動率の監視・恒久対応の判断材料にする。
+    （#4699: run_deep_research_workflow.py と共用する唯一のロガーに統合。
+    exit_code は主エンジンの終了コード（1/4/5/6）・DIY 等では None。
+    EXIT=6 は to_engine="skip-retry-claude-p"＝スキップ再試行であり DIY 降下ではない）
     """
     FALLBACK_LOG.parent.mkdir(parents=True, exist_ok=True)
     entry = {
         "timestamp": datetime.now(JST).isoformat(),
         "research_id": research_id,
-        "from_engine": "gemini-deep-research-max",
-        "to_engine": "diy-sonnet-websearch",
-        "reason": reason,
+        "from_engine": from_engine,
+        "to_engine": to_engine,
+        "exit_code": exit_code,
+        "reason": reason[:1000],
     }
     with FALLBACK_LOG.open("a", encoding="utf-8") as fp:
         fp.write(json.dumps(entry, ensure_ascii=False) + "\n")
@@ -264,7 +274,7 @@ def check_budget(estimated_cost: float) -> str | None:
     """予算超過判定。サーキットブレーカー時は理由文字列を返す（None ならOK）。"""
     # サブスク経路（#2562）の /deep-research コストは research_cost_log.jsonl に cost_usd=0.0 で
     # 記録される（#2563 対策A・run_deep_research_workflow.py log_cost）ため、get_monthly_cost_total は
-    # 実課金（Gemini/DIY）のみを集計する。よって本ブレーカーはサブスク経路でも誤発火せず、
+    # 実課金（DIY）のみを集計する。よって本ブレーカーはサブスク経路でも誤発火せず、
     # フォールバック（実課金）に対する $50 安全ガードを常に維持する。
     current = get_monthly_cost_total()
     projected = current + estimated_cost
@@ -304,17 +314,6 @@ def run_diy(research_id: str, theme: str, prompt_text: str) -> RunResult:
     result.cost_usd = 0.55  # 想定単価（Sonnet 5 60K入力+25K出力）
     result.search_count = 8  # 想定値
     return result
-
-
-def run_gemini(research_id: str, theme: str, prompt_text: str) -> RunResult:
-    """Gemini Deep Research Max 実行（別モジュールに委譲）。"""
-    try:
-        from run_deep_research_gemini import execute as gemini_execute  # type: ignore
-    except ImportError:
-        # tools/ 直下の sibling として import
-        sys.path.insert(0, str(Path(__file__).parent))
-        from run_deep_research_gemini import execute as gemini_execute  # type: ignore
-    return gemini_execute(research_id=research_id, theme=theme, prompt_text=prompt_text)
 
 
 def write_outputs(result: RunResult) -> tuple[Path, Path]:
@@ -375,19 +374,32 @@ def render_markdown(schema: dict) -> str:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Deep Research ランナー（Gemini/DIY フォールバック）")
+    parser = argparse.ArgumentParser(
+        description="Deep Research 最終フォールバックランナー（DIY・ウェブリサーチ）"
+    )
     parser.add_argument("research_id", help="リサーチ ID（任意の slug・例: my-topic）")
     parser.add_argument(
         "--engine",
-        choices=["gemini", "diy"],
-        default="gemini",
-        help="メインエンジン（既定: gemini）。フォールバックは自動で diy に切替",
+        choices=["diy"],
+        default="diy",
+        help="エンジン（diy のみ。外部 LLM API 経路は Issue #260 で廃止）",
     )
     parser.add_argument("--dry-run", action="store_true", help="実行せず予算チェックのみ")
+    parser.add_argument(
+        "--fallback-reason",
+        default=None,
+        help="主エンジン（/deep-research）からのフォールバック発動理由。"
+        "指定時は research_fallback_log.jsonl に永続記録する（サイレントフォールバック禁止・L-094）",
+    )
     args = parser.parse_args()
 
+    # フォールバック発動記録は load_prompt より先に行う（プロンプト復元失敗で
+    # 例外終了しても発動理由が必ず残るように・L-094 サイレントフォールバック防止）
+    if args.fallback_reason:
+        append_fallback_log(args.research_id, args.fallback_reason)
+        sys.stderr.write(f"[INFO] フォールバック発動を {FALLBACK_LOG} に記録しました\n")
     theme, prompt_text = load_prompt(args.research_id)
-    estimated = 5.0 if args.engine == "gemini" else 0.55
+    estimated = 0.55
     breaker = check_budget(estimated)
     if breaker:
         sys.stderr.write(f"[ERROR] {breaker}\n")
@@ -396,27 +408,10 @@ def main() -> int:
         print(f"[DRY-RUN] {args.research_id} / engine={args.engine} / 見積 ${estimated:.2f}")
         return 0
 
-    if args.engine == "gemini":
-        try:
-            result = run_gemini(args.research_id, theme, prompt_text)
-        except Exception as exc:  # noqa: BLE001
-            # サイレントフォールバック禁止（L-094）: 理由を永続記録して非ゼロ終了する。
-            # 実際の DIY フォールバックは research-runner SKILL.md Step 4
-            # （セッション内 WebSearch/WebFetch）に委ねる。ここで run_diy() スケルトンを
-            # 呼ぶと sections が埋まらず「DIY に切替」したように見えて誤解を招くため呼ばない
-            # （PR #2377 Copilot 指摘）。SKILL.md Step 3 の「EXIT=1 → Step 4」と整合する。
-            reason = f"{type(exc).__name__}: {exc}"
-            append_fallback_log(args.research_id, reason)
-            sys.stderr.write(
-                f"[WARN] Gemini 実行失敗。理由を {FALLBACK_LOG} に記録しました。"
-                f" DIY フォールバックは research-runner SKILL.md Step 4 で実行してください: {reason}\n"
-            )
-            return 1
-    else:
-        result = run_diy(args.research_id, theme, prompt_text)
+    result = run_diy(args.research_id, theme, prompt_text)
 
     # B: 空 sections の場合はファイルを書かずエラー終了（Issue #2127）
-    # DIY Phase A スケルトンや Gemini 失敗後のフォールバックが空結果を返した場合に
+    # DIY Phase A スケルトンが空結果を返した場合に
     # 空ファイルが生成されて「研究済み」フィルタをすり抜けるのを防止する。
     if not result.sections:
         sys.stderr.write(
