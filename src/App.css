@@ -566,6 +566,15 @@ a.btn-primary {
   background: var(--color-danger-bg);
 }
 
+.submit-result.queued {
+  border: 1px solid var(--color-accent);
+  background: var(--color-inset);
+}
+
+.offline-queue-status {
+  color: var(--color-accent);
+}
+
 /* ---- ショートカット作成ヘルパー（C1-1/C2-2） ---- */
 
 .shortcut-form {

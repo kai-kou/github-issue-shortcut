@@ -1,6 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useLanguage } from "../i18n/LanguageContext";
-import type { Translations } from "../i18n/translations";
 import { loadRecentRepos, recordRecentRepo } from "./recentRepos";
 import { buildRepoIndex } from "./repoIndex";
 import { IssueForm, type IssueInput } from "../issues/IssueForm";
@@ -8,6 +7,8 @@ import { loadDraft, clearDraft } from "../issues/draft";
 import { HighlightedTextInput } from "../issues/HighlightedTextInput";
 import { findTokens, isTokenMatched, stripTokens } from "../issues/smartInput";
 import type { PrefillParams } from "../issues/prefillParams";
+import { submitErrorCode, submitErrorMessage } from "../issues/submitError";
+import { useOfflineQueueSync } from "../issues/useOfflineQueueSync";
 
 type Repo = { id: number; fullName: string; private: boolean; pushAccess: boolean };
 type ReposState = { status: "loading" } | { status: "error" } | { status: "ready"; repos: Repo[] };
@@ -15,39 +16,8 @@ type SubmitState =
   | { status: "idle" }
   | { status: "submitting" }
   | { status: "success"; number: number; htmlUrl: string }
+  | { status: "queued" }
   | { status: "error"; code: string };
-
-/** `/api/issues` の失敗レスポンス（`{ error: { code, message } }`・B5-2・FR-9）から表示コードを読み取る。 */
-async function submitErrorCode(res: Response): Promise<string> {
-  try {
-    const data = (await res.json()) as { error?: { code?: string } };
-    return data.error?.code ?? "upstream_failed";
-  } catch {
-    return "upstream_failed";
-  }
-}
-
-/** エラー種別ごとに識別可能な文言へ振り分ける（B5-2）。未知のコードは汎用メッセージにフォールバックする。 */
-function submitErrorMessage(code: string, t: Translations): string {
-  switch (code) {
-    case "reauth_required":
-      return t.issueForm.errors.reauthRequired;
-    case "rate_limited":
-      return t.issueForm.errors.rateLimited;
-    case "forbidden":
-      return t.issueForm.errors.forbidden;
-    case "not_found":
-      return t.issueForm.errors.notFound;
-    case "issues_disabled":
-      return t.issueForm.errors.issuesDisabled;
-    case "validation_failed":
-      return t.issueForm.errors.validationFailed;
-    case "duplicate_submission":
-      return t.issueForm.errors.duplicateSubmission;
-    default:
-      return t.issueForm.errorMessage;
-  }
-}
 
 interface RepoPickerProps {
   /** URL パラメータ起動（B1-2・FR-15）の初期値。下書き（B5-1）が存在する場合はそちらを優先する。 */
@@ -69,6 +39,8 @@ export function RepoPicker({ prefill = null }: RepoPickerProps) {
   // 初期値として引き継ぐ（quickAddTitle）。一覧タップ経由の選択では null になる。
   const [quickAddTitle, setQuickAddTitle] = useState<string | null>(null);
   const dialogRef = useRef<HTMLDialogElement>(null);
+  // オフラインキュー（B4-2・FR-22）: ネットワーク到達不能時の起票を保持し、オンライン復帰後に自動再送する。
+  const { pendingCount, enqueue: enqueueOffline } = useOfflineQueueSync();
 
   /** dialog がまだ開いていなければ開く（二重 showModal() は例外になるためガードする）。 */
   function openDialog() {
@@ -192,8 +164,12 @@ export function RepoPicker({ prefill = null }: RepoPickerProps) {
       // 連続起票へ引き継がない判定にも流用する（同じ雛形が繰り返し復活しないように）。
       setFormKey((k) => k + 1);
     } catch {
-      // fetch 自体の失敗（オフライン等）はネットワーク断とみなし汎用メッセージにフォールバックする。
-      setSubmitState({ status: "error", code: "network" });
+      // fetch 自体の失敗（オフライン・ネットワーク断）はオフラインキュー（B4-2・FR-22）へ積み、
+      // オンライン復帰後に自動再送する。下書き（B5-1）は再送が確定するまで消さずに残す
+      // （再送失敗時の手動復旧経路として機能する）。
+      enqueueOffline({ repo: selected, title: input.title, body: input.body, labels: input.labels });
+      setSubmitState({ status: "queued" });
+      setFormKey((k) => k + 1);
     }
   }
 
@@ -202,6 +178,11 @@ export function RepoPicker({ prefill = null }: RepoPickerProps) {
 
   return (
     <div className="card">
+      {pendingCount > 0 ? (
+        <p className="status-note offline-queue-status">
+          {t.repoPicker.offlineQueuePending} {pendingCount}
+        </p>
+      ) : null}
       <label className="repo-search">
         <span className="field-label">{t.repoPicker.searchLabel}</span>
         <HighlightedTextInput
@@ -272,6 +253,9 @@ export function RepoPicker({ prefill = null }: RepoPickerProps) {
                     {t.issueForm.viewIssueLink}
                   </a>
                 </p>
+              ) : null}
+              {submitState.status === "queued" ? (
+                <p className="submit-result queued">{t.issueForm.queuedMessage}</p>
               ) : null}
               {submitState.status === "error" ? (
                 <p className="submit-result error">
