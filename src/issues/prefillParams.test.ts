@@ -7,6 +7,7 @@ describe("parsePrefillParams", () => {
       repo: "owner/name",
       labels: ["bug", "ui"],
       title: "雛形",
+      body: null,
     });
   });
 
@@ -15,26 +16,67 @@ describe("parsePrefillParams", () => {
       repo: null,
       labels: ["bug", "ui"],
       title: null,
+      body: null,
     });
   });
 
   it("returns nulls and an empty labels array when no params are present", () => {
-    expect(parsePrefillParams("")).toEqual({ repo: null, labels: [], title: null });
+    expect(parsePrefillParams("")).toEqual({ repo: null, labels: [], title: null, body: null });
   });
 
   it("treats a blank param value as absent", () => {
-    expect(parsePrefillParams("?repo=&title=")).toEqual({ repo: null, labels: [], title: null });
+    expect(parsePrefillParams("?repo=&title=")).toEqual({ repo: null, labels: [], title: null, body: null });
+  });
+
+  // B3-4: Web Share Target は manifest の params マッピングで text→body / url→url として届く（vite.config.ts）。
+  it("reads body from the Web Share Target text param", () => {
+    expect(parsePrefillParams("?title=%E8%A8%98%E4%BA%8B&body=%E5%85%B1%E6%9C%89%E3%81%97%E3%81%9F%E3%83%A1%E3%83%A2")).toEqual({
+      repo: null,
+      labels: [],
+      title: "記事",
+      body: "共有したメモ",
+    });
+  });
+
+  it("appends url to body when both are present and body doesn't already contain it", () => {
+    expect(parsePrefillParams("?body=%E3%83%A1%E3%83%A2&url=https%3A%2F%2Fexample.com%2Fa")).toEqual({
+      repo: null,
+      labels: [],
+      title: null,
+      body: "メモ\n\nhttps://example.com/a",
+    });
+  });
+
+  it("uses url alone as body when text/body is absent (Android では url が空になりがちな逆パターンの保険)", () => {
+    expect(parsePrefillParams("?url=https%3A%2F%2Fexample.com%2Fb")).toEqual({
+      repo: null,
+      labels: [],
+      title: null,
+      body: "https://example.com/b",
+    });
+  });
+
+  it("does not duplicate the url when body already contains it (Android の典型: 共有 URL が text に入り url は空)", () => {
+    expect(
+      parsePrefillParams("?body=%E8%A6%8B%E3%81%A6%EF%BC%9A+https%3A%2F%2Fexample.com%2Fc&url=https%3A%2F%2Fexample.com%2Fc"),
+    ).toEqual({
+      repo: null,
+      labels: [],
+      title: null,
+      body: "見て： https://example.com/c",
+    });
   });
 });
 
 describe("hasPrefillParams", () => {
   it("is false when nothing is set", () => {
-    expect(hasPrefillParams({ repo: null, labels: [], title: null })).toBe(false);
+    expect(hasPrefillParams({ repo: null, labels: [], title: null, body: null })).toBe(false);
   });
 
   it("is true when any single field is set", () => {
-    expect(hasPrefillParams({ repo: "owner/name", labels: [], title: null })).toBe(true);
-    expect(hasPrefillParams({ repo: null, labels: ["bug"], title: null })).toBe(true);
-    expect(hasPrefillParams({ repo: null, labels: [], title: "雛形" })).toBe(true);
+    expect(hasPrefillParams({ repo: "owner/name", labels: [], title: null, body: null })).toBe(true);
+    expect(hasPrefillParams({ repo: null, labels: ["bug"], title: null, body: null })).toBe(true);
+    expect(hasPrefillParams({ repo: null, labels: [], title: "雛形", body: null })).toBe(true);
+    expect(hasPrefillParams({ repo: null, labels: [], title: null, body: "メモ" })).toBe(true);
   });
 });
