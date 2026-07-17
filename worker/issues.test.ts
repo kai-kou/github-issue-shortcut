@@ -273,6 +273,50 @@ describe("POST /api/issues のオフラインキュー再送の重複防止 (B4-
     expect(second.status).toBe(201);
     expect(fetchSpy).toHaveBeenCalledTimes(2);
   });
+
+  it("releases the content_hash reservation when rejected solely by the clientRequestId check, so a genuinely new submission with the same content is not blocked afterwards", async () => {
+    const { cookie, userId } = await loginSessionForUser();
+    const fetchSpy = vi.fn(async () => jsonResponse(201, { number: 53, html_url: "https://github.com/kai-kou/alpha/issues/53" }));
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const first = await postIssue(cookie, { clientRequestId: "cr-5" });
+    expect(first.status).toBe(201);
+
+    // FR-24 の短時間窓（30秒）が経過した体にする。content_hash の予約は stale になるが、
+    // client_request_id ("cr-5") は 26h 窓内でまだ有効なため、再送はここで初めて
+    // client_request_id 側の判定でブロックされる（reserveIssueLog は一旦 true を返す）。
+    await db
+      .prepare("UPDATE issue_log SET created_at = created_at - 60 WHERE user_id = ? AND repo = ?")
+      .bind(userId, "kai-kou/alpha")
+      .run();
+
+    const resend = await postIssue(cookie, { clientRequestId: "cr-5" });
+    expect(resend.status).toBe(409);
+    expect(fetchSpy).toHaveBeenCalledTimes(1); // GitHub は呼ばれていない
+
+    // client_request_id の判定でリジェクトされた際に content_hash の予約が解放されているべき。
+    // 解放されていなければ、直後の別送信（新しい clientRequestId・同一内容）まで
+    // duplicate_submission としてブロックされてしまう。
+    const genuinelyNew = await postIssue(cookie, { clientRequestId: "cr-6" });
+    expect(genuinelyNew.status).toBe(201);
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it("treats an oversized clientRequestId as absent instead of truncating it, avoiding collisions between unrelated long ids", async () => {
+    const { cookie } = await loginSessionForUser();
+    const fetchSpy = vi.fn(async () => jsonResponse(201, { number: 54, html_url: "https://github.com/kai-kou/alpha/issues/54" }));
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const sharedPrefix = "x".repeat(100);
+    const first = await postIssue(cookie, { title: "first", clientRequestId: `${sharedPrefix}-a` });
+    expect(first.status).toBe(201);
+
+    // 100 文字を超える別内容の送信。切り詰めていれば同じ先頭 100 文字に衝突して 409 になってしまうが、
+    // 上限超過は「無視（未指定扱い）」にしたため、独立した新規送信として通るはず。
+    const second = await postIssue(cookie, { title: "second", clientRequestId: `${sharedPrefix}-b` });
+    expect(second.status).toBe(201);
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe("POST /api/issues のアプリ側レート制限 (不正利用対策・PR-4/OQ-6)", () => {

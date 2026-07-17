@@ -340,9 +340,13 @@ app.post("/api/issues", async (c) => {
     : [];
   // クライアントが起票の最初の送信試行時に生成し、SW/クライアント双方の再送経路で使い回す
   // 冪等性キー（B4-4・OQ-8）。省略可（旧クライアント・queue を経由しない直接呼び出し等）。
+  // 上限超過は他の入力（shortcut フィールド等）と同様「無視」であり、切り詰めはしない
+  // （切り詰めると、別々の長い ID が同じ切り詰め後の値に衝突し、無関係な送信を誤って
+  // 重複判定してしまうため）。
+  const clientRequestIdTrimmed = typeof clientRequestIdValue === "string" ? clientRequestIdValue.trim() : "";
   const clientRequestId =
-    typeof clientRequestIdValue === "string" && clientRequestIdValue.trim().length > 0
-      ? clientRequestIdValue.trim().slice(0, CLIENT_REQUEST_ID_MAX_LENGTH)
+    clientRequestIdTrimmed.length > 0 && clientRequestIdTrimmed.length <= CLIENT_REQUEST_ID_MAX_LENGTH
+      ? clientRequestIdTrimmed
       : null;
   if (!repo || !title) {
     return c.json(jsonError("invalid_request", "repo and title are required"), 400);
@@ -368,6 +372,10 @@ app.post("/api/issues", async (c) => {
   if (clientRequestId !== null) {
     const requestIdReserved = await reserveRequestId(c.env.DB, user.id, clientRequestId, OFFLINE_QUEUE_DEDUPE_WINDOW);
     if (!requestIdReserved) {
+      // この呼び出しでは GitHub を呼んでいない（=実質的に何も送信していない）ため、直前に
+      // reserveIssueLog が新規予約・更新した content_hash 予約を残したままにしない。残すと、
+      // 以降 30 秒はこの内容の正当な別送信まで duplicate_submission としてブロックしてしまう。
+      await releaseIssueLogReservation(c.env.DB, user.id, repo, contentHash);
       return c.json(
         jsonError("duplicate_submission", "this issue was already submitted moments ago"),
         409,
@@ -381,8 +389,11 @@ app.post("/api/issues", async (c) => {
     return c.json({ number: issue.number, htmlUrl: issue.htmlUrl }, 201);
   } catch (err) {
     // 予約したまま失敗すると、正当な再試行まで duplicate_submission でブロックし続けてしまうため解放する。
-    await releaseIssueLogReservation(c.env.DB, user.id, repo, contentHash);
-    if (clientRequestId !== null) await releaseRequestIdReservation(c.env.DB, user.id, clientRequestId);
+    // 一方の解放が例外を投げても他方は解放を試みる（片方だけ最大 26h 取り残される事故を避ける）。
+    await Promise.allSettled([
+      releaseIssueLogReservation(c.env.DB, user.id, repo, contentHash),
+      ...(clientRequestId !== null ? [releaseRequestIdReservation(c.env.DB, user.id, clientRequestId)] : []),
+    ]);
     return issueCreationErrorResponse(c, err);
   }
 });

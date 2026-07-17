@@ -55,12 +55,12 @@ export function useOfflineQueueSync() {
               credentials: "same-origin",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
-              repo: entry.repo,
-              title: entry.title,
-              body: entry.body,
-              labels: entry.labels,
-              clientRequestId: entry.id,
-            }),
+                repo: entry.repo,
+                title: entry.title,
+                body: entry.body,
+                labels: entry.labels,
+                clientRequestId: entry.id,
+              }),
             });
           } catch {
             // ネットワーク到達不能（まだオフライン）。キューに残し、次の online イベントで再試行する。
