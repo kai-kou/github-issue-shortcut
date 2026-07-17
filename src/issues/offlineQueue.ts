@@ -5,6 +5,9 @@ const STORAGE_KEY = "issue-shortcut:offline-queue";
 export type QueueStatus = "pending" | "failed";
 
 export type QueuedIssue = {
+  /** キュー管理用 ID。最初の送信試行時に発行し、SW 側 Background Sync・クライアント側再送の
+   * 双方で同じ値を送り続けることで、サーバー側の長時間窓の重複防止（B4-4・OQ-8）に使う
+   * client_request_id を兼ねる。 */
   id: string;
   repo: string;
   title: string;
@@ -50,9 +53,10 @@ function persist(queue: QueuedIssue[]): void {
   }
 }
 
-/** オフライン（ネットワーク到達不能）による送信失敗をキューへ積む。 */
-export function enqueueOfflineIssue(entry: Omit<QueuedIssue, "id" | "queuedAt" | "status">): QueuedIssue[] {
-  const queued: QueuedIssue = { ...entry, id: crypto.randomUUID(), queuedAt: Date.now(), status: "pending" };
+/** オフライン（ネットワーク到達不能）による送信失敗をキューへ積む。`id` は最初の送信試行時に
+ * 発行済みの client_request_id を呼び出し側から渡す（SW キューとの重複防止キーを合わせるため・B4-4）。 */
+export function enqueueOfflineIssue(entry: Omit<QueuedIssue, "queuedAt" | "status">): QueuedIssue[] {
+  const queued: QueuedIssue = { ...entry, queuedAt: Date.now(), status: "pending" };
   const next = [...loadOfflineQueue(), queued];
   persist(next);
   return next;

@@ -38,7 +38,10 @@ function jsonResponse(status: number, body: unknown, headers: Record<string, str
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json", ...headers } });
 }
 
-function postIssue(cookie: string, input: { repo?: string; title?: string; body?: string } = {}) {
+function postIssue(
+  cookie: string,
+  input: { repo?: string; title?: string; body?: string; clientRequestId?: string } = {},
+) {
   return SELF.fetch("https://example.com/api/issues", {
     method: "POST",
     headers: { "Content-Type": "application/json", Cookie: cookie },
@@ -200,6 +203,119 @@ describe("POST /api/issues の二重送信防止 (B4-3/FR-24)", () => {
     expect(statuses).toEqual([201, 409]);
     // 送信枠の予約が原子的なため、ほぼ同時の二重送信でも GitHub には 1 回しか呼ばれない。
     expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+});
+
+/** clientRequestId ベースの検証のため userId も返すログインヘルパー（loginSession は cookie のみ返す）。 */
+async function loginSessionForUser(): Promise<{ cookie: string; userId: string }> {
+  const userId = await upsertUser(db, { id: Math.floor(Math.random() * 1e9), login: "u2", avatar_url: "" });
+  await saveTokens(db, userId, {
+    accessEnc: await encryptString(testEnv.TOKEN_ENCRYPTION_KEY, "test-access-token"),
+    accessExpiresAt: nowSeconds() + 3600,
+    refreshEnc: null,
+    refreshExpiresAt: null,
+  });
+  const sessionId = randomToken(32);
+  await createSession(db, await hashSessionId(sessionId), userId, 3600);
+  return { cookie: `${SESSION_COOKIE}=${sessionId}`, userId };
+}
+
+describe("POST /api/issues のオフラインキュー再送の重複防止 (B4-4/OQ-8)", () => {
+  it("keeps blocking a resend with the same clientRequestId even after the FR-24 short window (30s) has elapsed", async () => {
+    const { cookie, userId } = await loginSessionForUser();
+    const fetchSpy = vi.fn(async () => jsonResponse(201, { number: 50, html_url: "https://github.com/kai-kou/alpha/issues/50" }));
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const first = await postIssue(cookie, { clientRequestId: "cr-1" });
+    expect(first.status).toBe(201);
+
+    // FR-24 の短時間窓（30秒・content_hash）が経過した体にする。client_request_id は別テーブル
+    // （長時間窓）なので影響を受けず、B4-4 の重複防止が単独で機能することを確認する。
+    await db
+      .prepare("UPDATE issue_log SET created_at = created_at - 60 WHERE user_id = ? AND repo = ?")
+      .bind(userId, "kai-kou/alpha")
+      .run();
+
+    const second = await postIssue(cookie, { clientRequestId: "cr-1" });
+    expect(second.status).toBe(409);
+    const body = (await second.json()) as { error: { code: string } };
+    expect(body.error.code).toBe("duplicate_submission");
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("releases the client_request_id reservation on GitHub failure, allowing a genuine retry through", async () => {
+    const { cookie } = await loginSessionForUser();
+    let call = 0;
+    const fetchSpy = vi.fn(async () =>
+      call++ === 0
+        ? jsonResponse(502, { message: "boom" })
+        : jsonResponse(201, { number: 51, html_url: "https://github.com/kai-kou/alpha/issues/51" }),
+    );
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const first = await postIssue(cookie, { clientRequestId: "cr-2" });
+    expect(first.status).toBe(502);
+
+    const second = await postIssue(cookie, { clientRequestId: "cr-2" });
+    expect(second.status).toBe(201);
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not affect a genuinely new submission (different clientRequestId, different content)", async () => {
+    const { cookie } = await loginSessionForUser();
+    const fetchSpy = vi.fn(async () => jsonResponse(201, { number: 52, html_url: "https://github.com/kai-kou/alpha/issues/52" }));
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const first = await postIssue(cookie, { title: "first", clientRequestId: "cr-3" });
+    expect(first.status).toBe(201);
+
+    const second = await postIssue(cookie, { title: "second", clientRequestId: "cr-4" });
+    expect(second.status).toBe(201);
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it("releases the content_hash reservation when rejected solely by the clientRequestId check, so a genuinely new submission with the same content is not blocked afterwards", async () => {
+    const { cookie, userId } = await loginSessionForUser();
+    const fetchSpy = vi.fn(async () => jsonResponse(201, { number: 53, html_url: "https://github.com/kai-kou/alpha/issues/53" }));
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const first = await postIssue(cookie, { clientRequestId: "cr-5" });
+    expect(first.status).toBe(201);
+
+    // FR-24 の短時間窓（30秒）が経過した体にする。content_hash の予約は stale になるが、
+    // client_request_id ("cr-5") は 26h 窓内でまだ有効なため、再送はここで初めて
+    // client_request_id 側の判定でブロックされる（reserveIssueLog は一旦 true を返す）。
+    await db
+      .prepare("UPDATE issue_log SET created_at = created_at - 60 WHERE user_id = ? AND repo = ?")
+      .bind(userId, "kai-kou/alpha")
+      .run();
+
+    const resend = await postIssue(cookie, { clientRequestId: "cr-5" });
+    expect(resend.status).toBe(409);
+    expect(fetchSpy).toHaveBeenCalledTimes(1); // GitHub は呼ばれていない
+
+    // client_request_id の判定でリジェクトされた際に content_hash の予約が解放されているべき。
+    // 解放されていなければ、直後の別送信（新しい clientRequestId・同一内容）まで
+    // duplicate_submission としてブロックされてしまう。
+    const genuinelyNew = await postIssue(cookie, { clientRequestId: "cr-6" });
+    expect(genuinelyNew.status).toBe(201);
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it("treats an oversized clientRequestId as absent instead of truncating it, avoiding collisions between unrelated long ids", async () => {
+    const { cookie } = await loginSessionForUser();
+    const fetchSpy = vi.fn(async () => jsonResponse(201, { number: 54, html_url: "https://github.com/kai-kou/alpha/issues/54" }));
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const sharedPrefix = "x".repeat(100);
+    const first = await postIssue(cookie, { title: "first", clientRequestId: `${sharedPrefix}-a` });
+    expect(first.status).toBe(201);
+
+    // 100 文字を超える別内容の送信。切り詰めていれば同じ先頭 100 文字に衝突して 409 になってしまうが、
+    // 上限超過は「無視（未指定扱い）」にしたため、独立した新規送信として通るはず。
+    const second = await postIssue(cookie, { title: "second", clientRequestId: `${sharedPrefix}-b` });
+    expect(second.status).toBe(201);
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
   });
 });
 

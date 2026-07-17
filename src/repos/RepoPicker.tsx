@@ -140,12 +140,16 @@ export function RepoPicker({ prefill = null }: RepoPickerProps) {
   async function submitIssue(input: IssueInput) {
     if (!selected) return;
     setSubmitState({ status: "submitting" });
+    // オフラインキューへ積む場合に SW 側 Background Sync 再送との重複防止キーとして使い回すため、
+    // 最初の送信試行の時点で発行する（失敗後に生成すると SW が既に再送した元リクエストと id が
+    // 揃わなくなる・B4-4）。
+    const clientRequestId = crypto.randomUUID();
     try {
       const res = await fetch("/api/issues", {
         method: "POST",
         credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ repo: selected, title: input.title, body: input.body, labels: input.labels }),
+        body: JSON.stringify({ repo: selected, title: input.title, body: input.body, labels: input.labels, clientRequestId }),
       });
       if (!res.ok) {
         const code = await submitErrorCode(res);
@@ -168,7 +172,7 @@ export function RepoPicker({ prefill = null }: RepoPickerProps) {
       // 下書き（B5-1）は再送が確定するまで消さずに残す（再送失敗時の手動復旧経路として機能する）。
       // フォームはクリアしない（D-7・入力は絶対に失わせない）: formKey を進めて再マウントしても
       // 下書きから同じ内容が復元されるだけで、見た目上クリアされない意図しない状態になるため。
-      enqueueOffline({ repo: selected, title: input.title, body: input.body, labels: input.labels });
+      enqueueOffline({ id: clientRequestId, repo: selected, title: input.title, body: input.body, labels: input.labels });
       setSubmitState({ status: "queued" });
     }
   }
