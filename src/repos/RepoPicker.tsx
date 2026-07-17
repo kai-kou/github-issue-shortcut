@@ -2,8 +2,11 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useLanguage } from "../i18n/LanguageContext";
 import type { Translations } from "../i18n/translations";
 import { loadRecentRepos, recordRecentRepo } from "./recentRepos";
+import { buildRepoIndex } from "./repoIndex";
 import { IssueForm, type IssueInput } from "../issues/IssueForm";
 import { loadDraft, clearDraft } from "../issues/draft";
+import { HighlightedTextInput } from "../issues/HighlightedTextInput";
+import { findTokens, isTokenMatched, stripTokens } from "../issues/smartInput";
 import type { PrefillParams } from "../issues/prefillParams";
 
 type Repo = { id: number; fullName: string; private: boolean; pushAccess: boolean };
@@ -62,6 +65,9 @@ export function RepoPicker({ prefill = null }: RepoPickerProps) {
   const [selected, setSelected] = useState<string | null>(() => loadDraft()?.repo ?? prefill?.repo ?? null);
   const [submitState, setSubmitState] = useState<SubmitState>({ status: "idle" });
   const [formKey, setFormKey] = useState(0);
+  // スマート入力（B3-3・#repo）でリポジトリを選んだ際、検索欄に残っていた自由文をタイトルの
+  // 初期値として引き継ぐ（quickAddTitle）。一覧タップ経由の選択では null になる。
+  const [quickAddTitle, setQuickAddTitle] = useState<string | null>(null);
   const dialogRef = useRef<HTMLDialogElement>(null);
 
   /** dialog がまだ開いていなければ開く（二重 showModal() は例外になるためガードする）。 */
@@ -97,9 +103,20 @@ export function RepoPicker({ prefill = null }: RepoPickerProps) {
     };
   }, []);
 
+  // スマート入力（B3-3・FR-20）: 検索欄に混ざった自由文の中から `#repo` トークンをインライン認識する。
+  // 複数トークンは非対応（最初の1件のみ使う・YAGNI）。
+  const repoIndex = useMemo(() => buildRepoIndex(state.status === "ready" ? state.repos : []), [state]);
+  const queryTokens = useMemo(() => findTokens(query, "#"), [query]);
+  const repoToken = queryTokens[0] ?? null;
+  const displayQueryTokens = useMemo(
+    () => queryTokens.map((tok) => ({ ...tok, matched: isTokenMatched(tok, repoIndex) })),
+    [queryTokens, repoIndex],
+  );
+  const matchedRepoToken = repoToken && isTokenMatched(repoToken, repoIndex) ? repoToken : null;
+
   const filtered = useMemo(() => {
     if (state.status !== "ready") return [];
-    const q = query.trim().toLowerCase();
+    const q = (repoToken ? repoToken.name : query).trim().toLowerCase();
     const matches = q ? state.repos.filter((r) => r.fullName.toLowerCase().includes(q)) : state.repos;
     const byFullName = new Map(matches.map((r) => [r.fullName, r]));
     const recentFirst = recent
@@ -108,7 +125,7 @@ export function RepoPicker({ prefill = null }: RepoPickerProps) {
     const recentNames = new Set(recentFirst.map((r) => r.fullName));
     const rest = matches.filter((r) => !recentNames.has(r.fullName));
     return [...recentFirst, ...rest];
-  }, [state, query, recent]);
+  }, [state, query, recent, repoToken]);
 
   const selectedPushAccess = useMemo(() => {
     if (state.status !== "ready" || !selected) return false;
@@ -119,15 +136,33 @@ export function RepoPicker({ prefill = null }: RepoPickerProps) {
   // 指定したリポジトリのままである場合のみ適用する。ユーザーが別リポジトリへ手動で切り替えた
   // 場合や、一度送信して連続起票に入った場合は引き継がない。
   const appliesPrefill = formKey === 0 && (!prefill?.repo || prefill.repo === selected);
+  // プレフィルがなければスマート入力（B3-3）由来の quickAddTitle にフォールバックする
+  // （selectRepo のたびに常に上書きされるため formKey 等での追加ガードは不要）。
+  const resolvedInitialTitle = (appliesPrefill ? prefill?.title : undefined) ?? quickAddTitle ?? undefined;
 
-  function selectRepo(fullName: string) {
+  /** `prefillTitle`: スマート入力（B3-3）の `#repo` トークンタップ経由の選択時、検索欄に残っていた
+   * 自由文（トークンを取り除いたもの）をタイトルの初期値として引き継ぐ。一覧タップ経由では null。 */
+  function selectRepo(fullName: string, prefillTitle: string | null = null) {
     setSelected(fullName);
     setRecent(recordRecentRepo(fullName));
     setSubmitState({ status: "idle" });
+    setQuickAddTitle(prefillTitle);
     // クリックハンドラ内で同期的に開く（ユーザージェスチャのまま dialog を開くことで、
     // 内部の autoFocus 要素へのネイティブ focus 連携がモバイル Chrome でも
     // キーボード表示につながりやすくする・B1-3・research/mobile-ux-pwa §2 の緩和策）。
     openDialog();
+  }
+
+  /** 一覧タップ時: 検索欄に確定済みの `#repo` トークンがあれば、残りの自由文をタイトルへ引き継ぐ。 */
+  function handleSelectFromList(fullName: string) {
+    const remaining = repoToken ? stripTokens(query, [repoToken]) : "";
+    selectRepo(fullName, remaining.length > 0 ? remaining : null);
+  }
+
+  /** 検索欄のトークンをタップで解除する（B3-3 Done Criteria）。 */
+  function removeQueryToken() {
+    if (!repoToken) return;
+    setQuery(stripTokens(query, [repoToken]));
   }
 
   async function submitIssue(input: IssueInput) {
@@ -169,21 +204,34 @@ export function RepoPicker({ prefill = null }: RepoPickerProps) {
     <div className="card">
       <label className="repo-search">
         <span className="field-label">{t.repoPicker.searchLabel}</span>
-        <input
-          type="text"
-          enterKeyHint="search"
+        <HighlightedTextInput
           value={query}
-          onChange={(e) => setQuery(e.target.value)}
+          onChange={setQuery}
+          tokens={displayQueryTokens}
           placeholder={t.repoPicker.searchPlaceholder}
+          enterKeyHint="search"
         />
       </label>
+      {matchedRepoToken ? (
+        <ul className="smart-token-chips" aria-label={t.repoPicker.smartTokenListLabel}>
+          <li>
+            <button
+              type="button"
+              aria-label={`${t.repoPicker.removeSmartTokenLabel}: ${matchedRepoToken.raw}`}
+              onClick={removeQueryToken}
+            >
+              {matchedRepoToken.raw} <span aria-hidden="true">✕</span>
+            </button>
+          </li>
+        </ul>
+      ) : null}
       {filtered.length === 0 ? (
         <p className="status-note">{t.repoPicker.empty}</p>
       ) : (
         <ul className="repo-list">
           {filtered.map((repo) => (
             <li key={repo.id}>
-              <button type="button" onClick={() => selectRepo(repo.fullName)} aria-pressed={selected === repo.fullName}>
+              <button type="button" onClick={() => handleSelectFromList(repo.fullName)} aria-pressed={selected === repo.fullName}>
                 {repo.fullName}
               </button>
             </li>
@@ -213,7 +261,7 @@ export function RepoPicker({ prefill = null }: RepoPickerProps) {
               pushAccess={selectedPushAccess}
               onSubmit={submitIssue}
               submitting={submitState.status === "submitting"}
-              initialTitle={appliesPrefill ? prefill?.title : undefined}
+              initialTitle={resolvedInitialTitle}
               initialLabels={appliesPrefill ? prefill?.labels : undefined}
               initialBody={appliesPrefill ? prefill?.body : undefined}
             >

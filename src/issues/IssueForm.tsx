@@ -1,7 +1,10 @@
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { useLanguage } from "../i18n/LanguageContext";
 import { loadDraft, saveDraft, clearDraft } from "./draft";
 import { LabelPicker } from "./LabelPicker";
+import { useRepoLabels } from "./useRepoLabels";
+import { HighlightedTextInput } from "./HighlightedTextInput";
+import { committedTokens, findTokens, isTokenMatched, stripTokens, type SmartToken } from "./smartInput";
 
 export type IssueInput = { title: string; body: string; labels: string[] };
 
@@ -44,7 +47,41 @@ export function IssueForm({
   const [body, setBody] = useState(() => initialDraft?.body ?? initialBody ?? "");
   const [labels, setLabels] = useState<string[]>(() => initialLabels ?? []);
 
-  const canSubmit = title.trim().length > 0 && !submitting;
+  // タイトル欄のスマート入力（B3-3・FR-20）: `@label` トークンをインライン認識する。
+  // ラベル一覧は LabelPicker のチェックボックスとここでのトークン照合が同じ取得結果を共有する。
+  const labelsState = useRepoLabels(repoFullName, pushAccess);
+  const labelIndex = useMemo(() => {
+    const map = new Map<string, string>();
+    if (labelsState.status === "ready") {
+      for (const label of labelsState.labels) map.set(label.name.toLowerCase(), label.name);
+    }
+    return map;
+  }, [labelsState]);
+  const titleTokens = useMemo(() => findTokens(title, "@"), [title]);
+  const matchedTitleTokens = useMemo(
+    () => titleTokens.filter((tok) => isTokenMatched(tok, labelIndex)),
+    [titleTokens, labelIndex],
+  );
+  const displayTitleTokens = useMemo(
+    () => titleTokens.map((tok) => ({ ...tok, matched: isTokenMatched(tok, labelIndex) })),
+    [titleTokens, labelIndex],
+  );
+  const cleanTitle = useMemo(() => stripTokens(title, matchedTitleTokens), [title, matchedTitleTokens]);
+
+  // 空白の後続がある（＝入力確定済みの）@label トークンだけを、入力中にラベル選択へ自動反映する
+  // （末尾のトークンはまだ入力中の可能性があるため対象外・タップ削除やチェックボックス解除で戻せる）。
+  useEffect(() => {
+    const committed = committedTokens(matchedTitleTokens, title);
+    if (committed.length === 0) return;
+    setLabels((prev) => {
+      const additions = committed
+        .map((tok) => labelIndex.get(tok.name.toLowerCase()))
+        .filter((name): name is string => typeof name === "string" && !prev.includes(name));
+      return additions.length > 0 ? [...prev, ...additions] : prev;
+    });
+  }, [matchedTitleTokens, title, labelIndex]);
+
+  const canSubmit = cleanTitle.length > 0 && !submitting;
 
   function persist(nextTitle: string, nextBody: string) {
     if (nextTitle.trim() || nextBody.trim()) {
@@ -64,10 +101,25 @@ export function IssueForm({
     persist(title, value);
   }
 
+  /** 認識済みトークンをタップで解除する（B3-3 Done Criteria）。テキストからも紐づくラベルからも取り除く。 */
+  function removeSmartToken(token: SmartToken) {
+    const name = labelIndex.get(token.name.toLowerCase());
+    handleTitleChange(stripTokens(title, [token]));
+    if (name) setLabels((prev) => prev.filter((l) => l !== name));
+  }
+
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
     if (!canSubmit) return;
-    onSubmit({ title: title.trim(), body: body.trim(), labels });
+    // 末尾のトークン（入力確定前）も送信時点では確定として扱い、ラベルへ反映してからタイトルを送る。
+    const extraLabels = matchedTitleTokens
+      .map((tok) => labelIndex.get(tok.name.toLowerCase()))
+      .filter((name): name is string => typeof name === "string" && !labels.includes(name));
+    onSubmit({
+      title: cleanTitle,
+      body: body.trim(),
+      labels: extraLabels.length > 0 ? [...labels, ...extraLabels] : labels,
+    });
   }
 
   return (
@@ -77,16 +129,31 @@ export function IssueForm({
       </p>
       <label>
         <span className="field-label">{t.issueForm.titleLabel}</span>
-        <input
-          type="text"
+        <HighlightedTextInput
+          value={title}
+          onChange={handleTitleChange}
+          tokens={displayTitleTokens}
+          placeholder={t.issueForm.titlePlaceholder}
           enterKeyHint="send"
           autoCapitalize="sentences"
           autoFocus
-          value={title}
-          onChange={(e) => handleTitleChange(e.target.value)}
-          placeholder={t.issueForm.titlePlaceholder}
         />
       </label>
+      {matchedTitleTokens.length > 0 ? (
+        <ul className="smart-token-chips" aria-label={t.issueForm.smartTokenListLabel}>
+          {matchedTitleTokens.map((tok) => (
+            <li key={`${tok.start}-${tok.raw}`}>
+              <button
+                type="button"
+                aria-label={`${t.issueForm.removeSmartTokenLabel}: ${tok.raw}`}
+                onClick={() => removeSmartToken(tok)}
+              >
+                {tok.raw} <span aria-hidden="true">✕</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
       <label>
         <span className="field-label">{t.issueForm.bodyLabel}</span>
         <textarea
@@ -98,11 +165,11 @@ export function IssueForm({
       </label>
       <LabelPicker
         key={repoFullName}
-        repoFullName={repoFullName}
         pushAccess={pushAccess}
         selected={labels}
         onChange={setLabels}
         initiallyOpen={(initialLabels?.length ?? 0) > 0}
+        labelsState={labelsState}
       />
       {children}
       <div className="submit-row">

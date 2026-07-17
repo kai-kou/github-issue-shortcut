@@ -1,53 +1,24 @@
 import { useEffect, useState } from "react";
 import { useLanguage } from "../i18n/LanguageContext";
-
-type GitHubLabel = { name: string; color: string };
-type LabelsState = { status: "idle" } | { status: "loading" } | { status: "error" } | { status: "ready"; labels: GitHubLabel[] };
+import type { RepoLabelsState } from "./useRepoLabels";
 
 interface LabelPickerProps {
-  repoFullName: string;
   /** push 権限のないリポジトリではラベルが silently dropped されるため、選択 UI の代わりに警告を出す（B5-3・FR-14）。 */
   pushAccess: boolean;
   selected: string[];
   onChange: (labels: string[]) => void;
   /** URL パラメータ起動（B1-2）でラベルが事前指定されている場合、選択内容が見えるよう初期状態で展開する。 */
   initiallyOpen?: boolean;
+  /** 取得は IssueForm（useRepoLabels）が担う。タイトル欄のスマート入力（B3-3）と
+   * 同じ取得結果を共有するため、開閉に関わらず親から取得済みの状態を受け取る。 */
+  labelsState: RepoLabelsState;
 }
 
-async function fetchLabels(repoFullName: string): Promise<GitHubLabel[]> {
-  const res = await fetch(`/api/labels?repo=${encodeURIComponent(repoFullName)}`, { credentials: "same-origin" });
-  if (!res.ok) throw new Error(`unexpected status: ${res.status}`);
-  const data = (await res.json()) as { labels: GitHubLabel[] };
-  return data.labels;
-}
-
-/** ラベル複数選択 UI（B3-2）。既定は畳んでおき、開いたときだけ取得する（起票フローを遅くしない）。
- * URL パラメータでラベルが事前指定されている場合（`initiallyOpen`）は例外的に展開済みで取得する。 */
-export function LabelPicker({ repoFullName, pushAccess, selected, onChange, initiallyOpen = false }: LabelPickerProps) {
+/** ラベル複数選択 UI（B3-2）。既定は畳んでおく（起票フローを遅くしない・D-3）。
+ * URL パラメータでラベルが事前指定されている場合（`initiallyOpen`）は例外的に展開済みで表示する。 */
+export function LabelPicker({ pushAccess, selected, onChange, initiallyOpen = false, labelsState: state }: LabelPickerProps) {
   const { t } = useLanguage();
-  const [state, setState] = useState<LabelsState>({ status: "idle" });
   const [open, setOpen] = useState(initiallyOpen);
-
-  // open（初期展開・手動トグルどちらも含む）になったタイミングで一度だけ取得する。
-  // state.status は意図的に依存配列から外している: 含めると、この effect 自身が呼ぶ
-  // setState({status:"loading"}) で effect が再実行され、直前の実行の cleanup が
-  // active を false にして取得中の fetch の結果を握りつぶし、"読み込み中" のまま
-  // 固まってしまう（React effect の自己再トリガーによる競合）。
-  useEffect(() => {
-    if (!open || !pushAccess || state.status !== "idle") return;
-    let active = true;
-    setState({ status: "loading" });
-    fetchLabels(repoFullName)
-      .then((labels) => {
-        if (active) setState({ status: "ready", labels });
-      })
-      .catch(() => {
-        if (active) setState({ status: "error" });
-      });
-    return () => {
-      active = false;
-    };
-  }, [open, pushAccess, repoFullName]);
 
   // URL パラメータ起動（B1-2）の labels は実在確認前の生の文字列のため、取得完了後に
   // 実際にこのリポジトリへ存在するラベル名だけへ絞り込む（存在しない名前を誤って
