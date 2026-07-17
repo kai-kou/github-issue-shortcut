@@ -102,7 +102,7 @@ OWNER, _, REPO_NAME = REPO.partition("/")
 # （Copilot review・誤 ready_to_merge 防止）。純粋関数（parse_session_id 等）の self-test は
 # プレースホルダのままのテンプレートリポジトリでも実行できるよう、検証は関数化して遅延する。
 def _validate_repo() -> None:
-    # プレースホルダ検出は "__" の部分一致で行う（commit_cost_telemetry.py と同方式）。
+    # プレースホルダ検出は "__" の部分一致で行う（tools/repo_slug.py と同方式）。
     # "kai-kou" 等の完全一致リテラルを書くと bootstrap.sh の全域 sed がこの判定文字列
     # 自体を実値に置換してしまい、置換成功後もガードが常時発火する（exit 2）ため。
     if not OWNER or not REPO_NAME or "__" in REPO:

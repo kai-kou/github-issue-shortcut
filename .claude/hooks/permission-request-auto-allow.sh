@@ -25,8 +25,16 @@ case "$tool_name" in
   *) exit 0 ;;
 esac
 
+# 除外: 権限・フック配線の SSOT である settings 系ファイル（Issue #238）。
+# .claude/settings.json / settings.local.json は auto-allow の自己書き換え面になり、
+# 権限ルール・フック配線そのものを無確認で書き換えられてしまう。これらは通常の
+# 権限フロー（ユーザー確認）に委ね、auto-allow の対象から外す（Read も含め一貫して除外）。
+case "$(basename "$file_path")" in
+  settings.json|settings.local.json) exit 0 ;;
+esac
+
 # .claude/ を含むパスを自動承認（相対パス・絶対パス両方に対応）
-# 例: .claude/settings.json, /home/user/project/.claude/hooks/foo.sh
+# 例: .claude/hooks/foo.sh, /home/user/project/.claude/rules/bar.md
 if echo "$file_path" | grep -qE '(^|/)\.claude(/|$)'; then
   jq -n '{
     "hookSpecificOutput": {

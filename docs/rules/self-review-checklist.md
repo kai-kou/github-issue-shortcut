@@ -40,6 +40,7 @@
 |---|------------|------|--------------|
 | ☐ | **同一 PR 内・関連ファイル間で数値/日付/名称が一致しているか**（diff に同じ数値が複数ファイルで登場したら全箇所を grep して突合する） | 目視 | **601 件**（最頻出。例: リサーチ間の金額乖離、台本とメタの尺不一致、スコアカード数値ズレ） |
 | ☐ | **None/null/欠損キー/ファイル不在時の挙動を確認したか**（`.get()` フォールバック・空リスト・ファイル不在の 3 パターンを頭の中で実行する） | 目視 + 機械（一部） | **573 件**（2 位。KeyError・NoneType・undefined） |
+| ☐ | **挙動を変える編集をした場合、仕様・テスト・コードの意図が一致しているか**（Intent Gate: `INTENT: code does X / check expects Y / spec says Z` を確認。仕様と矛盾するテストを通すためにコードを黙って書き換えていないか。権威順 ユーザー明示 > 仕様 > テスト > 現行コード・`docs/rules/intent-gate-rules.md`） | 目視 | fable-method 反映（spec betrayal 防止） |
 | ☐ | 未コミット・未追跡・未 push がないか | 機械（フック） | フックでブロック済み |
 | ☐ | タスク外ファイルが diff に混入していないか（`git diff origin/main...HEAD --name-only`） | 目視 | CLAUDE.md「やってはいけないこと」 |
 | ☐ | リポジトリ名・パス・コマンドの typo（github-issue-shortcut の末尾 i 重複等） | 機械 | 実指摘あり（誤操作リスク） |
@@ -102,14 +103,6 @@
 | ☐ | fullscreenCueIds が lineId（数値文字列）か | 目視 + SKILL 3-7 | L-039 |
 | ☐ | title_call テーマ画像ゲート（`python3 tools/check_theme_image.py --video V{ID}`） | 機械（別ツール） | #2677 |
 | ☐ | imageMap に backgrounds/ パスが混入していないか | grep | design-spec |
-
-## 6. フロントエンド・デザイン（`src/` `index.html` manifest・CSS）
-
-| ✓ | チェック項目 | 検証 | 根拠 |
-|---|------------|------|------|
-| ☐ | デザインルール準拠（16px フォント・enterkeyhint・placeholder ラベル・reduced-motion・viewport ズーム禁止） | **機械**（`tools/check_design_rules.py`・self_review_check.py が自動実行・Warning） | `docs/design/design-guidelines.md` §2 |
-| ☐ | タップターゲット 24px 以上（送信 44px 以上）・ダークモード表示 | 機械（`e2e/design-guidelines.spec.ts`・CI ブロッキング） | 同上 |
-| ☐ | 起票フロー（起動 → 入力 → 送信）にタップ・画面・待ちを追加していないか / 失敗時に入力が保持されるか | 目視（`docs/rules/design-review-checklist.md` セクション 0・3） | D-3 / D-7 |
 
 ---
 

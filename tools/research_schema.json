@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://example.com/research_schema.json",
   "title": "Deep Research Result Schema",
-  "description": "Deep Research の構造化出力スキーマ。research-runner が claude -p（ネイティブ /deep-research）/ Gemini DR Max / DIY 各エンジンの結果をこのスキーマに正規化する。docs/rules/research-rules.md と整合する。",
+  "description": "Deep Research の構造化出力スキーマ。research-runner がネイティブ /deep-research（直接呼び出し・claude -p サブプロセス）/ DIY 各エンジンの結果をこのスキーマに正規化する。docs/rules/research-rules.md と整合する。",
   "type": "object",
   "required": [
     "research_id",
@@ -33,12 +33,12 @@
     },
     "engine": {
       "type": "string",
-      "enum": ["gemini-deep-research-max", "claude-deep-research-workflow", "diy-sonnet-websearch"],
-      "description": "実行エンジン。claude-deep-research-workflow（ネイティブ /deep-research サブプロセス）が主・Gemini DR Max が第2・DIY がフォールバック"
+      "enum": ["claude-deep-research-workflow", "diy-sonnet-websearch"],
+      "description": "実行エンジン。claude-deep-research-workflow（ネイティブ /deep-research）が主・DIY（WebSearch/WebFetch）が最終フォールバック"
     },
     "engine_version": {
       "type": "string",
-      "description": "実行モデルのバージョン識別子（例: deep-research-max-preview-04-2026, claude-sonnet-5）"
+      "description": "実行モデルのバージョン識別子（例: claude-opus-4-8, claude-sonnet-5）"
     },
     "sections": {
       "type": "array",

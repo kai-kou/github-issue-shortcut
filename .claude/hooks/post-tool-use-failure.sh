@@ -28,14 +28,17 @@ error_output=$(echo "$input" | jq -r '.tool_response // ""')
 # gh コマンドでなければスキップ
 if ! echo "$command" | grep -qE '^\s*gh '; then exit 0; fi
 
-# --- egress プロキシの 403 ブロック検出（L-114・2026-07-02 実測でブロック範囲拡大） ---
-# クラウドでは gh のほぼ全操作（repo REST・GraphQL・search・Actions パス）が 403 になる。
-# リトライ・-R 付与では解決しないため、即 MCP へ切り替えるよう案内する。
-if echo "$error_output" | grep -qE 'GraphQL proxying is not enabled|connect the Claude GitHub App|sessions are bound to their configured repositories|Access to this GitHub Actions path is not permitted'; then
+# --- egress プロキシの 403 ブロック検出（L-114・2026-07-14 実測: repo REST は許可に変化） ---
+# クラウドでは GraphQL・search・非 repo REST・Actions variables/secrets が 403 になる。
+# 一方 repo スコープ REST（gh api repos/{o}/{r}/...）と gh シム変換対象コマンドは動作する
+# （Issue #254）。リトライ・urllib 直叩きでは解決しないため、生存経路へ切り替えるよう案内する。
+# シグネチャの SSOT は tools/gh_shim.py の ERROR_GUIDANCE（drift 注意）。ここでは既知文言
+# + 汎用 HTTP 403 を検出する（プロキシ文言は変動するため exact-match のみに依存しない）
+if echo "$error_output" | grep -qE 'GraphQL proxying is not enabled|GraphQL query is not enabled|connect the Claude GitHub App|sessions are bound to their configured repositories|Access to this GitHub Actions path is not permitted|Resource not accessible by integration|HTTP 403'; then
   jq -n --arg cmd "$command" '{
     "hookSpecificOutput": {
       "hookEventName": "PostToolUseFailure",
-      "additionalContext": ("[proxy-error-detector] クラウドの egress プロキシが gh を 403 でブロックしました（L-114）。リトライ・-R 付与・urllib 直叩きでは解決しません。\nコマンド: " + $cmd + "\n\n→ 公式 GitHub MCP（mcp__github__*）へ即切替してください（代替表 SSOT: docs/rules/github-mcp-fallback-patterns.md §2）:\n  - Issue/PR 一覧・作成・マージ: list_issues / list_pull_requests / issue_write / create_pull_request / merge_pull_request\n  - ファイル取得: get_file_contents / 検索: search_issues / search_code / search_pull_requests\n  - CI・Actions: actions_list / actions_get / get_job_logs\n  - gh variable/secret はクラウド代替なし（env は Claude.ai 環境設定 / secrets-broker・同 §2.4）")
+      "additionalContext": ("[proxy-error-detector] クラウドの egress プロキシが gh を 403 でブロックしました（L-114）。リトライ・urllib 直叩きでは解決しません。\nコマンド: " + $cmd + "\n\n→ 生存経路へ切替してください（代替表 SSOT: docs/rules/github-mcp-fallback-patterns.md §2）:\n  1. gh シム変換対象（issue/pr/label/repo/release の list/view/create 等）: PATH に .claude/bin が入っていればそのまま再実行で REST 変換される（tools/gh_shim.py・Issue #254）\n  2. repo スコープ REST: gh api repos/{owner}/{repo}/...（2026-07-14 実測で許可）\n  3. MCP: list_issues / list_pull_requests / issue_write / create_pull_request / merge_pull_request / get_file_contents / search_issues / actions_list / get_job_logs\n  - gh variable/secret はクラウド代替なし（env は Claude.ai 環境設定 / secrets-broker・同 §2.4）")
     }
   }'
   exit 0
