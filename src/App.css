@@ -271,8 +271,8 @@ a.btn-primary {
   margin-bottom: 4px;
 }
 
-.repo-search input,
-.issue-form input[type="text"],
+.repo-search input:not(.highlighted-input-field),
+.issue-form input[type="text"]:not(.highlighted-input-field),
 .issue-form textarea,
 .shortcut-form input[type="text"],
 .shortcut-form select,
@@ -285,14 +285,89 @@ a.btn-primary {
   padding: 8px 12px;
 }
 
-.repo-search input:focus-visible,
-.issue-form input[type="text"]:focus-visible,
+.repo-search input:not(.highlighted-input-field):focus-visible,
+.issue-form input[type="text"]:not(.highlighted-input-field):focus-visible,
 .issue-form textarea:focus-visible,
 .shortcut-form input[type="text"]:focus-visible,
 .shortcut-form select:focus-visible,
 .shortcut-row input[type="text"]:focus-visible {
   outline: 2px solid var(--color-accent);
   outline-offset: -1px;
+}
+
+/* ---- スマート入力（B3-3・#repo @label のインライン認識・FR-20） ----
+   実体は透明文字色の通常 input（フォーカス・IME・a11y はネイティブ挙動のまま）で、
+   背後に同じフォント指標のオーバーレイ（aria-hidden）を重ねてハイライトを描画する
+   （追加ライブラリなし・design-guidelines D-6）。上の共有ルールは :not() で除外し、
+   カスケードの優先度に依存しない自己完結したスタイルにする。 */
+.highlighted-input {
+  position: relative;
+  width: 100%;
+}
+
+.highlighted-input-overlay,
+.highlighted-input-field {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  border-radius: var(--radius-m);
+  padding: 8px 12px;
+  font: inherit;
+  line-height: 1.4;
+}
+
+/* オーバーレイが「見た目」を担う（枠線・背景・文字色はここで描画する）。
+   実 input はその上に重ねて操作を担うだけなので完全に透明にする（下記）。 */
+.highlighted-input-overlay {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  white-space: pre;
+  border: 1px solid var(--color-border);
+  background: var(--color-inset);
+  color: var(--color-text);
+  pointer-events: none;
+}
+
+.highlighted-input-placeholder {
+  color: var(--color-text-muted);
+}
+
+.smart-token {
+  background: color-mix(in srgb, var(--color-accent) 25%, transparent);
+  border-radius: 4px;
+  color: inherit;
+}
+
+.highlighted-input-field {
+  position: relative;
+  border: 1px solid transparent;
+  background: transparent;
+  color: transparent;
+  caret-color: var(--color-text);
+}
+
+.highlighted-input-field::placeholder {
+  color: transparent;
+}
+
+.highlighted-input-field:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: -1px;
+}
+
+.smart-token-chips {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.smart-token-chips button {
+  border-radius: 999px;
+  padding: 4px 12px;
 }
 
 .repo-list {

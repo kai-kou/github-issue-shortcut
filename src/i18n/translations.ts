@@ -61,6 +61,8 @@ interface Translations {
     searchLabel: string;
     searchPlaceholder: string;
     empty: string;
+    smartTokenListLabel: string;
+    removeSmartTokenLabel: string;
   };
   issueForm: {
     closeButton: string;
@@ -74,6 +76,8 @@ interface Translations {
     successMessage: string;
     viewIssueLink: string;
     errorMessage: string;
+    smartTokenListLabel: string;
+    removeSmartTokenLabel: string;
     errors: {
       reauthRequired: string;
       rateLimited: string;
@@ -171,14 +175,16 @@ export const translations = {
       loading: "リポジトリを取得中...",
       loadError: "リポジトリを取得できませんでした",
       searchLabel: "リポジトリを検索",
-      searchPlaceholder: "owner/repo",
+      searchPlaceholder: "owner/repo（#repo で直接指定も可）",
       empty: "該当するリポジトリがありません",
+      smartTokenListLabel: "認識されたリポジトリ指定",
+      removeSmartTokenLabel: "指定を解除",
     },
     issueForm: {
       closeButton: "閉じる",
       targetRepoLabel: "起票先",
       titleLabel: "タイトル",
-      titlePlaceholder: "Issue のタイトル（必須）",
+      titlePlaceholder: "Issue のタイトル（必須・@label でラベル指定も可）",
       bodyLabel: "本文（任意）",
       bodyPlaceholder: "詳細があれば入力してください",
       submitButton: "Issue を作成",
@@ -186,6 +192,8 @@ export const translations = {
       successMessage: "Issue を作成しました",
       viewIssueLink: "GitHub で開く",
       errorMessage: "Issue を作成できませんでした",
+      smartTokenListLabel: "認識されたラベル指定",
+      removeSmartTokenLabel: "ラベル指定を解除",
       errors: {
         reauthRequired: "ログインの有効期限が切れました。再度ログインしてください。",
         rateLimited: "リクエストが多すぎます。しばらく時間をおいてから再試行してください。",
@@ -373,14 +381,16 @@ export const translations = {
       loading: "Loading repositories...",
       loadError: "Could not load repositories",
       searchLabel: "Search repositories",
-      searchPlaceholder: "owner/repo",
+      searchPlaceholder: "owner/repo (or type #repo to jump directly)",
       empty: "No matching repositories",
+      smartTokenListLabel: "Recognized repository",
+      removeSmartTokenLabel: "Remove",
     },
     issueForm: {
       closeButton: "Close",
       targetRepoLabel: "Target repository",
       titleLabel: "Title",
-      titlePlaceholder: "Issue title (required)",
+      titlePlaceholder: "Issue title (required; type @label to add a label)",
       bodyLabel: "Body (optional)",
       bodyPlaceholder: "Add details if you have any",
       submitButton: "Create issue",
@@ -388,6 +398,8 @@ export const translations = {
       successMessage: "Issue created",
       viewIssueLink: "Open on GitHub",
       errorMessage: "Could not create the issue",
+      smartTokenListLabel: "Recognized labels",
+      removeSmartTokenLabel: "Remove label",
       errors: {
         reauthRequired: "Your login has expired. Please sign in again.",
         rateLimited: "Too many requests. Please wait a bit and try again.",
