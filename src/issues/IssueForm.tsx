@@ -11,6 +11,9 @@ interface IssueFormProps {
   pushAccess: boolean;
   onSubmit: (input: IssueInput) => void;
   submitting?: boolean;
+  /** URL パラメータ起動（B1-2・FR-15）の初期値。下書き（B5-1）が存在する場合はそちらを優先する。 */
+  initialTitle?: string | null;
+  initialLabels?: string[];
 }
 
 /** 対象リポジトリ向けの下書きがあれば初期値として使う（自リポジトリ以外の下書きは復元しない）。 */
@@ -21,12 +24,19 @@ function draftFor(repoFullName: string) {
 
 /** タイトル必須・本文任意の起票フォーム（B3-1）。GitHub への実作成は onSubmit の呼び出し元（B4-1）が行う。
  * 送信失敗・中断時は入力内容を端末（localStorage）に下書き保存し、再訪時に復元する（B5-1）。 */
-export function IssueForm({ repoFullName, pushAccess, onSubmit, submitting = false }: IssueFormProps) {
+export function IssueForm({
+  repoFullName,
+  pushAccess,
+  onSubmit,
+  submitting = false,
+  initialTitle,
+  initialLabels,
+}: IssueFormProps) {
   const { t } = useLanguage();
   const [initialDraft] = useState(() => draftFor(repoFullName));
-  const [title, setTitle] = useState(() => initialDraft?.title ?? "");
+  const [title, setTitle] = useState(() => initialDraft?.title ?? initialTitle ?? "");
   const [body, setBody] = useState(() => initialDraft?.body ?? "");
-  const [labels, setLabels] = useState<string[]>([]);
+  const [labels, setLabels] = useState<string[]>(() => initialLabels ?? []);
 
   const canSubmit = title.trim().length > 0 && !submitting;
 
@@ -82,6 +92,7 @@ export function IssueForm({ repoFullName, pushAccess, onSubmit, submitting = fal
         pushAccess={pushAccess}
         selected={labels}
         onChange={setLabels}
+        initiallyOpen={(initialLabels?.length ?? 0) > 0}
       />
       <button type="submit" disabled={!canSubmit}>
         {submitting ? t.issueForm.submitting : t.issueForm.submitButton}

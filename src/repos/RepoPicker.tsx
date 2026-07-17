@@ -4,6 +4,7 @@ import type { Translations } from "../i18n/translations";
 import { loadRecentRepos, recordRecentRepo } from "./recentRepos";
 import { IssueForm, type IssueInput } from "../issues/IssueForm";
 import { loadDraft, clearDraft } from "../issues/draft";
+import type { PrefillParams } from "../issues/prefillParams";
 
 type Repo = { id: number; fullName: string; private: boolean; pushAccess: boolean };
 type ReposState = { status: "loading" } | { status: "error" } | { status: "ready"; repos: Repo[] };
@@ -45,14 +46,20 @@ function submitErrorMessage(code: string, t: Translations): string {
   }
 }
 
+interface RepoPickerProps {
+  /** URL パラメータ起動（B1-2・FR-15）の初期値。下書き（B5-1）が存在する場合はそちらを優先する。 */
+  prefill?: PrefillParams | null;
+}
+
 /** 起票先リポジトリの検索/選択 UI（B2-1/B2-2）。最近使用したリポジトリを先頭に表示する。 */
-export function RepoPicker() {
+export function RepoPicker({ prefill = null }: RepoPickerProps) {
   const { t } = useLanguage();
   const [state, setState] = useState<ReposState>({ status: "loading" });
   const [query, setQuery] = useState("");
   const [recent, setRecent] = useState<string[]>(() => loadRecentRepos());
   // 送信失敗・中断時の下書き（B5-1）があれば、そのリポジトリを再訪時に自動選択して復元する。
-  const [selected, setSelected] = useState<string | null>(() => loadDraft()?.repo ?? null);
+  // 下書きがなければ URL パラメータ起動（B1-2）の repo を初期選択に使う。
+  const [selected, setSelected] = useState<string | null>(() => loadDraft()?.repo ?? prefill?.repo ?? null);
   const [submitState, setSubmitState] = useState<SubmitState>({ status: "idle" });
   const [formKey, setFormKey] = useState(0);
 
@@ -93,6 +100,11 @@ export function RepoPicker() {
     return state.repos.find((r) => r.fullName === selected)?.pushAccess ?? false;
   }, [state, selected]);
 
+  // URL パラメータ起動（B1-2）のタイトル/ラベルは、まだ一度も送信していない・かつプレフィルが
+  // 指定したリポジトリのままである場合のみ適用する。ユーザーが別リポジトリへ手動で切り替えた
+  // 場合や、一度送信して連続起票に入った場合は引き継がない。
+  const appliesPrefill = formKey === 0 && (!prefill?.repo || prefill.repo === selected);
+
   function selectRepo(fullName: string) {
     setSelected(fullName);
     setRecent(recordRecentRepo(fullName));
@@ -122,6 +134,8 @@ export function RepoPicker() {
       clearDraft();
       setSubmitState({ status: "success", number: data.number, htmlUrl: data.htmlUrl });
       // 送信成功のたびにフォームを再マウントして入力内容をクリアする（連続起票を想定）。
+      // formKey>0 は「1 回送信済み」を意味し、URL パラメータ起動のプレフィルを以降の
+      // 連続起票へ引き継がない判定にも流用する（同じ雛形が繰り返し復活しないように）。
       setFormKey((k) => k + 1);
     } catch {
       // fetch 自体の失敗（オフライン等）はネットワーク断とみなし汎用メッセージにフォールバックする。
@@ -164,6 +178,8 @@ export function RepoPicker() {
             pushAccess={selectedPushAccess}
             onSubmit={submitIssue}
             submitting={submitState.status === "submitting"}
+            initialTitle={appliesPrefill ? prefill?.title : undefined}
+            initialLabels={appliesPrefill ? prefill?.labels : undefined}
           />
           {submitState.status === "success" ? (
             <p>
