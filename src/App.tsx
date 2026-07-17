@@ -291,7 +291,7 @@ function AppContent() {
           </a>
         </header>
       ) : null}
-      <main className={hasChromeHeader ? "app-main legal-page" : "app-main"}>
+      <main className={hasChromeHeader ? "app-main text-page" : "app-main"}>
         {path === "/terms" ? (
           <TermsOfService />
         ) : path === "/privacy" ? (

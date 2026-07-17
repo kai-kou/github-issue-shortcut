@@ -72,6 +72,23 @@ describe("POST /api/shortcuts", () => {
     expect(body.error.code).toBe("invalid_request");
   });
 
+  it("rejects a payload exceeding the label count/length limits", async () => {
+    const cookie = await loginSession();
+    const tooManyLabels = await SELF.fetch("https://example.com/api/shortcuts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify({ repo: "", labels: Array.from({ length: 21 }, (_, i) => `l${i}`), title: "" }),
+    });
+    expect(tooManyLabels.status).toBe(400);
+
+    const tooLongLabel = await SELF.fetch("https://example.com/api/shortcuts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify({ repo: "", labels: ["x".repeat(51)], title: "" }),
+    });
+    expect(tooLongLabel.status).toBe(400);
+  });
+
   it("creates a preset and returns it in a subsequent list", async () => {
     const cookie = await loginSession();
     const createRes = await SELF.fetch("https://example.com/api/shortcuts", {

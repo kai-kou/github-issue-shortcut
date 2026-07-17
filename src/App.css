@@ -273,7 +273,10 @@ a.btn-primary {
 
 .repo-search input,
 .issue-form input[type="text"],
-.issue-form textarea {
+.issue-form textarea,
+.shortcut-form input[type="text"],
+.shortcut-form select,
+.shortcut-row input[type="text"] {
   width: 100%;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-m);
@@ -284,7 +287,10 @@ a.btn-primary {
 
 .repo-search input:focus-visible,
 .issue-form input[type="text"]:focus-visible,
-.issue-form textarea:focus-visible {
+.issue-form textarea:focus-visible,
+.shortcut-form input[type="text"]:focus-visible,
+.shortcut-form select:focus-visible,
+.shortcut-row input[type="text"]:focus-visible {
   outline: 2px solid var(--color-accent);
   outline-offset: -1px;
 }
@@ -434,16 +440,6 @@ a.btn-primary {
   display: block;
 }
 
-.shortcut-form input[type="text"],
-.shortcut-form select {
-  width: 100%;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-m);
-  background: var(--color-inset);
-  color: var(--color-text);
-  padding: 8px 12px;
-}
-
 .shortcut-actions {
   display: flex;
   flex-wrap: wrap;
@@ -472,25 +468,19 @@ a.btn-primary {
 }
 
 .shortcut-row input[type="text"] {
-  width: 100%;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-m);
-  background: var(--color-inset);
-  color: var(--color-text);
-  padding: 8px 12px;
   margin-bottom: 8px;
 }
 
-/* ---- 法的ページ ---- */
+/* ---- ヘッダー付きの文章系ページ（法的ページ・ショートカットヘルパー） ---- */
 
-.legal-page h1 {
+.text-page h1 {
   font-size: 22px;
 }
 
-.legal-page h2 {
+.text-page h2 {
   font-size: 16px;
 }
 
-.legal-page {
+.text-page {
   line-height: 1.7;
 }

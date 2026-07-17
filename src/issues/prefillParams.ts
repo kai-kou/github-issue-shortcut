@@ -15,18 +15,22 @@ function mergeBodyAndUrl(body: string | null, url: string | null): string | null
   return body ? `${body}\n\n${url}` : url;
 }
 
+/** カンマ区切りの生テキストをラベル配列へ（前後空白・空エントリを除去。C1-1 のショートカット作成
+ * ヘルパーのラベル入力欄も同じ形式を使うため共有する）。 */
+export function parseCommaList(text: string): string[] {
+  return text
+    .split(",")
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0);
+}
+
 /** `/new?repo=&labels=&title=&body=` の URL パラメータから初期選択値を読み取る（B1-2/B3-4・FR-15/FR-18）。
  * labels はカンマ区切り。読み取った値は初期選択にのみ使い、自動送信はしない（FR-19）。 */
 export function parsePrefillParams(search: string): PrefillParams {
   const params = new URLSearchParams(search);
   const repo = params.get("repo")?.trim() || null;
   const labelsRaw = params.get("labels")?.trim() ?? "";
-  const labels = labelsRaw
-    ? labelsRaw
-        .split(",")
-        .map((l) => l.trim())
-        .filter((l) => l.length > 0)
-    : [];
+  const labels = labelsRaw ? parseCommaList(labelsRaw) : [];
   const title = params.get("title")?.trim() || null;
   const body = mergeBodyAndUrl(params.get("body")?.trim() || null, params.get("url")?.trim() || null);
   return { repo, labels, title, body };

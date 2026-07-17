@@ -361,7 +361,15 @@ interface ShortcutInput {
   title: string;
 }
 
-/** リクエスト JSON を `{ repo, labels, title }` へ正規化する。少なくとも 1 フィールドが非空でなければ null（C1-1・FR-16）。 */
+// GitHub 側の実制約に合わせた上限（GitHub label 名は 50 文字まで）。プリセットは
+// 起動 URL の元データに過ぎないため実質無制限にする理由がなく、際限のない D1 行サイズを避ける。
+const SHORTCUT_REPO_MAX_LENGTH = 140;
+const SHORTCUT_TITLE_MAX_LENGTH = 500;
+const SHORTCUT_LABEL_MAX_LENGTH = 50;
+const SHORTCUT_LABELS_MAX_COUNT = 20;
+
+/** リクエスト JSON を `{ repo, labels, title }` へ正規化する。少なくとも 1 フィールドが非空でなければ null。
+ * 長さ上限を超える場合も null にする（C1-1・FR-16）。 */
 async function parseShortcutInput(c: Context<{ Bindings: Env }>): Promise<ShortcutInput | null> {
   let payload: unknown;
   try {
@@ -377,6 +385,10 @@ async function parseShortcutInput(c: Context<{ Bindings: Env }>): Promise<Shortc
     : [];
   const title = typeof titleValue === "string" ? titleValue.trim() : "";
   if (!repo && labels.length === 0 && !title) return null;
+  if (repo.length > SHORTCUT_REPO_MAX_LENGTH) return null;
+  if (title.length > SHORTCUT_TITLE_MAX_LENGTH) return null;
+  if (labels.length > SHORTCUT_LABELS_MAX_COUNT) return null;
+  if (labels.some((l) => l.length > SHORTCUT_LABEL_MAX_LENGTH)) return null;
   return { repo, labels, title };
 }
 

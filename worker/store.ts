@@ -300,11 +300,26 @@ export interface ShortcutRow {
   title: string;
 }
 
+/** labels は JSON 配列としてシリアライズする（カンマ区切り文字列だと、ラベル名自体にカンマを
+ * 含む場合に分割数がずれて元のラベル配列を復元できない・#86 セルフレビュー指摘）。 */
+function serializeLabels(labels: string[]): string {
+  return JSON.stringify(labels);
+}
+
+function deserializeLabels(raw: string): string[] {
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((l): l is string => typeof l === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
 function toShortcutRow(row: { id: string; repo: string; labels: string; title: string }): ShortcutRow {
   return {
     id: row.id,
     repo: row.repo,
-    labels: row.labels ? row.labels.split(",") : [],
+    labels: deserializeLabels(row.labels),
     title: row.title,
   };
 }
@@ -327,7 +342,7 @@ export async function createShortcut(
   const id = crypto.randomUUID();
   await db
     .prepare(`INSERT INTO shortcuts (id, user_id, repo, labels, title, created_at) VALUES (?, ?, ?, ?, ?, ?)`)
-    .bind(id, userId, input.repo, input.labels.join(","), input.title, nowSeconds())
+    .bind(id, userId, input.repo, serializeLabels(input.labels), input.title, nowSeconds())
     .run();
   return { id, repo: input.repo, labels: input.labels, title: input.title };
 }
@@ -341,7 +356,7 @@ export async function updateShortcut(
 ): Promise<boolean> {
   const result = await db
     .prepare(`UPDATE shortcuts SET repo = ?, labels = ?, title = ? WHERE id = ? AND user_id = ?`)
-    .bind(input.repo, input.labels.join(","), input.title, id, userId)
+    .bind(input.repo, serializeLabels(input.labels), input.title, id, userId)
     .run();
   return result.meta.changes === 1;
 }

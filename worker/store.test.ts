@@ -166,6 +166,13 @@ describe("shortcuts (C1-1・FR-16)", () => {
     expect(await deleteShortcut(db, userId, created.id)).toBe(true);
     expect(await listShortcuts(db, userId)).toEqual([]);
   });
+
+  it("round-trips a label containing a comma without splitting it (JSON serialization, not comma-join)", async () => {
+    const userId = await upsertUser(db, { id: 7003, login: "commalabeluser", avatar_url: "" });
+    const created = await createShortcut(db, userId, { repo: "kai-kou/alpha", labels: ["a,b", "c"], title: "" });
+    expect(created.labels).toEqual(["a,b", "c"]);
+    expect(await listShortcuts(db, userId)).toEqual([created]);
+  });
 });
 
 describe("checkRateLimit (不正利用対策・PR-4/OQ-6)", () => {

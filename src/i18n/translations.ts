@@ -115,6 +115,8 @@ interface Translations {
     editButton: string;
     deleteButton: string;
     deleteConfirm: string;
+    deleteError: string;
+    urlFieldLabel: string;
     copyButton: string;
     copied: string;
     openButton: string;
@@ -223,6 +225,8 @@ export const translations = {
       editButton: "編集",
       deleteButton: "削除",
       deleteConfirm: "このショートカットを削除しますか？",
+      deleteError: "削除できませんでした",
+      urlFieldLabel: "起動 URL",
       copyButton: "URL をコピー",
       copied: "コピーしました",
       openButton: "開く",
@@ -422,6 +426,8 @@ export const translations = {
       editButton: "Edit",
       deleteButton: "Delete",
       deleteConfirm: "Delete this shortcut?",
+      deleteError: "Could not delete",
+      urlFieldLabel: "Launch URL",
       copyButton: "Copy URL",
       copied: "Copied",
       openButton: "Open",

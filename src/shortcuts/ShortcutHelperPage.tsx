@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLanguage } from "../i18n/LanguageContext";
+import { parseCommaList, savePendingRedirect } from "../issues/prefillParams";
 import { buildLaunchUrl, type ShortcutPreset } from "./launchUrl";
 
 type Repo = { id: number; fullName: string };
@@ -8,14 +9,6 @@ type Shortcut = ShortcutPreset & { id: string };
 type AuthState = "checking" | "anonymous" | "authenticated" | "error";
 type ReposState = { status: "loading" } | { status: "error" } | { status: "ready"; repos: Repo[] };
 type ShortcutsState = { status: "loading" } | { status: "error" } | { status: "ready"; shortcuts: Shortcut[] };
-
-/** カンマ区切りの生テキストをラベル配列へ（前後空白・空エントリを除去。B1-2 の URL パラメータ解析と同じ扱い）。 */
-function parseLabelsText(text: string): string[] {
-  return text
-    .split(",")
-    .map((l) => l.trim())
-    .filter((l) => l.length > 0);
-}
 
 async function fetchJson<T>(url: string): Promise<T> {
   const res = await fetch(url, { credentials: "same-origin" });
@@ -40,7 +33,7 @@ function ShortcutForm({ editing, onSaved, onCancel, repos }: ShortcutFormProps) 
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const labels = parseLabelsText(labelsText);
+    const labels = parseCommaList(labelsText);
     const trimmedTitle = title.trim();
     if (!repo && labels.length === 0 && !trimmedTitle) {
       setError("validation");
@@ -122,6 +115,7 @@ function ShortcutRow({
   const { t } = useLanguage();
   const [copied, setCopied] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  const [deleteError, setDeleteError] = useState(false);
   const url = useMemo(() => buildLaunchUrl(shortcut, window.location.origin), [shortcut]);
 
   useEffect(() => {
@@ -140,8 +134,13 @@ function ShortcutRow({
   }
 
   async function handleDelete() {
-    const res = await fetch(`/api/shortcuts/${shortcut.id}`, { method: "DELETE", credentials: "same-origin" });
-    if (res.ok) onDeleted();
+    try {
+      const res = await fetch(`/api/shortcuts/${shortcut.id}`, { method: "DELETE", credentials: "same-origin" });
+      if (!res.ok) throw new Error(`unexpected status: ${res.status}`);
+      onDeleted();
+    } catch {
+      setDeleteError(true);
+    }
   }
 
   const summary = [shortcut.repo, shortcut.labels.join(","), shortcut.title].filter(Boolean).join(" · ");
@@ -149,7 +148,13 @@ function ShortcutRow({
   return (
     <li className="shortcut-row">
       <p className="shortcut-summary">{summary}</p>
-      <input type="text" readOnly value={url} onFocus={(e) => e.currentTarget.select()} />
+      <input
+        type="text"
+        readOnly
+        value={url}
+        aria-label={t.shortcuts.urlFieldLabel}
+        onFocus={(e) => e.currentTarget.select()}
+      />
       <div className="shortcut-actions">
         <button type="button" onClick={copyUrl}>
           {copied ? t.shortcuts.copied : t.shortcuts.copyButton}
@@ -169,11 +174,19 @@ function ShortcutRow({
             </button>
           </>
         ) : (
-          <button type="button" className="btn-link-danger" onClick={() => setConfirming(true)}>
+          <button
+            type="button"
+            className="btn-link-danger"
+            onClick={() => {
+              setDeleteError(false);
+              setConfirming(true);
+            }}
+          >
             {t.shortcuts.deleteButton}
           </button>
         )}
       </div>
+      {deleteError ? <p className="submit-result error">{t.shortcuts.deleteError}</p> : null}
     </li>
   );
 }
@@ -183,6 +196,10 @@ function ShortcutHelper() {
   const [reposState, setReposState] = useState<ReposState>({ status: "loading" });
   const [shortcutsState, setShortcutsState] = useState<ShortcutsState>({ status: "loading" });
   const [editingId, setEditingId] = useState<string | null>(null);
+  // 保存成功のたびに ShortcutForm の key を変えて再マウントし、入力内容をクリアする
+  // （key が editingId のみだと「新規作成」直後は null→null のままで再マウントされず、
+  // 送信済みの内容がフォームに残ってしまう＝連打で同一内容が重複作成されるおそれがある）。
+  const [formVersion, setFormVersion] = useState(0);
 
   useEffect(() => {
     let active = true;
@@ -207,6 +224,7 @@ function ShortcutHelper() {
       return { status: "ready", shortcuts };
     });
     setEditingId(null);
+    setFormVersion((v) => v + 1);
   }
 
   function removeShortcut(id: string) {
@@ -226,7 +244,7 @@ function ShortcutHelper() {
     <>
       <div className="card">
         <ShortcutForm
-          key={editingId ?? "new"}
+          key={`${editingId ?? "new"}-${formVersion}`}
           editing={editing}
           repos={reposState.repos}
           onSaved={upsertShortcut}
@@ -286,7 +304,7 @@ export function ShortcutHelperPage() {
       {auth === "error" ? <p className="status-note">{t.auth.loginError}</p> : null}
       {auth === "anonymous" ? (
         <p className="hero-cta">
-          <a className="btn-primary" href="/auth/login">
+          <a className="btn-primary" href="/auth/login" onClick={() => savePendingRedirect("/shortcuts")}>
             {t.auth.loginButton}
           </a>
         </p>
