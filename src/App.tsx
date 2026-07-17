@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import "./App.css";
 import TermsOfService from "./pages/TermsOfService";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
+import { ShortcutHelperPage } from "./shortcuts/ShortcutHelperPage";
 import { LanguageProvider, useLanguage } from "./i18n/LanguageContext";
 import { SUPPORTED_LOCALES } from "./i18n/translations";
 import { RepoPicker } from "./repos/RepoPicker";
@@ -275,10 +276,12 @@ function AppContent() {
   const pendingRedirectTarget = prefill && hasPrefillParams(prefill) ? `${path}${search}` : null;
 
   const isLegalPage = path === "/terms" || path === "/privacy";
+  const isShortcutsPage = path === "/shortcuts";
+  const hasChromeHeader = isLegalPage || isShortcutsPage;
 
   return (
     <>
-      {isLegalPage ? (
+      {hasChromeHeader ? (
         <header className="app-header">
           <a className="app-brand" href="/">
             <span className="app-brand-mark" aria-hidden="true">
@@ -288,16 +291,19 @@ function AppContent() {
           </a>
         </header>
       ) : null}
-      <main className={isLegalPage ? "app-main legal-page" : "app-main"}>
+      <main className={hasChromeHeader ? "app-main text-page" : "app-main"}>
         {path === "/terms" ? (
           <TermsOfService />
         ) : path === "/privacy" ? (
           <PrivacyPolicy />
+        ) : isShortcutsPage ? (
+          <ShortcutHelperPage />
         ) : (
           <Home prefill={prefill} pendingRedirectTarget={pendingRedirectTarget} />
         )}
       </main>
       <footer className="app-footer">
+        <a href="/shortcuts">{t.footer.shortcuts}</a>
         <a href="/terms">{t.footer.terms}</a>
         <a href="/privacy">{t.footer.privacy}</a>
         <span className="app-footer-spacer" />
