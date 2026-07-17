@@ -575,6 +575,10 @@ a.btn-primary {
   color: var(--color-accent);
 }
 
+.offline-queue-status-failed {
+  color: var(--color-danger);
+}
+
 /* ---- ショートカット作成ヘルパー（C1-1/C2-2） ---- */
 
 .shortcut-form {

@@ -40,7 +40,7 @@ export function RepoPicker({ prefill = null }: RepoPickerProps) {
   const [quickAddTitle, setQuickAddTitle] = useState<string | null>(null);
   const dialogRef = useRef<HTMLDialogElement>(null);
   // オフラインキュー（B4-2・FR-22）: ネットワーク到達不能時の起票を保持し、オンライン復帰後に自動再送する。
-  const { pendingCount, enqueue: enqueueOffline } = useOfflineQueueSync();
+  const { pendingCount, failedCount, enqueue: enqueueOffline } = useOfflineQueueSync();
 
   /** dialog がまだ開いていなければ開く（二重 showModal() は例外になるためガードする）。 */
   function openDialog() {
@@ -164,12 +164,12 @@ export function RepoPicker({ prefill = null }: RepoPickerProps) {
       // 連続起票へ引き継がない判定にも流用する（同じ雛形が繰り返し復活しないように）。
       setFormKey((k) => k + 1);
     } catch {
-      // fetch 自体の失敗（オフライン・ネットワーク断）はオフラインキュー（B4-2・FR-22）へ積み、
-      // オンライン復帰後に自動再送する。下書き（B5-1）は再送が確定するまで消さずに残す
-      // （再送失敗時の手動復旧経路として機能する）。
+      // fetch 自体の失敗（オフライン・ネットワーク断）はオフラインキュー（B4-2・FR-22）へ積む。
+      // 下書き（B5-1）は再送が確定するまで消さずに残す（再送失敗時の手動復旧経路として機能する）。
+      // フォームはクリアしない（D-7・入力は絶対に失わせない）: formKey を進めて再マウントしても
+      // 下書きから同じ内容が復元されるだけで、見た目上クリアされない意図しない状態になるため。
       enqueueOffline({ repo: selected, title: input.title, body: input.body, labels: input.labels });
       setSubmitState({ status: "queued" });
-      setFormKey((k) => k + 1);
     }
   }
 
@@ -181,6 +181,11 @@ export function RepoPicker({ prefill = null }: RepoPickerProps) {
       {pendingCount > 0 ? (
         <p className="status-note offline-queue-status">
           {t.repoPicker.offlineQueuePending} {pendingCount}
+        </p>
+      ) : null}
+      {failedCount > 0 ? (
+        <p className="status-note offline-queue-status offline-queue-status-failed">
+          {t.repoPicker.offlineQueueFailed} {failedCount}
         </p>
       ) : null}
       <label className="repo-search">

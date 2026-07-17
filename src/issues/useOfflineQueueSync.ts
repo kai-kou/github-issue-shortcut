@@ -19,10 +19,14 @@ function applyOptimistic(state: QueuedIssue[], action: OptimisticAction): Queued
   return state.map((q) => (q.id === action.id ? { ...q, status: "failed" as const, errorCode: action.errorCode } : q));
 }
 
-/** キュー再送が成功したら、対応するリポジトリの下書き（B5-1）が残っていれば消す
- * （もう不要なため。別リポジトリへ切り替え後の下書きは誤って消さない）。 */
-function clearDraftIfMatching(repo: string): void {
-  if (loadDraft()?.repo === repo) clearDraft();
+/** キュー再送が成功したら、送信した内容と同一の下書き（B5-1）が残っていれば消す（もう不要なため）。
+ * repo だけでなく title・body も一致する場合に限定し、ユーザーが同じリポジトリで既に次の
+ * 内容を入力し始めていた場合に、その入力中の下書きを誤って消さないようにする。 */
+function clearDraftIfMatching(entry: { repo: string; title: string; body: string }): void {
+  const draft = loadDraft();
+  if (draft && draft.repo === entry.repo && draft.title === entry.title && draft.body === entry.body) {
+    clearDraft();
+  }
 }
 
 /** オフライン時にキューされた起票（B4-2・FR-22・FR-23）を、オンライン復帰後に直列・間隔を空けて
@@ -60,7 +64,7 @@ export function useOfflineQueueSync() {
           if (res.ok) {
             startTransition(() => applyAction({ type: "settle", id: entry.id, status: "removed" }));
             setQueue(removeFromOfflineQueue(entry.id));
-            clearDraftIfMatching(entry.repo);
+            clearDraftIfMatching(entry);
           } else {
             const code = await submitErrorCode(res);
             // duplicate_submission（409）は直前の同一内容が既に成功済みであることを意味する
@@ -68,7 +72,7 @@ export function useOfflineQueueSync() {
             if (code === "duplicate_submission") {
               startTransition(() => applyAction({ type: "settle", id: entry.id, status: "removed" }));
               setQueue(removeFromOfflineQueue(entry.id));
-              clearDraftIfMatching(entry.repo);
+              clearDraftIfMatching(entry);
             } else {
               // 4xx/5xx は自動再送の対象外とし failed のままキューに残す（#22 の手動再送・破棄を待つ）。
               startTransition(() => applyAction({ type: "settle", id: entry.id, status: "failed", errorCode: code }));

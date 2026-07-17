@@ -64,6 +64,7 @@ interface Translations {
     smartTokenListLabel: string;
     removeSmartTokenLabel: string;
     offlineQueuePending: string;
+    offlineQueueFailed: string;
   };
   issueForm: {
     closeButton: string;
@@ -182,6 +183,7 @@ export const translations = {
       smartTokenListLabel: "認識されたリポジトリ指定",
       removeSmartTokenLabel: "指定を解除",
       offlineQueuePending: "送信待ちのオフラインキュー:",
+      offlineQueueFailed: "送信に失敗した起票（手動対応が必要）:",
     },
     issueForm: {
       closeButton: "閉じる",
@@ -390,6 +392,7 @@ export const translations = {
       smartTokenListLabel: "Recognized repository",
       removeSmartTokenLabel: "Remove",
       offlineQueuePending: "Pending offline queue:",
+      offlineQueueFailed: "Failed to send (needs manual action):",
     },
     issueForm: {
       closeButton: "Close",
