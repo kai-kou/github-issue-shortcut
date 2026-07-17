@@ -14,7 +14,9 @@ import {
   nowSeconds,
   releaseIssueLogReservation,
   releaseRefreshLock,
+  releaseRequestIdReservation,
   reserveIssueLog,
+  reserveRequestId,
   saveTokens,
   tryAcquireRefreshLock,
   updateShortcut,
@@ -108,8 +110,61 @@ describe("issue_log (reserveIssueLog / releaseIssueLogReservation)", () => {
   });
 });
 
+describe("request_ids (reserveRequestId / releaseRequestIdReservation) — B4-4/OQ-8", () => {
+  it("reserves a fresh client_request_id and blocks a second reservation within the long window", async () => {
+    const userId = await upsertUser(db, { id: 2101, login: "requser1", avatar_url: "" });
+    expect(await reserveRequestId(db, userId, "req-a", 26 * 60 * 60)).toBe(true);
+    expect(await reserveRequestId(db, userId, "req-a", 26 * 60 * 60)).toBe(false);
+  });
+
+  it("still blocks a resubmission of the same client_request_id after the short FR-24 window (30s) has passed", async () => {
+    // Background Sync（最大24h保持）経由の再送は content_hash の短時間窓（30秒）を超えて起こりうるが、
+    // client_request_id が同じなら長時間窓で重複と判定し続けなければならない（B4-4 の主眼）。
+    const userId = await upsertUser(db, { id: 2102, login: "requser2", avatar_url: "" });
+    expect(await reserveRequestId(db, userId, "req-b", 26 * 60 * 60)).toBe(true);
+    await db
+      .prepare("UPDATE request_ids SET created_at = ? WHERE user_id = ? AND client_request_id = ?")
+      .bind(nowSeconds() - 60, userId, "req-b")
+      .run();
+    expect(await reserveRequestId(db, userId, "req-b", 26 * 60 * 60)).toBe(false);
+  });
+
+  it("allows reservation again once the existing record has gone stale beyond the long window", async () => {
+    const userId = await upsertUser(db, { id: 2103, login: "requser3", avatar_url: "" });
+    expect(await reserveRequestId(db, userId, "req-c", 30)).toBe(true);
+    await db
+      .prepare("UPDATE request_ids SET created_at = ? WHERE user_id = ? AND client_request_id = ?")
+      .bind(nowSeconds() - 60, userId, "req-c")
+      .run();
+    expect(await reserveRequestId(db, userId, "req-c", 30)).toBe(true);
+  });
+
+  it("scopes reservations by user independently", async () => {
+    const userId = await upsertUser(db, { id: 2104, login: "requser4", avatar_url: "" });
+    const otherUserId = await upsertUser(db, { id: 2105, login: "requser5", avatar_url: "" });
+    expect(await reserveRequestId(db, userId, "req-shared", 26 * 60 * 60)).toBe(true);
+    expect(await reserveRequestId(db, otherUserId, "req-shared", 26 * 60 * 60)).toBe(true);
+  });
+
+  it("lets a subsequent reservation succeed immediately after release", async () => {
+    const userId = await upsertUser(db, { id: 2106, login: "requser6", avatar_url: "" });
+    expect(await reserveRequestId(db, userId, "req-d", 26 * 60 * 60)).toBe(true);
+    await releaseRequestIdReservation(db, userId, "req-d");
+    expect(await reserveRequestId(db, userId, "req-d", 26 * 60 * 60)).toBe(true);
+  });
+
+  it("lets only one of two concurrent reservations for the same key succeed (atomicity)", async () => {
+    const userId = await upsertUser(db, { id: 2107, login: "requser7", avatar_url: "" });
+    const [a, b] = await Promise.all([
+      reserveRequestId(db, userId, "req-e", 26 * 60 * 60),
+      reserveRequestId(db, userId, "req-e", 26 * 60 * 60),
+    ]);
+    expect([a, b].filter(Boolean)).toHaveLength(1);
+  });
+});
+
 describe("deleteAccount", () => {
-  it("removes the user's rows from users, sessions, tokens, issue_log, rate_limits, and shortcuts (FR-12)", async () => {
+  it("removes the user's rows from users, sessions, tokens, issue_log, request_ids, rate_limits, and shortcuts (FR-12)", async () => {
     const userId = await upsertUser(db, { id: 5001, login: "delme", avatar_url: "" });
     const idHash = "hash-delme";
     await createSession(db, idHash, userId, 3600);
@@ -120,6 +175,7 @@ describe("deleteAccount", () => {
       refreshExpiresAt: null,
     });
     await reserveIssueLog(db, userId, "kai-kou/alpha", "hash-delme", 30);
+    await reserveRequestId(db, userId, "req-delme", 26 * 60 * 60);
     await checkRateLimit(db, userId, 60, 10);
     await createShortcut(db, userId, { repo: "kai-kou/alpha", labels: ["bug"], title: "" });
 
@@ -130,6 +186,7 @@ describe("deleteAccount", () => {
     expect(await db.prepare("SELECT 1 FROM sessions WHERE user_id = ?").bind(userId).first()).toBeNull();
     expect(await db.prepare("SELECT 1 FROM tokens WHERE user_id = ?").bind(userId).first()).toBeNull();
     expect(await db.prepare("SELECT 1 FROM issue_log WHERE user_id = ?").bind(userId).first()).toBeNull();
+    expect(await db.prepare("SELECT 1 FROM request_ids WHERE user_id = ?").bind(userId).first()).toBeNull();
     expect(await db.prepare("SELECT 1 FROM rate_limits WHERE user_id = ?").bind(userId).first()).toBeNull();
     expect(await db.prepare("SELECT 1 FROM shortcuts WHERE user_id = ?").bind(userId).first()).toBeNull();
   });

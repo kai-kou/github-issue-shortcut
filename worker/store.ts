@@ -58,6 +58,12 @@ export const SCHEMA_STATEMENTS: string[] = [
     created_at INTEGER NOT NULL
   )`,
   `CREATE INDEX IF NOT EXISTS idx_shortcuts_user_id ON shortcuts(user_id)`,
+  `CREATE TABLE IF NOT EXISTS request_ids (
+    user_id TEXT NOT NULL REFERENCES users(id),
+    client_request_id TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY (user_id, client_request_id)
+  )`,
 ];
 
 export interface UserRow {
@@ -280,12 +286,52 @@ export async function releaseIssueLogReservation(
 }
 
 /**
+ * オフラインキュー再送の重複防止（B4-4/FR-22×FR-24・OQ-8）: クライアントが起票の最初の送信試行時に
+ * 生成する `client_request_id`（キュー管理用の既存ローカル ID を流用）で長時間窓の予約を行う。
+ * `reserveIssueLog` の content_hash・短時間窓（再タップ対策）とは独立な仕組みで、Service Worker の
+ * Background Sync（ページを閉じていても再送・約 24h 保持）とクライアント側キューの二重再送経路が
+ * 日をまたいでも同一予約キーに収束するようにする（両経路とも同一の client_request_id を送信する前提）。
+ * upsert の原子性・戻り値の意味は `reserveIssueLog` と同じ。
+ */
+export async function reserveRequestId(
+  db: D1Database,
+  userId: string,
+  clientRequestId: string,
+  windowSeconds: number,
+): Promise<boolean> {
+  const now = nowSeconds();
+  const staleBefore = now - windowSeconds;
+  const result = await db
+    .prepare(
+      `INSERT INTO request_ids (user_id, client_request_id, created_at) VALUES (?, ?, ?)
+       ON CONFLICT(user_id, client_request_id) DO UPDATE SET created_at = excluded.created_at
+       WHERE request_ids.created_at < ?`,
+    )
+    .bind(userId, clientRequestId, now, staleBefore)
+    .run();
+  return result.meta.changes === 1;
+}
+
+/** `reserveRequestId` で確保した予約を解放する（GitHub 側の作成が失敗した場合の後始末）。 */
+export async function releaseRequestIdReservation(
+  db: D1Database,
+  userId: string,
+  clientRequestId: string,
+): Promise<void> {
+  await db
+    .prepare(`DELETE FROM request_ids WHERE user_id = ? AND client_request_id = ?`)
+    .bind(userId, clientRequestId)
+    .run();
+}
+
+/**
  * アカウント削除（FR-12・§6.2）: 該当ユーザーの行を全テーブルから削除する（論理削除ではなく物理削除）。
  */
 export async function deleteAccount(db: D1Database, userId: string): Promise<void> {
   await db.batch([
     db.prepare(`DELETE FROM shortcuts WHERE user_id = ?`).bind(userId),
     db.prepare(`DELETE FROM issue_log WHERE user_id = ?`).bind(userId),
+    db.prepare(`DELETE FROM request_ids WHERE user_id = ?`).bind(userId),
     db.prepare(`DELETE FROM rate_limits WHERE user_id = ?`).bind(userId),
     db.prepare(`DELETE FROM tokens WHERE user_id = ?`).bind(userId),
     db.prepare(`DELETE FROM sessions WHERE user_id = ?`).bind(userId),

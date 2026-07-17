@@ -35,7 +35,9 @@ import {
   listShortcuts,
   nowSeconds,
   releaseIssueLogReservation,
+  releaseRequestIdReservation,
   reserveIssueLog,
+  reserveRequestId,
   saveTokens,
   updateShortcut,
   upsertUser,
@@ -49,6 +51,15 @@ const PREAUTH_TTL = 10 * 60;
 const SESSION_TTL = 30 * 24 * 60 * 60;
 /** 二重送信防止（FR-24）の照合ウィンドウ（秒）。再タップ・タイムアウト再送を吸収する短時間ウィンドウ。 */
 const DUPLICATE_SUBMISSION_WINDOW = 30;
+/**
+ * オフラインキュー再送の重複防止（B4-4・OQ-8）の照合ウィンドウ（秒）。Service Worker の
+ * Background Sync（`vite.config.ts` の `maxRetentionTime: 24 * 60` 分＝24h）保持期間に
+ * 安全マージンを加えた長時間ウィンドウ。DUPLICATE_SUBMISSION_WINDOW（30秒・再タップ対策）とは
+ * 独立に、client_request_id が同じリクエストを日をまたいでも重複と判定する。
+ */
+const OFFLINE_QUEUE_DEDUPE_WINDOW = 26 * 60 * 60;
+/** client_request_id の長さ上限（crypto.randomUUID() は36文字・将来の形式変更を見込んだ余裕）。 */
+const CLIENT_REQUEST_ID_MAX_LENGTH = 100;
 /**
  * アプリ側レート制限（不正利用対策・PR-4・OQ-6・2026-07-16 決定）: ユーザーあたり 1 分間に
  * 起票できる回数の上限。GitHub の二次制限（コンテンツ生成系 80 req/min）の 1/8 に抑え、
@@ -319,13 +330,20 @@ app.post("/api/issues", async (c) => {
   if (typeof payload !== "object" || payload === null) {
     return c.json(jsonError("invalid_request", "invalid JSON body"), 400);
   }
-  const { repo: repoValue, title: titleValue, body: bodyValue, labels: labelsValue } = payload as Record<string, unknown>;
+  const { repo: repoValue, title: titleValue, body: bodyValue, labels: labelsValue, clientRequestId: clientRequestIdValue } =
+    payload as Record<string, unknown>;
   const repo = typeof repoValue === "string" ? repoValue.trim() : "";
   const title = typeof titleValue === "string" ? titleValue.trim() : "";
   const body = typeof bodyValue === "string" ? bodyValue.trim() : "";
   const labels = Array.isArray(labelsValue)
     ? labelsValue.filter((l): l is string => typeof l === "string" && l.trim().length > 0)
     : [];
+  // クライアントが起票の最初の送信試行時に生成し、SW/クライアント双方の再送経路で使い回す
+  // 冪等性キー（B4-4・OQ-8）。省略可（旧クライアント・queue を経由しない直接呼び出し等）。
+  const clientRequestId =
+    typeof clientRequestIdValue === "string" && clientRequestIdValue.trim().length > 0
+      ? clientRequestIdValue.trim().slice(0, CLIENT_REQUEST_ID_MAX_LENGTH)
+      : null;
   if (!repo || !title) {
     return c.json(jsonError("invalid_request", "repo and title are required"), 400);
   }
@@ -344,6 +362,19 @@ app.post("/api/issues", async (c) => {
     );
   }
 
+  // オフラインキュー（B4-2）の Background Sync（SW）とクライアント側キューは同一の失敗送信を
+  // 独立に再送しうるため、上記の短時間窓（30秒）だけでは日をまたぐ再送の重複を防げない（B4-4・OQ-8）。
+  // client_request_id が同じ再送は、経過時間に関わらず長時間窓で重複と判定する。
+  if (clientRequestId !== null) {
+    const requestIdReserved = await reserveRequestId(c.env.DB, user.id, clientRequestId, OFFLINE_QUEUE_DEDUPE_WINDOW);
+    if (!requestIdReserved) {
+      return c.json(
+        jsonError("duplicate_submission", "this issue was already submitted moments ago"),
+        409,
+      );
+    }
+  }
+
   try {
     const accessToken = await getValidAccessToken(c.env, user.id);
     const issue = await createIssue(c.env.GITHUB_API_BASE ?? DEFAULT_API_BASE, accessToken, repo, { title, body, labels });
@@ -351,6 +382,7 @@ app.post("/api/issues", async (c) => {
   } catch (err) {
     // 予約したまま失敗すると、正当な再試行まで duplicate_submission でブロックし続けてしまうため解放する。
     await releaseIssueLogReservation(c.env.DB, user.id, repo, contentHash);
+    if (clientRequestId !== null) await releaseRequestIdReservation(c.env.DB, user.id, clientRequestId);
     return issueCreationErrorResponse(c, err);
   }
 });
