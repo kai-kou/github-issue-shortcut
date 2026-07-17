@@ -14,14 +14,13 @@ if ! git rev-parse --git-dir >/dev/null 2>&1; then exit 0; fi
 
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 
-# ── 日次コスト集計（#1213・#95・#106）──────────────────────────────────
-# 月次レポート（content/analytics/cost_monthly/YYYY-MM.json）は git 追跡対象だが、
-# 高頻度で自動更新されるテレメトリを feature ブランチの WIP 自動コミットに相乗りさせると、
-# 全 feature PR に churn が混入し、レビューセッションが「無関係 churn」と判定して破棄する
-# 不健全なループに陥る（根本原因・#106）。そのため永続化経路を分離する:
+# ── 日次コスト集計（#1213・#95・#106・#242）────────────────────────────
+# 月次レポート（content/analytics/cost_monthly/YYYY-MM.json）は gitignore 対象で、
+# main では追跡しない（#242）。高頻度更新テレメトリを feature ブランチに相乗りさせると
+# churn 混入・未コミット誤検知でトークンを浪費するため、永続化経路を完全分離する:
 #   - 本フックでは cost_log.jsonl への追記と月次 JSON のローカル更新（flush）のみ行う。
-#   - 月次 JSON は下記 WIP 自動コミットの git add から「除外」する（feature PR を汚さない）。
-#   - main への永続化は commit_cost_telemetry.py が「1 日 1 回の専用 PR」で行う（後述ブロック）。
+#   - 永続化は commit_cost_telemetry.py がテレメトリ専用データブランチ
+#     telemetry/cost-data へ「1 日 1 回の plain git push」で行う（gh 非依存・後述ブロック）。
 #
 # 2 ステップ呼び出し:
 #   1. --summary-only: 当セッションのコストを cost_log.jsonl に O_APPEND 追記
@@ -34,14 +33,16 @@ if [[ -f "$_calc_script" ]] && command -v python3 &>/dev/null; then
 fi
 unset _calc_script
 
-# ── 月次コスト集計の永続化（feature ブランチから分離・1 日 1 回の専用 PR・#106）──
-# 作業中のチェックアウトに触れず、origin/main ベースの使い捨て worktree で cost_monthly
-# のみを専用ブランチ → PR → squash マージする。--gate-daily で JST 当日 1 回に収束する
-# （外部スケジューラ非依存。実データ差分が無ければ no-op で PR を作らない）。
-# 上の flush 直後・WIP コミットの前に置き、最新の月次 JSON をローカルから読ませる。
+# ── 月次コスト集計の永続化（telemetry/cost-data ブランチへ直 push・#242）──
+# 作業中のチェックアウトに触れず、git plumbing でコミットを構築してデータブランチへ
+# push する（PR・gh 不要）。--gate-daily で JST 当日 1 回に収束する
+# （外部スケジューラ非依存。実データ差分が無ければ no-op で push しない）。
+# 上の flush 直後に置き、最新の月次 JSON をローカルから読ませる。
 _tele_script="${REPO_ROOT}/tools/commit_cost_telemetry.py"
 if [[ "${CLAUDE_CODE_REMOTE:-}" = "true" ]] && [[ -f "$_tele_script" ]] && command -v python3 &>/dev/null; then
-  timeout 90s python3 "$_tele_script" --gate-daily >/dev/null 2>&1 || true
+  # 120s: fetch/push リトライ込みの内部予算に余裕を持たせる。途中で SIGTERM されても
+  # マーカーは成功後 stamp のため、同日中の次セッション Stop hook が再試行する（#243）
+  timeout 120s python3 "$_tele_script" --gate-daily >/dev/null 2>&1 || true
 fi
 unset _tele_script
 
@@ -57,8 +58,9 @@ if [[ "${CLAUDE_CODE_REMOTE:-}" = "true" ]]; then
   if [ -n "$_branch" ] && [ "$_branch" != "main" ] && [ "$_branch" != "master" ]; then
     if [ -n "$(git -C "$REPO_ROOT" status --porcelain 2>/dev/null || true)" ]; then
       _timestamp=$(TZ='Asia/Tokyo' date '+%Y-%m-%d %H:%M' 2>/dev/null || date '+%Y-%m-%d %H:%M')
-      # 月次コストテレメトリ（cost_monthly）は feature ブランチに混入させない（#106）。
-      # 専用 PR（commit_cost_telemetry.py）が main へ永続化するため、ここでは除外する。
+      # 月次コストテレメトリ（cost_monthly）は feature ブランチに混入させない（#106・#242）。
+      # gitignore 化済みだが、gitignore 反映前の旧ブランチで追跡されている場合に備え
+      # pathspec でも明示除外する（永続化は telemetry/cost-data ブランチが担う）。
       git -C "$REPO_ROOT" add -A -- . ':(exclude)content/analytics/cost_monthly/' 2>/dev/null || true
       # cost_monthly 以外に変更が無ければ何もコミットしない（空コミットを避ける）
       if ! git -C "$REPO_ROOT" diff --cached --quiet 2>/dev/null && \

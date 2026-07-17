@@ -39,7 +39,7 @@
 | 条件 | 判定 |
 |------|------|
 | `fact_check_flags < 5 件` かつ `rank C を含まない` | 合格 → PR へ |
-| `fact_check_flags >= 5 件` または `rank C >= 1 件` | 再リサーチ（Gemini で 1回再試行） |
+| `fact_check_flags >= 5 件` または `rank C >= 1 件` | 再リサーチ（主エンジン `/deep-research` で 1回再試行） |
 | 再試行後も未達 | `status:waiting-user` に戻して通知（境界外） |
 
 ## 5. 未確証の扱い

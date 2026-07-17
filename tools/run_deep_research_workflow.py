@@ -11,8 +11,8 @@ Claude Code のネイティブ /deep-research（Dynamic Workflows）を起動し
   - 主エンジン Step 3b（本ツール・自律/バッチ起動）: /deep-research を claude -p サブプロセス経由で
     実行 + 正規化。Opus 明示指定（#2417）・レート枠スキップカウンタ・月次コストログ等の既存インフラを
     再利用するため、cross-session 実行が必要な自律パイプラインではこちらを使い続ける
-  - 第2エンジン: Gemini Deep Research Max（Step 3a/3b いずれかが失敗 or 月次予算ゲート超過時）
-  - フォールバック: DIY（上記2つが失敗時の最終手段）
+  - フォールバック: DIY（ウェブリサーチ・Step 3a/3b が失敗 or 月次予算ゲート超過時の最終手段）。
+    外部 LLM API（Gemini 等）によるディープリサーチ経路は Issue #260 で廃止済み
 
 実行モデル（2026-07-03 公式ドキュメント確認・確定）:
   code.claude.com/docs/en/workflows・/en/commands を Fetch して事実確認した結果:
@@ -28,6 +28,14 @@ Claude Code のネイティブ /deep-research（Dynamic Workflows）を起動し
   実績: V167 実走で「23ソース取得→92主張抽出→25主張を3票 adversarial 検証（refute 0）」の
   引用付きレポートを生成（fixtures/ にサンプル保存）。
 
+起動形式の追従（2026-07-16 kinako-mocchi #4699/#4722 反映・Issue #262）:
+  CLI v2.1.2xx で /deep-research のスラッシュコマンド解釈が廃止され、bundled workflow を
+  Workflow ツール（`Workflow({name: 'deep-research', args: ...})`）で起動する形式に変わった。
+  旧形式プロンプト `/deep-research {質問}` は素の短文回答しか返さず EXIT=4 が恒常化するため、
+  dr_prompt はツール起動を明示指示する（起動不能時は DEEP_RESEARCH_UNAVAILABLE センチネルで
+  確定検知・完了までのポーリング継続指示付き）。EXIT=1/4/5/6 は research_fallback_log.jsonl に
+  自動記録し、反復（CLI インターフェース再変化）を検知可能にする。
+
 使い方（{ID} は任意のリサーチ識別子 slug）:
   # フル（検索 + 正規化）— 予算上限なし（検証用途では上限を付けない方針）
   python3 tools/run_deep_research_workflow.py {ID}
@@ -35,7 +43,7 @@ Claude Code のネイティブ /deep-research（Dynamic Workflows）を起動し
   # 予算上限を付ける（API 従量経路時の保険・サブスク経路では無視される）
   python3 tools/run_deep_research_workflow.py {ID} --max-budget-usd 8
 
-  # 正規化のみ（既存の生レポートを schema 化）— Gemini NG → 再正規化に便利
+  # 正規化のみ（既存の生レポートを schema 化）— normalize NG → 再正規化に便利
   python3 tools/run_deep_research_workflow.py {ID} \
       --normalize-only --report content/research/{ID}_research_raw.md
 
@@ -79,20 +87,24 @@ _API_KEY_ENV_VARS = ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN")
 # コストガード（#2411 飼い主指示で /deep-research を主エンジン化・モデルは #2417 で Opus 確定）:
 # 既定 orchestrator は Opus（実測 ~$18.7/本・約36分 wall-clock・#2429 V167 実測）。Sonnet 降格は実測でコスト不変
 # （$18.8≒$18.7）かつ Opus より遅い（Sonnet 約52分 vs Opus 約36分・≒1.4倍）ため不採用 → 速度優先で Opus（モデル確定 #2417）。
-# 主エンジンだが月 $50 枠を Gemini/DIY と共有するため、月次ゲートを「deep-research→Gemini 切替点」として使う:
+# 主エンジンだが月 $50 枠を DIY と共有するため、月次ゲートを「deep-research→DIY 切替点」として使う:
 # - 1本あたり既定上限 $20（Opus 実走 ~$18.7 を許容しつつ暴走を防止。検証時は上書き可）
-# - 当月の本エンジン累計が $40 を超えたら起動拒否 → Gemini にフォールバック（Opus ~$18.7 なら約2本/月で切替）
+# - 当月の本エンジン累計が $40 を超えたら起動拒否 → DIY にフォールバック（Opus ~$18.7 なら約2本/月で切替）
 DEFAULT_MAX_BUDGET_USD = 20.0
-MONTHLY_BUDGET_GATE_USD = 40.0   # /deep-research 単体の月次ゲート（超過→Gemini フォールバック）
+MONTHLY_BUDGET_GATE_USD = 40.0   # /deep-research 単体の月次ゲート（超過→DIY フォールバック）
 MONTHLY_BUDGET_LIMIT_USD = 50.0  # プロジェクト全体の月次上限（run_deep_research.py と整合）
 WORKFLOW_ENGINE_PREFIX = "deep-research-workflow"
 # /deep-research のサブエージェントが使う組み込みツール（root では allowedTools で事前許可する）。
 # 🔴 Bash/Write は必須: /deep-research（Dynamic Workflows）はオーケストレーションスクリプトの
 #   実行に Bash を、中間成果物の保存に Write を使う。これらを外すと -p 非対話モードで
 #   権限待ちハングする（2026-06-01 実機検証: 除外で 7分超 [1/3] 停止・付与で ~90秒完走）。
+# 🔴 Skill も必須（#4699）: CLI v2.1.2xx で deep-research が bundled workflow の Skill 起動
+#   （`Workflow({name: 'deep-research', args: ...})` / `Skill("deep-research")`）に変わったため。
+# 🔴 TaskOutput/TaskGet も必須（#4722）: dr_prompt がバックグラウンド Workflow の完了ポーリングに
+#   指示するツール。未許可だと -p 非対話モードで権限待ちになり、ポーリングできず早期リターンする。
 # プロンプトインジェクション（取得ページ経由の任意コマンド実行）対策は、サブプロセスを
 #   一時 cwd（TemporaryDirectory）に隔離し + `--max-budget-usd` 上限で暴走を抑制することで緩和する。
-SEARCH_ALLOWED_TOOLS = "Workflow Agent Task WebSearch WebFetch Read Bash Write"
+SEARCH_ALLOWED_TOOLS = "Workflow Agent Task TaskOutput TaskGet Skill WebSearch WebFetch Read Bash Write"
 
 # /deep-research に「全文をこのファイルへ Write せよ」と指示する作業ファイル名（#2704）。
 # レポート本文の正本はこのファイル（永続 work_dir に書かせて harvest する）。`--output-format json`
@@ -100,7 +112,7 @@ SEARCH_ALLOWED_TOOLS = "Workflow Agent Task WebSearch WebFetch Read Bash Write"
 REPORT_FILENAME = "deep_research_report.md"
 # 本文回収の最低文字数ガード（#2704）。成功例は 12,000〜24,000 字（V167:21k / V158:15k / V136:24k）。
 # これを下回る場合は出力欠落（V183 の 438 字問題）とみなし、高コストな normalize に進む前に
-# 即フォールバック（Gemini/DIY）へ誘導する。生レポートが取れている限りまず発火しない非常ベル。
+# 即フォールバック（DIY）へ誘導する。生レポートが取れている限りまず発火しない非常ベル。
 MIN_REPORT_CHARS = 3000
 
 # /deep-research サブプロセスの timeout（#2704 followup・#2704 検証で判明した根因対策）。
@@ -130,10 +142,10 @@ class RateLimitedError(RuntimeError):
     """claude -p がサブスク 5 時間レート枠超過（usage limit reached）で本文を出せなかった確定エラー。
 
     #2814: ユーザー指示「ディープリサーチは必ず claude -p で行う。レート枠超過はスキップし、
-    連続3回スキップして初めて Gemini を使う」を実装するための専用例外。capacity（容量）起因の
+    連続3回スキップして初めてフォールバック（DIY）を使う」を実装するための専用例外。capacity（容量）起因の
     一時的失敗であり、schema NG（EXIT=1）・本文回収失敗（EXIT=4）・実行エラー（EXIT=5）のような
     「やり直しても直らない失敗」とは性質が異なる。main で **EXIT=6** にマップし、research-runner は
-    これを「Gemini へ即フォールバックせず、次スロットで claude -p を再試行（スキップ）」と解釈する。
+    これを「DIY へ即フォールバックせず、次スロットで claude -p を再試行（スキップ）」と解釈する。
     """
 
 
@@ -176,6 +188,34 @@ def _now_iso() -> str:
     return _dt.datetime.now(JST).isoformat()
 
 
+def _log_engine_failure(research_id: str, exit_code: int, reason: str) -> None:
+    """主エンジン（/deep-research）失敗を research_fallback_log.jsonl に永続記録する（#4699）。
+
+    kinako-mocchi 2026-07 の EXIT=4 恒常化はこのログに一切記録されず、フォールバック理由の
+    記録源が PR 本文だけだったため横断検知が遅れた。EXIT=1/4/5/6 の全失敗経路で必ず記録し、
+    同型失敗の反復（CLI インターフェース変化等）を検知可能にする。
+    記録の実体は run_deep_research.append_fallback_log に一本化（FALLBACK_LOG は
+    同モジュール側で絶対パスにアンカー済み＝cwd 非依存）。書き込み失敗でリサーチ本体は止めない。
+    """
+    try:
+        # tools/ 直下の sibling として import（本スクリプトを直接実行した場合は
+        # sys.path[0]=tools/ で解決する。他 cwd からの import 用に保険で追加。
+        # 重複挿入を防ぐ（長寿命プロセスで sys.path が失敗のたびに伸びないように）
+        tools_dir = str(Path(__file__).resolve().parent)
+        if tools_dir not in sys.path:
+            sys.path.insert(0, tools_dir)
+        from run_deep_research import append_fallback_log
+        # to_engine は EXIT コードごとの実際の次アクションを記録する（誤集計防止）:
+        #   6=レート枠超過 → DIY に降りず「スキップ→次スロット再試行」
+        #   1=normalize/schema 失敗 → まず --normalize-only 再試行（$0）。DIY 直行ではない
+        #   4/5=真の失敗 → DIY フォールバック
+        to_engine = {6: "skip-retry-claude-p", 1: "normalize-only-retry"}.get(
+            exit_code, "diy-sonnet-websearch")
+        append_fallback_log(research_id, reason, to_engine=to_engine, exit_code=exit_code)
+    except Exception as exc:  # noqa: BLE001 — ログ失敗でリサーチ本体を止めない
+        print(f"[WARN] fallback log 書き込み失敗: {exc}", file=sys.stderr)
+
+
 def read_prompt(research_id: str) -> str:
     path = RESEARCH_DIR / f"{research_id}_prompt.md"
     if not path.exists():
@@ -214,6 +254,8 @@ def _run_claude(prompt: str, model: str, allowed_tools: str | None,
             text=True, encoding="utf-8", errors="replace", timeout=timeout
         )
 
+    # wall-clock 実測（早期リターン vs timeout 到達を切り分けるため・#4722）
+    started = time.monotonic()
     try:
         if work_dir is not None:
             # 永続 cwd（呼び出し側が削除・harvest を管理する）
@@ -231,7 +273,9 @@ def _run_claude(prompt: str, model: str, allowed_tools: str | None,
             "errors": f"Subprocess execution failed: {exc}",
             "_returncode": -1,
             "_stderr_tail": str(exc)[-2000:],
+            "_elapsed_sec": round(time.monotonic() - started, 1),
         }
+    elapsed_sec = round(time.monotonic() - started, 1)
     out = (proc.stdout or "").strip()
     try:
         data = json.loads(out)
@@ -241,6 +285,7 @@ def _run_claude(prompt: str, model: str, allowed_tools: str | None,
     # returncode / stderr 末尾は常に保存し、非ゼロ終了なら is_error を強制（失敗検知の安定化）
     data["_returncode"] = proc.returncode
     data["_stderr_tail"] = (proc.stderr or "")[-2000:]
+    data["_elapsed_sec"] = elapsed_sec
     if proc.returncode != 0:
         data["is_error"] = True
     return data
@@ -278,6 +323,34 @@ def _harvest_report_file(work_dir: Path) -> tuple[str, str | None]:
     return _read(best), best.name
 
 
+def _build_dr_prompt(prompt: str) -> str:
+    """/deep-research 起動用の作業指示プロンプトを組み立てる（実行・--dry-run 共用）。
+
+    出力指示（リサーチ範囲ではなく作業指示）を明示し、全文を REPORT_FILENAME へ Write させる。
+    🔴 起動形式（#4699 根本原因対策）: 旧形式 `/deep-research {質問}` は CLI v2.1.2xx で
+    ワークフローとして解釈されなくなり、モデルが素の短文回答（735〜1183字）を返して
+    EXIT=4（本文回収失敗）が恒常化していた（kinako-mocchi 2026-07 の実障害）。
+    現行 CLI では deep-research は bundled workflow を Workflow ツールで起動する
+    （バイナリ内エラー文字列: "Pass it as args: Workflow({name: 'deep-research', args: '<question>'})"）。
+    スラッシュコマンド解釈に依存せず、ツール起動を明示指示する形へ変更した。
+    """
+    return (
+        "あなたはリサーチ実行器。以下の手順を実行せよ。\n"
+        "1. Workflow ツールを `Workflow({name: 'deep-research', args: <質問文>})` の形で呼び出し、"
+        "下記の【質問文】全文を args に渡してディープリサーチを実行する"
+        "（Workflow ツールが無い場合のみ Skill ツールで `Skill(\"deep-research\", args=<質問文>)` を使う）。\n"
+        "2. Workflow ツールは即座に『バックグラウンドで実行中です』という応答を返すことがあるが、"
+        "その1文だけで応答を終えてはならない。同一ターン内で TaskOutput / TaskGet ツール等を使い、"
+        "ワークフローが完了するまでポーリングを繰り返してから手順3へ進むこと"
+        "（応答を早期に終了すると本文が回収できず失敗扱いになる・#4722）。\n"
+        f"3. 完了後、最終的な引用付きレポートの全文を、作業ディレクトリ直下のファイル "
+        f"`{REPORT_FILENAME}` に Write ツールで保存する。要約や省略をせず本文をそのまま書き出す。\n"
+        "4. ワークフローを起動できない場合は、素の回答を生成せず "
+        "`DEEP_RESEARCH_UNAVAILABLE: <理由>` とだけ出力して終了する（勝手に自前リサーチしない）。\n\n"
+        f"【質問文】\n{prompt}"
+    )
+
+
 def run_deep_research(prompt: str, model: str, max_budget_usd: float | None,
                       timeout: int = DEFAULT_TIMEOUT_SEC,
                       allowed_tools: str = SEARCH_ALLOWED_TOOLS) -> tuple[str, float, dict]:
@@ -285,15 +358,9 @@ def run_deep_research(prompt: str, model: str, max_budget_usd: float | None,
 
     #2704: 本文の正本は「永続 work_dir に Write されたファイル」。result（最終メッセージ）は保険として
     比較し、長い方を採用する。本文が MIN_REPORT_CHARS 未満なら出力欠落とみなし即エラー（長さガード）→
-    呼び出し側が Gemini/DIY フォールバックへ誘導する（高コストな normalize の前で確定的に落とす）。
+    呼び出し側が DIY フォールバックへ誘導する（高コストな normalize の前で確定的に落とす）。
     """
-    # 出力指示（リサーチ範囲ではなく作業指示）を明示し、全文を REPORT_FILENAME へ Write させる。
-    dr_prompt = (
-        f"/deep-research {prompt}\n\n"
-        f"【出力に関する作業指示（リサーチ対象ではない）】"
-        f"最終的な引用付きレポートの全文を、作業ディレクトリ直下のファイル "
-        f"`{REPORT_FILENAME}` に Write ツールで保存すること。要約や省略をせず本文をそのまま書き出す。"
-    )
+    dr_prompt = _build_dr_prompt(prompt)
     work_dir = Path(tempfile.mkdtemp(prefix="deepresearch_"))
     try:
         data = _run_claude(dr_prompt, model, allowed_tools, max_budget_usd,
@@ -315,7 +382,7 @@ def run_deep_research(prompt: str, model: str, max_budget_usd: float | None,
     data["_file_len"] = len(file_text)
 
     # レート枠超過（capacity）検出（#2814）: 本文を出せず失敗し、かつ失敗出力がレート枠超過の
-    # シグネチャを含むなら RateLimitedError（EXIT=6）。Gemini へ落とさず「スキップ→次スロットで
+    # シグネチャを含むなら RateLimitedError（EXIT=6）。DIY へ落とさず「スキップ→次スロットで
     # claude -p 再試行」とするためのシグナル。誤検知防止に3条件を AND:
     #   ① len(report) < MIN_REPORT_CHARS（本文を出せていない）
     #   ② data.is_error（claude -p 実行自体が失敗終了）— Gemini レビュー #2815: 「レート制限がテーマの
@@ -324,9 +391,27 @@ def run_deep_research(prompt: str, model: str, max_budget_usd: float | None,
     if len(report) < MIN_REPORT_CHARS and data.get("is_error") and _is_rate_limited(data):
         raise RateLimitedError(
             "claude -p がレート枠超過（usage/rate limit）で本文を生成できなかった。"
-            f"内訳 result={len(result_text)}字 / file={len(file_text)}字 / rc={data.get('_returncode')}。"
+            f"内訳 result={len(result_text)}字 / file={len(file_text)}字 / rc={data.get('_returncode')} / "
+            f"elapsed={data.get('_elapsed_sec')}秒。"
             f"stderr末尾: {(data.get('_stderr_tail') or '')[-300:]}"
         )
+    # ワークフロー起動不能の明示シグナル（#4699）: dr_prompt の指示によりサブプロセスは
+    # deep-research ワークフローを起動できないとき素の回答を生成せず本センチネルを返す。
+    # CLI 更新でワークフローの起動インターフェースが再び変わった場合をここで確定検知する。
+    # 検査は result と harvest ファイルの両方の冒頭に対して行う（センチネルは通常 result 側に
+    # しか現れないため、迷いファイルが harvest されて report=file_text になった場合でも
+    # すり抜けない）。本文が十分に長い（MIN_REPORT_CHARS 以上）成功ケースでは検査しない
+    # （リサーチ対象や最終メッセージがセンチネル文字列に言及しただけの正常レポートを、
+    # EXIT=5 で誤破棄しないため・レビュー指摘）。
+    if len(report) < MIN_REPORT_CHARS:
+        _sentinel = "DEEP_RESEARCH_UNAVAILABLE"
+        for _src in (result_text, file_text):
+            if _sentinel in _src[:500]:
+                raise RuntimeError(
+                    f"deep-research ワークフローを起動できない（CLI インターフェース変化の可能性）: "
+                    f"{_src[:300]}。tools/run_deep_research_workflow.py の dr_prompt / "
+                    "SEARCH_ALLOWED_TOOLS を現行 CLI 仕様に合わせて更新すること（#4699 と同型）。"
+                )
     # 権限ブロックで途中停止していないかの簡易検知
     if re.search(r"(WebSearch|WebFetch).{0,40}(denied|許可|permission)", report) and len(report) < 1500:
         raise RuntimeError(
@@ -337,11 +422,14 @@ def run_deep_research(prompt: str, model: str, max_budget_usd: float | None,
         raise RuntimeError(f"deep-research 実行エラー: {data.get('errors') or data}")
     # 長さガード（#2704）: 本文回収失敗を normalize 前に確定的に検知してフォールバックへ。
     # 専用例外（ReportTooShortError）で送出し、権限不足・実行エラー（RuntimeError）と EXIT を区別する。
+    # 診断用に本文冒頭を含める（#4699: 「素の短文回答」か「エラー出力」かを事後ログだけで判別可能にする）。
+    # elapsed は早期リターンか timeout 到達かの切り分け用（#4722）。
     if len(report) < MIN_REPORT_CHARS:
         raise ReportTooShortError(
             f"本文回収失敗: deep-research 本文が {len(report)} 文字（最低 {MIN_REPORT_CHARS} 文字必要）。"
             f"内訳 result={len(result_text)}字 / harvestファイル={len(file_text)}字（採用={source}）。"
-            "出力欠落の可能性が高いためフォールバック（Gemini/DIY）へ。"
+            f"本文冒頭: 「{report[:200]}」。elapsed={data.get('_elapsed_sec')}秒 / rc={data.get('_returncode')}"
+            f"（timeout={timeout}秒に対する実測）。出力欠落のためフォールバック（DIY）へ。"
         )
     return report, cost, data
 
@@ -450,8 +538,8 @@ def log_cost(research_id: str, engine: str, cost: float, duration: float) -> Non
     # （ts だと月次コスト集計・$50 サーキットブレーカーが本エンジン分を取りこぼす）
     # サブスク経路（#2562）は実課金が発生しない（週次クォータの枠内）ため、budget 集計対象の
     # cost_usd は 0.0 とし、表示用の実測トークン価値は virtual_cost_usd に分離記録する
-    # （#2563 Gemini レビュー対策A）。これにより get_monthly_cost_total / month_to_date_cost が
-    # 実課金（Gemini/DIY）のみを集計し、$50 サーキットブレーカーが正しく機能する。
+    # （#2563 レビュー対策A）。これにより get_monthly_cost_total / month_to_date_cost が
+    # 実課金（DIY）のみを集計し、$50 サーキットブレーカーが正しく機能する。
     rec = {"timestamp": _now_iso(), "research_id": research_id, "engine": engine,
            "cost_usd": 0.0 if USE_SUBSCRIPTION else round(cost, 6),
            "duration_seconds": round(duration, 1)}
@@ -577,7 +665,8 @@ def main() -> int:
     theme = _theme_from_prompt(prompt, vid) if prompt else f"{vid} research"
 
     if args.dry_run:
-        dr = f'/deep-research {prompt[:120]}...'
+        # 実行時と同じビルダーで組み立てた実プロンプトの先頭をプレビューする（desync 防止・#4699）
+        dr = f"{_build_dr_prompt(prompt)[:400]}..."
         print("[dry-run] 検索:", ["claude", "-p", dr, "--model", args.engine_model,
               "--output-format", "json", "--allowedTools", allowed_tools,
               *(["--max-budget-usd", str(args.max_budget_usd)]
@@ -601,7 +690,7 @@ def main() -> int:
         if USE_SUBSCRIPTION:
             # サブスク経路（#2562・#2563 対策C）: /deep-research は週次クォータの枠内で実行され
             # 追加 $ 課金が発生しないため、月次予算ゲートはバイパスする（サブスク実行は常に無料）。
-            # 実課金（Gemini/DIY フォールバック）に対するブレーカーは run_deep_research.py 側で維持。
+            # 実課金（DIY フォールバック）に対するブレーカーは run_deep_research.py 側で維持。
             print("[0/3] サブスク経路（追加$ゼロ・週次クォータ枠内）のため月次予算ゲートをバイパス")
         else:
             # 月次予算チェック（#2394/#2411）。高コストエンジンの $50 枠圧迫を防ぐ（API 従量経路時）
@@ -611,11 +700,11 @@ def main() -> int:
                 print(f"ERROR: 当月のリサーチ全体累計が ${total_mtd:.2f}（上限 ${MONTHLY_BUDGET_LIMIT_USD}）を超過。"
                       "--force で強制実行可。", file=sys.stderr)
                 return 3
-            # ② /deep-research 単体ゲート（超過→Gemini フォールバック）
+            # ② /deep-research 単体ゲート（超過→DIY フォールバック）
             mtd = month_to_date_cost()
             if mtd > MONTHLY_BUDGET_GATE_USD and not args.force:
                 print(f"ERROR: 当月の /deep-research 累計が ${mtd:.2f}（ゲート ${MONTHLY_BUDGET_GATE_USD}）を超過。"
-                      "Gemini/DIY を使うか、--force で強制実行。", file=sys.stderr)
+                      "DIY を使うか、--force で強制実行。", file=sys.stderr)
                 return 3
             print(f"[0/3] 当月累計 /deep-research ${mtd:.2f}/ゲート${MONTHLY_BUDGET_GATE_USD} ・全体 ${total_mtd:.2f}/上限${MONTHLY_BUDGET_LIMIT_USD}")
         # サブスク/API 両経路で共通: ネイティブ /deep-research を実行する
@@ -626,19 +715,22 @@ def main() -> int:
                 prompt, args.engine_model, args.max_budget_usd, args.timeout,
                 allowed_tools=allowed_tools)
         except RateLimitedError as exc:
-            # レート枠超過（capacity）→ EXIT=6（#2814）。Gemini へ即フォールバックせず、
+            # レート枠超過（capacity）→ EXIT=6（#2814）。DIY へ即フォールバックせず、
             # research-runner が「スキップ→次スロットで claude -p 再試行」と解釈する終了コード。
-            # 連続3回スキップで初めて Gemini（SKILL.md Step 3.6 が skip カウンタで制御）。
-            print(f"SKIP: claude -p レート枠超過のためスキップ（EXIT=6・Gemini に落とさず次スロット再試行）: {exc}",
+            # 連続3回スキップで初めて DIY（SKILL.md Step 3.6 が skip カウンタで制御）。
+            _log_engine_failure(vid, 6, f"RateLimited: {exc}")
+            print(f"SKIP: claude -p レート枠超過のためスキップ（EXIT=6・DIY に落とさず次スロット再試行）: {exc}",
                   file=sys.stderr)
             return 6
         except ReportTooShortError as exc:
             # 本文回収失敗（出力欠落・長さガード）→ EXIT=4（#2704）。SKILL.md の終了コードと一致させる
-            print(f"ERROR: deep-research 本文回収失敗（フォールバックへ）: {exc}", file=sys.stderr)
+            _log_engine_failure(vid, 4, f"ReportTooShort: {exc}")
+            print(f"ERROR: deep-research 本文回収失敗（DIY フォールバックへ）: {exc}", file=sys.stderr)
             return 4
         except RuntimeError as exc:
             # 権限不足・サブプロセス実行エラー等 → EXIT=5（本文回収失敗=4 と区別して原因切り分け可能に）
-            print(f"ERROR: deep-research 実行失敗（フォールバックへ）: {exc}", file=sys.stderr)
+            _log_engine_failure(vid, 5, f"RuntimeError: {exc}")
+            print(f"ERROR: deep-research 実行失敗（DIY フォールバックへ）: {exc}", file=sys.stderr)
             return 5
         print(f"      取得: {len(report_md)} 文字 / cost=${cost:.3f} / source={meta.get('_report_source')}"
               f"（result={meta.get('_result_len')}字 / file={meta.get('_file_len')}字）")
@@ -657,6 +749,10 @@ def main() -> int:
             engine_version=f"deep-research-workflow/{args.engine_model}")
     except RuntimeError as exc:
         # normalize（JSON 抽出）失敗。生レポートは raw_path に保存済みのため喪失しない（#2704・V183 で全損した事故の根治）
+        # --normalize-only（手動再正規化）では検索サブプロセスが走っておらず、fallback ログに
+        # 「主エンジン失敗」として記録すると反復検知（EXIT=4/5 2連続→type:bug 起票）を汚すため記録しない
+        if not args.normalize_only:
+            _log_engine_failure(vid, 1, f"NormalizeFailed: {exc}")
         print(f"⚠️ normalize 失敗: {exc}", file=sys.stderr)
         if raw_path is not None:
             print(f"   生レポートは {raw_path} に保存済み。"
@@ -675,6 +771,10 @@ def main() -> int:
 
     print(f"[3/3] 出力: {md_path}\n          {json_path}")
     if errors:
+        # schema 検証 NG も EXIT=1 の失敗経路（「EXIT=1/4/5/6 は必ず記録」の抜け漏れ防止・レビュー指摘）。
+        # --normalize-only（手動再正規化）は normalize 失敗時と同じ理由で記録しない
+        if not args.normalize_only:
+            _log_engine_failure(vid, 1, f"SchemaInvalid: {'; '.join(errors[:5])}")
         print("⚠️ schema 検証エラー（正規ファイルは生成せず *_workflow_failed.* に退避）:", file=sys.stderr)
         for e in errors[:20]:
             print(f"  - {e}", file=sys.stderr)

@@ -111,11 +111,16 @@ def load_sessions() -> dict:
                     "first_ts": ts, "last_ts": ts, "model": row.get("model", ""),
                 })
                 s["segments"] += 1
-                for k in ("input_tokens", "output_tokens", "cache_read_tokens", "cache_write_tokens"):
-                    if isinstance(row.get(k), (int, float)):
-                        s[k] += int(row[k])
-                if isinstance(row.get("cost_usd"), (int, float)):
-                    s["cost_usd"] += float(row["cost_usd"])
+                # cost_log の同一セッション行は累積スナップショット（Stop のたびに増える）。
+                # 行を += すると prefix-sum の過大計上になるため、最新行の値を採用する（#244）
+                if ts >= s["last_ts"]:
+                    for k in ("input_tokens", "output_tokens", "cache_read_tokens", "cache_write_tokens"):
+                        if isinstance(row.get(k), (int, float)):
+                            s[k] = int(row[k])
+                    if isinstance(row.get("cost_usd"), (int, float)):
+                        s["cost_usd"] = float(row["cost_usd"])
+                    if row.get("model"):
+                        s["model"] = row.get("model", "")
                 if ts < s["first_ts"]:
                     s["first_ts"] = ts
                 if ts > s["last_ts"]:

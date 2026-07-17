@@ -101,6 +101,7 @@ GitHub Issue Shortcut
 `ai-reviewer-strategy.md`（FAIR 構成詳細・Warm 降格・#88）/
 `session-safety-rules-detail.md`（タイムアウト・確認ケース詳細・Warm 降格・#91）/
 `session-sprint-rules-detail.md`（PO 権限・メトリクス実装・較正手順・Warm 降格・#90）/
+`intent-gate-rules.md`（挙動変更前の spec/test/code 権威解決・fable-method 反映）/
 `problem-investigation-protocol.md` / `harness-escalation.md` / `lessons-management.md` /
 `pr-review-flow.md` / `claude-code-optimization.md` / `token-optimization-rules.md` /
 `github-mcp-fallback-patterns.md` / `native-fallback-rules.md`（Web 未提供機能の claude -p フォールバック標準形）/ `slack-notification-rules.md` /
@@ -133,13 +134,13 @@ GitHub Issue Shortcut
 - **このベースを PR 自律化を採らないプロジェクトに使う場合のみ** 、本セクションを
   「PR 作成前にユーザー確認」に書き換える（既定は上記の完全自律化）。
 
-### gh CLI / GitHub 操作（クラウドでは MCP が一次経路）
+### gh CLI / GitHub 操作（クラウドは gh シム + repo REST + MCP の三層）
 
-> 🔴 **クラウド実行環境（`CLAUDE_CODE_REMOTE=true`）では、`gh` の repo スコープ操作（REST + GraphQL）が egress プロキシに 403 でブロックされる。** repo スコープの GitHub 操作（Issue・PR・レビュー・マージ・repo メタデータ・ファイル取得）は **公式 GitHub MCP（`mcp__github__*`）を一次経路** とする。実機検証マトリクスと代替表は SSOT `docs/rules/github-mcp-fallback-patterns.md` を参照（L-114）。
+> 🔴 **クラウド実行環境（`CLAUDE_CODE_REMOTE=true`）のプロキシ許可範囲は変動する**（2 週間で 4 回変化・L-114）。2026-07-14 実測: **repo スコープ REST（`gh api repos/{o}/{r}/...`）は read/write とも動作** し、**gh シム（`.claude/bin/gh` → `tools/gh_shim.py`・SessionStart が PATH 注入）** が GraphQL 依存の `gh issue/pr/label/repo/release` 系コマンドを REST へ透過変換するため、**主要な gh コマンドはクラウドでもそのまま使える**。実機検証マトリクスと代替表は SSOT `docs/rules/github-mcp-fallback-patterns.md` を参照（Issue #254）。
 
-- クラウドで生存するのは: `gh api user` / `gh api rate_limit` と **git 操作**（`git clone https://...` / `git fetch/pull/push`・git プロキシは別系統）のみ（`gh auth status` は exit 0 でも失敗表示・認証判定に使わない）。
-- クラウドで 403 になる（= MCP へ切替）: `gh issue/pr list`・`gh repo view`・`gh api repos/{o}/{r}/...`・`gh api graphql`・`gh repo clone` に加え、**2026-07-02 実測で `gh search` 全般・非 repo REST（`gh api users/{u}`・`notifications` 等）・Actions パス（`gh variable/secret list`・`gh run/workflow list`）も 403 化**。urllib で `api.github.com` を直叩きしても同じプロキシを通るため **同じ 403**（フォールバックにならない）。GitHub Variables は MCP にも等価ツールがなく、env は Claude.ai 環境設定 / secrets-broker で供給する（`github-mcp-fallback-patterns.md` §2.4）。
-- ローカル実行（`gh` が直接 GitHub に到達できる環境）では従来どおり: repo 指定に `-R kai-kou/github-issue-shortcut`、`gh pr create` に `--head {現在のブランチ}` `--base main` を付与する。
+- 依然 403（= MCP へ切替）: `gh api graphql`・`gh search` 全般・非 repo REST（`gh api users/{u}`・`notifications`）・Actions variables/secrets。actions/runs・check-runs は App トークン権限不足 →`mcp__github__actions_list` / `get_job_logs`。GitHub Variables は MCP にも等価ツールがなく、env は Claude.ai 環境設定 / secrets-broker で供給する（`github-mcp-fallback-patterns.md` §2.4）。
+- gh が 403 になったらシムが stderr に `[gh-shim]` ガイダンス（MCP 代替）を付与する。プロキシ挙動の再検証は `gh --shim-doctor`（30 秒）。urllib で `api.github.com` のブロック対象パスを直叩きしても同じ 403（フォールバックにならない）。
+- ローカル実行（`gh` が直接 GitHub に到達できる環境）ではシムは実 gh へ即 exec（挙動不変）。従来どおり repo 指定に `-R kai-kou/github-issue-shortcut`、`gh pr create` に `--head {現在のブランチ}` `--base main` を付与する。
 
 ### ブランチ / コミットメッセージ
 
@@ -231,6 +232,7 @@ frontmatter は公式仕様（`name` / `description` 必須・`model` / `tools` 
 - リクエスト対象の実装内部でも、1箇所しか使わない汎用インターフェース・抽象化レイヤーを追加しない（YAGNI）。必要になった段階で導入する。実装に着手する前に「より単純な解から始めているか」を一度問う（Simplicity First の積極的適用。モデルは既定で複雑な解に傾くため、設計段階で過剰実装を抑える）
 - `.claude/settings.local.json` に環境変数を書き込まない（クラウド環境ではセッション間で消える）
 - ツール結果を自分で書いて事実と思い込まない（confabulation）。CI・マージ・レビュー・ファイル存在等の外部状態は実際に返ってきたツール結果でのみ断定し、ツール呼び出しを発したら実結果が返るのを待つ。ユーザー発言は逐語で扱い、所感を命令形に書き換えない（L-113）
+- 「テストを直して」「コードを直して」と言われても、仕様と矛盾するテストを通すために正しいコードを黙って書き換えない。挙動を変える編集の前に spec/test/code の意図を突き合わせ（Intent Gate）、不一致は surface する。権威順は ユーザー明示 > 仕様 > テスト > 現行コード（`docs/rules/intent-gate-rules.md`・L-113 の姉妹則）
 
 ## 日時表記ルール（SSOT: `datetime-rules.md`）
 

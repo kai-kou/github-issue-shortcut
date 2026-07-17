@@ -3,7 +3,8 @@
 > このファイルは Claude Code の **フックイベント名の実在性** と、本ベースでの **採否決定** の唯一の正本（SSOT）。
 > タスク依存ルール（Warm 層）であり `.claude/rules/` に symlink しない（フック設計・拡張時のみ Read する）。
 >
-> **検証日**: 2026-06-14 / **一次情報**: https://code.claude.com/docs/en/hooks
+> **検証日**: 2026-06-14（初版）/ 2026-07-14（SessionStart 詳細を再フェッチ・§2.5 追加）/
+> **一次情報**: https://code.claude.com/docs/en/hooks ・ https://code.claude.com/docs/en/claude-code-on-the-web
 > 訓練データではなく公式ドキュメントの実フェッチで裏取りした（E-E #23・🔍 タスク）。
 
 ## 0. 検証の結論
@@ -76,6 +77,57 @@
 > exit 2"）。ブロック理由を Claude に届けるには **stderr にプレーンテキストで出力してから `exit 2`**
 > する（`.claude/hooks/lib/hook_block.sh` の `hook_block "理由"` を使う）。JSON 構造化判定
 > （`permissionDecision` 等）を使う場合は `exit 0` + stdout JSON の組み合わせにする。
+
+## 2.5 SessionStart の詳細仕様（source / timeout / JSON 出力 / setup script との使い分け）
+
+2026-07-14 に公式ドキュメント（hooks / claude-code-on-the-web）を一次フェッチして裏取りした要点。
+本ベースの `session-start.sh` の設計判断（Issue #248 / #249 / #250）はこれに基づく。
+
+### タイムアウト
+
+- **既定タイムアウト = 600 秒**（`command` / `http` / `mcp_tool` タイプ）。`prompt` = 30 秒・`agent` = 60 秒。
+- **per-hook `timeout` フィールドで変更可**（`.claude/settings.json` の各 hook エントリ）。
+- `UserPromptSubmit` は `command`/`http`/`mcp_tool` の既定を 30 秒に、`MessageDisplay` は 10 秒に下げる。
+- SessionStart は 600 秒あるが、毎セッション走るため軽量に保つ（重い依存導入は下記 setup script へ）。
+
+### 入力 JSON の `source` フィールド（matcher と同値）
+
+- SessionStart の input JSON には `source`（`startup` / `resume` / `clear` / `compact`）が入る。
+- matcher でも同じ 4 値で分岐できる（settings.json の `matcher`）。
+- **本ベースの活用**: `session-start.sh` は stdin JSON から `source` を読み、**破壊的なワーキングツリー
+  クリーンアップ（reset/checkout/clean）を `startup` のときのみ実行**する。`startup` は新規クローン直後で
+  失う未コミット変更がないため安全。`resume`/`compact`/`clear` では未コミット作業を消さない（Issue #248・
+  L-100 ①）。env 永続化・依存インストール・main fetch・stdout 注入は全 source で維持する。
+
+### SessionStart の JSON 出力フィールド（`hookSpecificOutput`）
+
+plain stdout 注入（§2）に加え、以下の event-specific フィールドを JSON で返せる:
+
+| フィールド | 用途 |
+|-----------|------|
+| `additionalContext` | 会話開始前に Claude のコンテキストへ追加する文字列（plain stdout と等価の注入経路） |
+| `initialUserMessage` | セッション最初のユーザーメッセージ（`-p` の非対話モードのみ有効） |
+| `sessionTitle` | セッションタイトルを自動設定（`/rename` 相当）。`startup`/`resume` のみ有効・`clear`/`compact` は無視 |
+| `watchPaths` | `FileChanged` イベントで監視する絶対パスの配列 |
+| `reloadSkills` | `true` でフック完了後に skill/command ディレクトリを再スキャン（フックが動的導入した skill を即利用可能に） |
+
+> **本ベースの選択**: 現状は plain stdout 注入（言語リマインダー + スナップショット）を使い、`sessionTitle`
+> 等の JSON 出力は未使用。plain stdout と JSON 出力の混在は避ける（stdout 全体が JSON パース対象になり
+> 得るため）方針で、load-bearing な言語リマインダー注入を壊さないことを優先している。将来 `sessionTitle`
+> でセッション自動命名（ブランチ名/Issue 番号）を採るなら、全注入を `additionalContext` に移す形で慎重に行う。
+
+### setup script（クラウド環境）と SessionStart フックの使い分け
+
+| 観点 | setup script | SessionStart フック |
+|------|-------------|---------------------|
+| 紐付け先 | クラウド環境（Claude.ai の環境設定 UI） | リポジトリ（`.claude/settings.json`） |
+| 実行タイミング | Claude Code 起動 **前**（初回実行後 約 7 日ファイルシステムキャッシュ） | 起動 **後**・毎セッション（キャッシュなし） |
+| スコープ | クラウド環境のみ | ローカル + クラウド両方（`CLAUDE_CODE_REMOTE` でガード可） |
+| 向き | 重い導入（言語ランタイム・Docker イメージ・大型依存） | 軽量なプロジェクト準備（`npm install` 等の冪等・高速処理） |
+
+> **指針**: SessionStart は毎セッション走りキャッシュされないため、5 分超かかる導入は setup script 側へ移す。
+> 本ベースの `session-start.sh` は依存が軽量（PyYAML のみ・実測 1 秒未満）のため SessionStart 内で完結させている。
+> 派生プロジェクトで重いツールチェーン導入が必要になったら setup script へ委ねる。
 
 ## 3. #23 で新規採用したフックと役割整理
 

@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# gh シム ラッパー（クラウド 403 排除・Issue #254）。実体: tools/gh_shim.py
+# ローカルでは実 gh へ即 exec（挙動不変）。GH_SHIM=off で完全無効化。
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+exec python3 "${SCRIPT_DIR}/../../tools/gh_shim.py" "$@"

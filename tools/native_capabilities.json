@@ -53,7 +53,7 @@
       "fallback": {
         "kind": "claude-p",
         "how": "python3 tools/run_deep_research_workflow.py（Step 3b と同一スクリプト）",
-        "final": "Gemini Deep Research Max → DIY（research-runner SKILL.md のエンジン選択ポリシー）"
+        "final": "DIY（WebSearch/WebFetch・research-runner SKILL.md のエンジン選択ポリシー。外部 LLM API は使わない）"
       },
       "notes": "2026-07-03 にクラウドでも直接実行可能と確認済み（Web ギャップ解消の実例）。エンジン選択の SSOT は research-runner SKILL.md"
     },
@@ -65,7 +65,7 @@
       "fallback": {
         "kind": "claude-p",
         "how": "python3 tools/run_deep_research_workflow.py --id <ID>（claude -p が設計上の一次経路）",
-        "final": "Gemini Deep Research Max → DIY"
+        "final": "DIY（WebSearch/WebFetch。外部 LLM API は使わない）"
       },
       "notes": "コンテキスト隔離・90 分タイムアウト・レート枠検出（EXIT=6）が本質的に必要なため claude -p を維持（native-agent-teams-migration.md §2.2）。Web ギャップ代替ではない"
     },
