@@ -10,3 +10,22 @@
 body {
   margin: 0;
 }
+
+/* デザインガイドライン: タップターゲット最低ライン（WCAG 2.2 SC 2.5.8 AA・24x24 CSS px）と
+   フォームコントロールの font-size 16px 以上（iOS Safari の自動ズーム防止）のベースライン。
+   checkbox/radio はネイティブ描画サイズが変わってしまうため対象外とする（e2e/design-guidelines.spec.ts）。 */
+button,
+input:not([type="checkbox"]):not([type="radio"]),
+select,
+textarea {
+  min-height: 44px;
+  font-size: 16px;
+  box-sizing: border-box;
+}
+
+a,
+[role="button"] {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+}

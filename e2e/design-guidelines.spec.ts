@@ -137,7 +137,7 @@ test.describe("デザインガイドライン: ダークモード smoke", () => 
 
     // フォームが実際に表示され、ダークモードでもレイアウトが崩れず操作可能であること。
     await expect(page.getByRole("textbox", { name: /タイトル|^Title$/ })).toBeVisible();
-    await expect(page.getByRole("textbox", { name: /本文|^Body$/ })).toBeVisible();
+    await expect(page.getByRole("textbox", { name: /本文|^Body/ })).toBeVisible();
     await expect(page.getByRole("button", { name: /Issue を作成|Create issue/ })).toBeVisible();
   });
 });
