@@ -182,26 +182,27 @@ export function RepoPicker({ prefill = null }: RepoPickerProps) {
             initialTitle={appliesPrefill ? prefill?.title : undefined}
             initialLabels={appliesPrefill ? prefill?.labels : undefined}
             initialBody={appliesPrefill ? prefill?.body : undefined}
-          />
-          {submitState.status === "success" ? (
-            <p className="submit-result success">
-              {t.issueForm.successMessage} #{submitState.number}{" "}
-              <a href={submitState.htmlUrl} target="_blank" rel="noreferrer">
-                {t.issueForm.viewIssueLink}
-              </a>
-            </p>
-          ) : null}
-          {submitState.status === "error" ? (
-            <p className="submit-result error">
-              {submitErrorMessage(submitState.code, t)}
-              {submitState.code === "reauth_required" ? (
-                <>
-                  {" "}
-                  <a href="/auth/login">{t.auth.loginButton}</a>
-                </>
-              ) : null}
-            </p>
-          ) : null}
+          >
+            {submitState.status === "success" ? (
+              <p className="submit-result success">
+                {t.issueForm.successMessage} #{submitState.number}{" "}
+                <a href={submitState.htmlUrl} target="_blank" rel="noreferrer">
+                  {t.issueForm.viewIssueLink}
+                </a>
+              </p>
+            ) : null}
+            {submitState.status === "error" ? (
+              <p className="submit-result error">
+                {submitErrorMessage(submitState.code, t)}
+                {submitState.code === "reauth_required" ? (
+                  <>
+                    {" "}
+                    <a href="/auth/login">{t.auth.loginButton}</a>
+                  </>
+                ) : null}
+              </p>
+            ) : null}
+          </IssueForm>
         </>
       ) : null}
     </div>

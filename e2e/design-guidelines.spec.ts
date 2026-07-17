@@ -37,7 +37,7 @@ async function gotoIssueFormScreen(page: Page) {
 
 /** 起票フォーム画面上の可視インタラクティブ要素（button/a/input/select/textarea/role=button）を返す。 */
 async function visibleInteractiveElements(page: Page): Promise<Locator[]> {
-  const all = await page.locator('button, a, input, select, textarea, [role="button"]').all();
+  const all = await page.locator('button, a, input, select, textarea, summary, [role="button"]').all();
   const visible: Locator[] = [];
   for (const el of all) {
     if (await el.isVisible()) visible.push(el);
@@ -138,9 +138,12 @@ test.describe("デザインガイドライン: ダークモード smoke", () => 
     // 白背景に黒文字のまま崩れる回帰なので検出する。
     const bodyBg = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
     const isTransparent = bodyBg === "rgba(0, 0, 0, 0)" || bodyBg === "transparent";
-    const channels = (bodyBg.match(/\d+(\.\d+)?/g) ?? []).map(Number);
-    const [r = 255, g = 255, b = 255] = channels;
-    const luminance = r * 0.299 + g * 0.587 + b * 0.114;
+    // rgb()/rgba() シリアライズのみ数値解釈する（color(display-p3 …) 等の 0〜1 スケールを
+    // 0〜255 として誤判定しないため）。未知形式は「暗くない」として fail させ人間の確認に回す。
+    const rgbMatch = bodyBg.match(/^rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+    const luminance = rgbMatch
+      ? Number(rgbMatch[1]) * 0.299 + Number(rgbMatch[2]) * 0.587 + Number(rgbMatch[3]) * 0.114
+      : 255;
     expect(isTransparent || luminance < 128, `body background should be transparent or dark, got: ${bodyBg}`).toBe(true);
 
     // フォームが実際に表示され、ダークモードでもレイアウトが崩れず操作可能であること。

@@ -3,20 +3,43 @@
    - light-dark() でライト/ダーク両対応（color-scheme: light dark は index.css で宣言済み・D-9）
    - タップターゲット・16px のベースラインは index.css が担い、本ファイルは見た目のみを扱う */
 
+/* トークンは prefers-color-scheme で切り替える（light-dark() はカスタムプロパティ内だと
+   非対応ブラウザ（iOS Safari 17.4 以前等）でフォールバック不能になり全色が失効するため使わない）。 */
 :root {
-  --color-bg: light-dark(#f6f8fa, #0d1117);
-  --color-surface: light-dark(#ffffff, #161b22);
-  --color-inset: light-dark(#f6f8fa, #0d1117);
-  --color-text: light-dark(#1f2328, #e6edf3);
-  --color-text-muted: light-dark(#59636e, #9198a1);
-  --color-border: light-dark(#d1d9e0, #30363d);
-  --color-accent: light-dark(#0969da, #4493f8);
-  --color-primary: light-dark(#1f883d, #238636);
-  --color-primary-hover: light-dark(#1a7f37, #2ea043);
-  --color-danger: light-dark(#d1242f, #f85149);
+  --color-bg: #f6f8fa;
+  --color-surface: #ffffff;
+  --color-inset: #f6f8fa;
+  --color-text: #1f2328;
+  --color-text-muted: #59636e;
+  --color-border: #d1d9e0;
+  --color-accent: #0969da;
+  --color-primary: #1f883d;
+  --color-primary-hover: #1a7f37;
+  --color-primary-text: #ffffff;
+  --color-danger: #d1242f;
+  --color-success-bg: #dafbe1;
+  --color-danger-bg: #ffebe9;
   --radius-m: 8px;
   --radius-l: 12px;
-  --shadow-card: 0 1px 3px light-dark(rgb(31 35 40 / 0.08), rgb(0 0 0 / 0.4));
+  --shadow-card: 0 1px 3px rgb(31 35 40 / 0.08);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-bg: #0d1117;
+    --color-surface: #161b22;
+    --color-inset: #0d1117;
+    --color-text: #e6edf3;
+    --color-text-muted: #9198a1;
+    --color-border: #30363d;
+    --color-accent: #4493f8;
+    --color-primary: #238636;
+    --color-primary-hover: #2ea043;
+    --color-danger: #f85149;
+    --color-success-bg: rgb(35 134 54 / 0.15);
+    --color-danger-bg: rgb(248 81 73 / 0.1);
+    --shadow-card: 0 1px 3px rgb(0 0 0 / 0.4);
+  }
 }
 
 body {
@@ -61,7 +84,7 @@ a {
   height: 28px;
   border-radius: var(--radius-m);
   background: var(--color-primary);
-  color: #ffffff;
+  color: var(--color-primary-text);
   align-items: center;
   justify-content: center;
   font-size: 16px;
@@ -179,7 +202,7 @@ button:disabled {
 button[type="submit"] {
   background: var(--color-primary);
   border-color: transparent;
-  color: #ffffff;
+  color: var(--color-primary-text);
   font-weight: 600;
 }
 
@@ -196,7 +219,7 @@ a.btn-primary {
   min-height: 48px;
   padding: 8px 24px;
   border-radius: var(--radius-m);
-  color: #ffffff;
+  color: var(--color-primary-text);
   text-decoration: none;
   font-weight: 600;
   font-size: 16px;
@@ -207,7 +230,6 @@ a.btn-primary {
   background: none;
   color: var(--color-danger);
   padding: 8px;
-  font-size: 13px;
 }
 
 /* ---- ユーザー行（ログイン済み） ---- */
@@ -284,15 +306,12 @@ a.btn-primary {
   padding: 10px 12px;
 }
 
+/* 選択状態は枠色 + 太字で示す（::before の生成テキストはアクセシブルネームを汚染するため使わない。
+   状態自体は aria-pressed が伝達する）。 */
 .repo-list button[aria-pressed="true"] {
   border-color: var(--color-primary);
   outline: 1px solid var(--color-primary);
   font-weight: 600;
-}
-
-.repo-list button[aria-pressed="true"]::before {
-  content: "✓ ";
-  color: var(--color-primary);
 }
 
 /* ---- 起票フォーム ---- */
@@ -327,12 +346,14 @@ a.btn-primary {
   resize: vertical;
 }
 
+/* display は既定（list-item）を維持して開閉マーカー（::marker）を残す。
+   44px タップターゲットは min-height + align-content で確保する（非対応ブラウザは上寄せ表示に劣化するだけ）。 */
 .label-picker summary {
   cursor: pointer;
   color: var(--color-accent);
   font-size: 14px;
-  min-height: 24px;
-  padding: 8px 0;
+  min-height: 44px;
+  align-content: center;
 }
 
 .label-picker ul {
@@ -380,7 +401,6 @@ a.btn-primary {
 
 .submit-row button[type="submit"] {
   width: 100%;
-  font-size: 16px;
 }
 
 /* ---- 送信結果 ---- */
@@ -394,12 +414,12 @@ a.btn-primary {
 
 .submit-result.success {
   border: 1px solid var(--color-primary);
-  background: light-dark(#dafbe1, rgb(35 134 54 / 0.15));
+  background: var(--color-success-bg);
 }
 
 .submit-result.error {
   border: 1px solid var(--color-danger);
-  background: light-dark(#ffebe9, rgb(248 81 73 / 0.1));
+  background: var(--color-danger-bg);
 }
 
 /* ---- 法的ページ ---- */

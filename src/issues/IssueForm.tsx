@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useState, type FormEvent, type ReactNode } from "react";
 import { useLanguage } from "../i18n/LanguageContext";
 import { loadDraft, saveDraft, clearDraft } from "./draft";
 import { LabelPicker } from "./LabelPicker";
@@ -16,6 +16,8 @@ interface IssueFormProps {
   initialLabels?: string[];
   /** URL パラメータ起動 / Web Share Target（B1-2・B3-4・FR-15・FR-18）の本文初期値。 */
   initialBody?: string | null;
+  /** 送信結果（成功/エラー）の表示要素。sticky な送信バーに隠れないよう送信ボタンの直上に描画する（§3.2）。 */
+  children?: ReactNode;
 }
 
 /** 対象リポジトリ向けの下書きがあれば初期値として使う（自リポジトリ以外の下書きは復元しない）。 */
@@ -34,6 +36,7 @@ export function IssueForm({
   initialTitle,
   initialLabels,
   initialBody,
+  children,
 }: IssueFormProps) {
   const { t } = useLanguage();
   const [initialDraft] = useState(() => draftFor(repoFullName));
@@ -100,6 +103,7 @@ export function IssueForm({
         onChange={setLabels}
         initiallyOpen={(initialLabels?.length ?? 0) > 0}
       />
+      {children}
       <div className="submit-row">
         <button type="submit" disabled={!canSubmit}>
           {submitting ? t.issueForm.submitting : t.issueForm.submitButton}
