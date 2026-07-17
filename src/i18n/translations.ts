@@ -27,6 +27,7 @@ interface Translations {
   footer: {
     terms: string;
     privacy: string;
+    shortcuts: string;
   };
   languageSwitcher: {
     label: string;
@@ -91,6 +92,35 @@ interface Translations {
   };
   terms: LegalPage;
   privacy: LegalPage;
+  shortcuts: {
+    backHome: string;
+    pageTitle: string;
+    intro: string;
+    loginRequired: string;
+    loadError: string;
+    formTitle: string;
+    repoLabel: string;
+    repoNoneOption: string;
+    labelsLabel: string;
+    labelsPlaceholder: string;
+    titleLabel: string;
+    titlePlaceholder: string;
+    saveButton: string;
+    saving: string;
+    cancelButton: string;
+    validationError: string;
+    saveError: string;
+    listTitle: string;
+    empty: string;
+    editButton: string;
+    deleteButton: string;
+    deleteConfirm: string;
+    copyButton: string;
+    copied: string;
+    openButton: string;
+    placementGuideTitle: string;
+    placementGuideBody: string;
+  };
 }
 
 export const translations = {
@@ -105,6 +135,7 @@ export const translations = {
     footer: {
       terms: "利用規約",
       privacy: "プライバシーポリシー",
+      shortcuts: "ショートカット管理",
     },
     languageSwitcher: {
       label: "言語",
@@ -167,6 +198,37 @@ export const translations = {
       loadError: "ラベルを取得できませんでした",
       empty: "ラベルがありません",
       noPushAccessWarning: "このリポジトリへの push 権限がないため、ラベルは反映されません（起票は可能です）。",
+    },
+    shortcuts: {
+      backHome: "ホームに戻る",
+      pageTitle: "ショートカット作成ヘルパー",
+      intro:
+        "リポジトリ・ラベル・タイトル雛形を選ぶだけで、起票画面を初期選択済みで開ける URL を作れます。作成した URL はホーム画面に追加してアイコンとして使えます。",
+      loginRequired: "ショートカットを作成するには GitHub でログインしてください。",
+      loadError: "読み込めませんでした",
+      formTitle: "新しいショートカットを作成",
+      repoLabel: "リポジトリ（任意）",
+      repoNoneOption: "（指定しない）",
+      labelsLabel: "ラベル（任意・カンマ区切り）",
+      labelsPlaceholder: "bug,enhancement",
+      titleLabel: "タイトル雛形（任意）",
+      titlePlaceholder: "バグ報告: ",
+      saveButton: "保存",
+      saving: "保存中...",
+      cancelButton: "キャンセル",
+      validationError: "リポジトリ・ラベル・タイトルのいずれかを入力してください",
+      saveError: "保存できませんでした",
+      listTitle: "保存済みショートカット",
+      empty: "まだショートカットがありません",
+      editButton: "編集",
+      deleteButton: "削除",
+      deleteConfirm: "このショートカットを削除しますか？",
+      copyButton: "URL をコピー",
+      copied: "コピーしました",
+      openButton: "開く",
+      placementGuideTitle: "ホーム画面に追加する",
+      placementGuideBody:
+        "生成した URL を Chrome で開き、メニュー（︙）から「ホーム画面に追加」または「ショートカットを作成」を選ぶと、このショートカットをアイコンとしてホーム画面に置けます。",
     },
     terms: {
       title: "利用規約",
@@ -272,6 +334,7 @@ export const translations = {
     footer: {
       terms: "Terms of Service",
       privacy: "Privacy Policy",
+      shortcuts: "Manage shortcuts",
     },
     languageSwitcher: {
       label: "Language",
@@ -334,6 +397,37 @@ export const translations = {
       loadError: "Could not load labels",
       empty: "No labels",
       noPushAccessWarning: "You don't have push access to this repository, so labels won't be applied (the issue itself can still be created).",
+    },
+    shortcuts: {
+      backHome: "Back to home",
+      pageTitle: "Shortcut helper",
+      intro:
+        "Pick a repository, labels, and a title template to build a URL that opens the issue form with those fields pre-selected. Add the generated URL to your home screen to use it as an icon.",
+      loginRequired: "Sign in with GitHub to create shortcuts.",
+      loadError: "Could not load",
+      formTitle: "Create a new shortcut",
+      repoLabel: "Repository (optional)",
+      repoNoneOption: "(none)",
+      labelsLabel: "Labels (optional, comma-separated)",
+      labelsPlaceholder: "bug,enhancement",
+      titleLabel: "Title template (optional)",
+      titlePlaceholder: "Bug report: ",
+      saveButton: "Save",
+      saving: "Saving...",
+      cancelButton: "Cancel",
+      validationError: "Enter at least one of repository, labels, or title",
+      saveError: "Could not save",
+      listTitle: "Saved shortcuts",
+      empty: "No shortcuts yet",
+      editButton: "Edit",
+      deleteButton: "Delete",
+      deleteConfirm: "Delete this shortcut?",
+      copyButton: "Copy URL",
+      copied: "Copied",
+      openButton: "Open",
+      placementGuideTitle: "Add to your home screen",
+      placementGuideBody:
+        "Open the generated URL in Chrome, then use the menu (⋮) and choose \"Add to Home screen\" or \"Create shortcut\" to place it as an icon on your home screen.",
     },
     terms: {
       title: "Terms of Service",

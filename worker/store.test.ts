@@ -5,15 +5,19 @@ import {
   applySchema,
   checkRateLimit,
   createSession,
+  createShortcut,
   deleteAccount,
+  deleteShortcut,
   deleteSession,
   getUserBySessionHash,
+  listShortcuts,
   nowSeconds,
   releaseIssueLogReservation,
   releaseRefreshLock,
   reserveIssueLog,
   saveTokens,
   tryAcquireRefreshLock,
+  updateShortcut,
   upsertUser,
 } from "./store";
 
@@ -105,7 +109,7 @@ describe("issue_log (reserveIssueLog / releaseIssueLogReservation)", () => {
 });
 
 describe("deleteAccount", () => {
-  it("removes the user's rows from users, sessions, tokens, issue_log, and rate_limits (FR-12)", async () => {
+  it("removes the user's rows from users, sessions, tokens, issue_log, rate_limits, and shortcuts (FR-12)", async () => {
     const userId = await upsertUser(db, { id: 5001, login: "delme", avatar_url: "" });
     const idHash = "hash-delme";
     await createSession(db, idHash, userId, 3600);
@@ -117,6 +121,7 @@ describe("deleteAccount", () => {
     });
     await reserveIssueLog(db, userId, "kai-kou/alpha", "hash-delme", 30);
     await checkRateLimit(db, userId, 60, 10);
+    await createShortcut(db, userId, { repo: "kai-kou/alpha", labels: ["bug"], title: "" });
 
     await deleteAccount(db, userId);
 
@@ -126,6 +131,40 @@ describe("deleteAccount", () => {
     expect(await db.prepare("SELECT 1 FROM tokens WHERE user_id = ?").bind(userId).first()).toBeNull();
     expect(await db.prepare("SELECT 1 FROM issue_log WHERE user_id = ?").bind(userId).first()).toBeNull();
     expect(await db.prepare("SELECT 1 FROM rate_limits WHERE user_id = ?").bind(userId).first()).toBeNull();
+    expect(await db.prepare("SELECT 1 FROM shortcuts WHERE user_id = ?").bind(userId).first()).toBeNull();
+  });
+});
+
+describe("shortcuts (C1-1・FR-16)", () => {
+  it("creates, lists, updates, and deletes a preset scoped to its owner", async () => {
+    const userId = await upsertUser(db, { id: 7001, login: "shortcutuser", avatar_url: "" });
+    const otherUserId = await upsertUser(db, { id: 7002, login: "otheruser", avatar_url: "" });
+
+    const created = await createShortcut(db, userId, {
+      repo: "kai-kou/alpha",
+      labels: ["bug", "P1"],
+      title: "バグ報告",
+    });
+    expect(created.repo).toBe("kai-kou/alpha");
+    expect(created.labels).toEqual(["bug", "P1"]);
+
+    expect(await listShortcuts(db, userId)).toEqual([created]);
+    expect(await listShortcuts(db, otherUserId)).toEqual([]);
+
+    const updated = await updateShortcut(db, userId, created.id, {
+      repo: "kai-kou/beta",
+      labels: [],
+      title: "改善案",
+    });
+    expect(updated).toBe(true);
+    expect(await listShortcuts(db, userId)).toEqual([{ id: created.id, repo: "kai-kou/beta", labels: [], title: "改善案" }]);
+
+    // 所有者が一致しない更新・削除は 0 行で失敗する。
+    expect(await updateShortcut(db, otherUserId, created.id, { repo: "x", labels: [], title: "" })).toBe(false);
+    expect(await deleteShortcut(db, otherUserId, created.id)).toBe(false);
+
+    expect(await deleteShortcut(db, userId, created.id)).toBe(true);
+    expect(await listShortcuts(db, userId)).toEqual([]);
   });
 });
 

@@ -27,13 +27,17 @@ import {
 import {
   checkRateLimit,
   createSession,
+  createShortcut,
   deleteAccount,
   deleteSession,
+  deleteShortcut,
   getUserBySessionHash,
+  listShortcuts,
   nowSeconds,
   releaseIssueLogReservation,
   reserveIssueLog,
   saveTokens,
+  updateShortcut,
   upsertUser,
   type UserRow,
 } from "./store";
@@ -349,6 +353,91 @@ app.post("/api/issues", async (c) => {
     await releaseIssueLogReservation(c.env.DB, user.id, repo, contentHash);
     return issueCreationErrorResponse(c, err);
   }
+});
+
+interface ShortcutInput {
+  repo: string;
+  labels: string[];
+  title: string;
+}
+
+/** リクエスト JSON を `{ repo, labels, title }` へ正規化する。少なくとも 1 フィールドが非空でなければ null（C1-1・FR-16）。 */
+async function parseShortcutInput(c: Context<{ Bindings: Env }>): Promise<ShortcutInput | null> {
+  let payload: unknown;
+  try {
+    payload = await c.req.json();
+  } catch {
+    return null;
+  }
+  if (typeof payload !== "object" || payload === null) return null;
+  const { repo: repoValue, labels: labelsValue, title: titleValue } = payload as Record<string, unknown>;
+  const repo = typeof repoValue === "string" ? repoValue.trim() : "";
+  const labels = Array.isArray(labelsValue)
+    ? labelsValue.filter((l): l is string => typeof l === "string" && l.trim().length > 0).map((l) => l.trim())
+    : [];
+  const title = typeof titleValue === "string" ? titleValue.trim() : "";
+  if (!repo && labels.length === 0 && !title) return null;
+  return { repo, labels, title };
+}
+
+function shortcutJson(shortcut: { id: string; repo: string; labels: string[]; title: string }) {
+  return { id: shortcut.id, repo: shortcut.repo, labels: shortcut.labels, title: shortcut.title };
+}
+
+// GET /api/shortcuts: ログインユーザーのショートカットプリセット一覧（C1-1・FR-16）。
+app.get("/api/shortcuts", async (c) => {
+  const user = await resolveSessionUser(c);
+  if (user instanceof Response) return user;
+  const shortcuts = await listShortcuts(c.env.DB, user.id);
+  return c.json({ shortcuts: shortcuts.map(shortcutJson) });
+});
+
+// POST /api/shortcuts: ショートカットプリセットを作成する（CSRF: 同一 Origin を要求）。
+app.post("/api/shortcuts", async (c) => {
+  const csrfRejection = requireSameOrigin(c);
+  if (csrfRejection) return csrfRejection;
+  const user = await resolveSessionUser(c);
+  if (user instanceof Response) return user;
+
+  const input = await parseShortcutInput(c);
+  if (!input) {
+    return c.json(jsonError("invalid_request", "at least one of repo, labels, or title is required"), 400);
+  }
+  const shortcut = await createShortcut(c.env.DB, user.id, input);
+  return c.json(shortcutJson(shortcut), 201);
+});
+
+// PUT /api/shortcuts/:id: ショートカットプリセットを更新する（所有者チェック・CSRF: 同一 Origin を要求）。
+app.put("/api/shortcuts/:id", async (c) => {
+  const csrfRejection = requireSameOrigin(c);
+  if (csrfRejection) return csrfRejection;
+  const user = await resolveSessionUser(c);
+  if (user instanceof Response) return user;
+
+  const input = await parseShortcutInput(c);
+  if (!input) {
+    return c.json(jsonError("invalid_request", "at least one of repo, labels, or title is required"), 400);
+  }
+  const id = c.req.param("id");
+  const updated = await updateShortcut(c.env.DB, user.id, id, input);
+  if (!updated) {
+    return c.json(jsonError("not_found", "shortcut not found"), 404);
+  }
+  return c.json(shortcutJson({ id, ...input }));
+});
+
+// DELETE /api/shortcuts/:id: ショートカットプリセットを削除する（所有者チェック・CSRF: 同一 Origin を要求）。
+app.delete("/api/shortcuts/:id", async (c) => {
+  const csrfRejection = requireSameOrigin(c);
+  if (csrfRejection) return csrfRejection;
+  const user = await resolveSessionUser(c);
+  if (user instanceof Response) return user;
+
+  const deleted = await deleteShortcut(c.env.DB, user.id, c.req.param("id"));
+  if (!deleted) {
+    return c.json(jsonError("not_found", "shortcut not found"), 404);
+  }
+  return c.body(null, 204);
 });
 
 // POST /auth/logout: サーバー側セッションを無効化（CSRF: 同一 Origin を要求）。

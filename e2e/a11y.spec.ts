@@ -57,4 +57,15 @@ test.describe("a11y: axe-core（wcag2a/wcag2aa/wcag22aa・モバイルエミュ�
     const results = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
     expect(results.violations, JSON.stringify(results.violations, null, 2)).toEqual([]);
   });
+
+  test("ショートカット作成ヘルパー画面に WCAG 違反がない", async ({ page }) => {
+    await page.goto("/");
+    await page.getByRole("link", { name: /GitHub でログイン|Sign in with GitHub/ }).click();
+    await expect(page.getByText(/e2e-user/)).toBeVisible();
+    await page.goto("/shortcuts");
+    await expect(page.getByRole("button", { name: /^保存$|^Save$/ })).toBeVisible();
+
+    const results = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
+    expect(results.violations, JSON.stringify(results.violations, null, 2)).toEqual([]);
+  });
 });
