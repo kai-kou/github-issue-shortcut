@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useLanguage } from "../i18n/LanguageContext";
 
 type GitHubLabel = { name: string; color: string };
@@ -10,22 +10,49 @@ interface LabelPickerProps {
   pushAccess: boolean;
   selected: string[];
   onChange: (labels: string[]) => void;
+  /** URL パラメータ起動（B1-2）でラベルが事前指定されている場合、選択内容が見えるよう初期状態で展開する。 */
+  initiallyOpen?: boolean;
 }
 
-/** ラベル複数選択 UI（B3-2）。既定は畳んでおき、開いたときだけ取得する（起票フローを遅くしない）。 */
-export function LabelPicker({ repoFullName, pushAccess, selected, onChange }: LabelPickerProps) {
+async function fetchLabels(repoFullName: string): Promise<GitHubLabel[]> {
+  const res = await fetch(`/api/labels?repo=${encodeURIComponent(repoFullName)}`, { credentials: "same-origin" });
+  if (!res.ok) throw new Error(`unexpected status: ${res.status}`);
+  const data = (await res.json()) as { labels: GitHubLabel[] };
+  return data.labels;
+}
+
+/** ラベル複数選択 UI（B3-2）。既定は畳んでおき、開いたときだけ取得する（起票フローを遅くしない）。
+ * URL パラメータでラベルが事前指定されている場合（`initiallyOpen`）は例外的に展開済みで取得する。 */
+export function LabelPicker({ repoFullName, pushAccess, selected, onChange, initiallyOpen = false }: LabelPickerProps) {
   const { t } = useLanguage();
   const [state, setState] = useState<LabelsState>({ status: "idle" });
+  const [open, setOpen] = useState(initiallyOpen);
+
+  useEffect(() => {
+    if (!initiallyOpen || !pushAccess) return;
+    let active = true;
+    setState({ status: "loading" });
+    fetchLabels(repoFullName)
+      .then((labels) => {
+        if (active) setState({ status: "ready", labels });
+      })
+      .catch(() => {
+        if (active) setState({ status: "error" });
+      });
+    return () => {
+      active = false;
+    };
+    // repoFullName/pushAccess/initiallyOpen は親が key={repoFullName} で固定する props のため mount 時のみでよい。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function handleToggleOpen(e: React.SyntheticEvent<HTMLDetailsElement>) {
-    if (!e.currentTarget.open || state.status !== "idle" || !pushAccess) return;
+    const isOpen = e.currentTarget.open;
+    setOpen(isOpen);
+    if (!isOpen || state.status !== "idle" || !pushAccess) return;
     setState({ status: "loading" });
-    fetch(`/api/labels?repo=${encodeURIComponent(repoFullName)}`, { credentials: "same-origin" })
-      .then(async (res) => {
-        if (!res.ok) throw new Error(`unexpected status: ${res.status}`);
-        const data = (await res.json()) as { labels: GitHubLabel[] };
-        setState({ status: "ready", labels: data.labels });
-      })
+    fetchLabels(repoFullName)
+      .then((labels) => setState({ status: "ready", labels }))
       .catch(() => setState({ status: "error" }));
   }
 
@@ -34,7 +61,7 @@ export function LabelPicker({ repoFullName, pushAccess, selected, onChange }: La
   }
 
   return (
-    <details onToggle={handleToggleOpen}>
+    <details open={open} onToggle={handleToggleOpen}>
       <summary>{t.labelPicker.summary}</summary>
       {pushAccess ? (
         <>

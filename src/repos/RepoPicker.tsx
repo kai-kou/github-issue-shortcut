@@ -4,6 +4,7 @@ import type { Translations } from "../i18n/translations";
 import { loadRecentRepos, recordRecentRepo } from "./recentRepos";
 import { IssueForm, type IssueInput } from "../issues/IssueForm";
 import { loadDraft, clearDraft } from "../issues/draft";
+import type { PrefillParams } from "../issues/prefillParams";
 
 type Repo = { id: number; fullName: string; private: boolean; pushAccess: boolean };
 type ReposState = { status: "loading" } | { status: "error" } | { status: "ready"; repos: Repo[] };
@@ -45,16 +46,25 @@ function submitErrorMessage(code: string, t: Translations): string {
   }
 }
 
+interface RepoPickerProps {
+  /** URL パラメータ起動（B1-2・FR-15）の初期値。下書き（B5-1）が存在する場合はそちらを優先する。 */
+  prefill?: PrefillParams | null;
+}
+
 /** 起票先リポジトリの検索/選択 UI（B2-1/B2-2）。最近使用したリポジトリを先頭に表示する。 */
-export function RepoPicker() {
+export function RepoPicker({ prefill = null }: RepoPickerProps) {
   const { t } = useLanguage();
   const [state, setState] = useState<ReposState>({ status: "loading" });
   const [query, setQuery] = useState("");
   const [recent, setRecent] = useState<string[]>(() => loadRecentRepos());
   // 送信失敗・中断時の下書き（B5-1）があれば、そのリポジトリを再訪時に自動選択して復元する。
-  const [selected, setSelected] = useState<string | null>(() => loadDraft()?.repo ?? null);
+  // 下書きがなければ URL パラメータ起動（B1-2）の repo を初期選択に使う。
+  const [selected, setSelected] = useState<string | null>(() => loadDraft()?.repo ?? prefill?.repo ?? null);
   const [submitState, setSubmitState] = useState<SubmitState>({ status: "idle" });
   const [formKey, setFormKey] = useState(0);
+  // URL パラメータ起動（B1-2）のタイトル/ラベルは初回起票のみに適用する。連続起票で同じ雛形が
+  // 繰り返し復活しないよう、1 回送信できたら以降のフォームには適用しない。
+  const [prefillConsumed, setPrefillConsumed] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -121,6 +131,7 @@ export function RepoPicker() {
       const data = (await res.json()) as { number: number; htmlUrl: string };
       clearDraft();
       setSubmitState({ status: "success", number: data.number, htmlUrl: data.htmlUrl });
+      setPrefillConsumed(true);
       // 送信成功のたびにフォームを再マウントして入力内容をクリアする（連続起票を想定）。
       setFormKey((k) => k + 1);
     } catch {
@@ -164,6 +175,8 @@ export function RepoPicker() {
             pushAccess={selectedPushAccess}
             onSubmit={submitIssue}
             submitting={submitState.status === "submitting"}
+            initialTitle={prefillConsumed ? undefined : prefill?.title}
+            initialLabels={prefillConsumed ? undefined : prefill?.labels}
           />
           {submitState.status === "success" ? (
             <p>
