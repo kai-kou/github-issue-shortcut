@@ -1,6 +1,437 @@
+/* 仮デザインテーマ（プロビジョナル・#84）
+   - 追加ライブラリなし・CSS 標準のみ（design-guidelines D-6）
+   - light-dark() でライト/ダーク両対応（color-scheme: light dark は index.css で宣言済み・D-9）
+   - タップターゲット・16px のベースラインは index.css が担い、本ファイルは見た目のみを扱う */
+
+/* トークンは prefers-color-scheme で切り替える（light-dark() はカスタムプロパティ内だと
+   非対応ブラウザ（iOS Safari 17.4 以前等）でフォールバック不能になり全色が失効するため使わない）。 */
+:root {
+  --color-bg: #f6f8fa;
+  --color-surface: #ffffff;
+  --color-inset: #f6f8fa;
+  --color-text: #1f2328;
+  --color-text-muted: #59636e;
+  --color-border: #d1d9e0;
+  --color-accent: #0969da;
+  --color-primary: #1f883d;
+  --color-primary-hover: #1a7f37;
+  --color-primary-text: #ffffff;
+  --color-danger: #d1242f;
+  --color-success-bg: #dafbe1;
+  --color-danger-bg: #ffebe9;
+  --radius-m: 8px;
+  --radius-l: 12px;
+  --shadow-card: 0 1px 3px rgb(31 35 40 / 0.08);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-bg: #0d1117;
+    --color-surface: #161b22;
+    --color-inset: #0d1117;
+    --color-text: #e6edf3;
+    --color-text-muted: #9198a1;
+    --color-border: #30363d;
+    --color-accent: #4493f8;
+    --color-primary: #238636;
+    --color-primary-hover: #2ea043;
+    --color-danger: #f85149;
+    --color-success-bg: rgb(35 134 54 / 0.15);
+    --color-danger-bg: rgb(248 81 73 / 0.1);
+    --shadow-card: 0 1px 3px rgb(0 0 0 / 0.4);
+  }
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
 #root {
   max-width: 640px;
   margin: 0 auto;
-  padding: 2rem;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+a {
+  color: var(--color-accent);
+}
+
+/* ---- アプリシェル ---- */
+
+.app-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+}
+
+.app-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  font-size: 16px;
+  color: var(--color-text);
+  text-decoration: none;
+}
+
+.app-brand-mark {
+  display: inline-flex;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-m);
+  background: var(--color-primary);
+  color: var(--color-primary-text);
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+}
+
+.app-main {
+  flex: 1;
+  padding: 0 16px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  text-align: left;
+}
+
+.app-footer {
+  padding: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  border-top: 1px solid var(--color-border);
+  color: var(--color-text-muted);
+  font-size: 13px;
+}
+
+.app-footer a {
+  color: var(--color-text-muted);
+  min-height: 44px;
+}
+
+.app-footer-spacer {
+  flex: 1;
+}
+
+.language-switcher {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.language-switcher select {
+  min-height: 44px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-m);
+  background: var(--color-surface);
+  color: var(--color-text);
+  padding: 0 8px;
+}
+
+.api-status {
+  width: 100%;
+  font-size: 12px;
+}
+
+/* ---- ヒーロー（ログイン前） ---- */
+
+.hero {
   text-align: center;
+  padding: 24px 0 8px;
+}
+
+.hero-title {
+  font-size: 26px;
+  margin: 0 0 8px;
+}
+
+.hero-tagline {
+  margin: 0;
+  color: var(--color-text-muted);
+}
+
+.hero-cta {
+  text-align: center;
+  margin: 8px 0;
+}
+
+.hero-cta .btn-primary {
+  width: 100%;
+  max-width: 320px;
+}
+
+/* ---- カード・状態表示 ---- */
+
+.card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-l);
+  box-shadow: var(--shadow-card);
+  padding: 16px;
+}
+
+.status-note {
+  color: var(--color-text-muted);
+  text-align: center;
+  margin: 8px 0;
+}
+
+/* ---- ボタン ---- */
+
+button {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-m);
+  background: var(--color-surface);
+  color: var(--color-text);
+  padding: 8px 16px;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn-primary,
+button[type="submit"] {
+  background: var(--color-primary);
+  border-color: transparent;
+  color: var(--color-primary-text);
+  font-weight: 600;
+}
+
+.btn-primary:hover:not(:disabled),
+button[type="submit"]:hover:not(:disabled) {
+  background: var(--color-primary-hover);
+}
+
+/* ログイン CTA（<a> だが主要操作なのでボタン見た目・48px） */
+a.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  padding: 8px 24px;
+  border-radius: var(--radius-m);
+  color: var(--color-primary-text);
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 16px;
+}
+
+.btn-link-danger {
+  border: none;
+  background: none;
+  color: var(--color-danger);
+  padding: 8px;
+}
+
+/* ---- ユーザー行（ログイン済み） ---- */
+
+.user-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+}
+
+.user-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1px solid var(--color-border);
+}
+
+.user-login {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.user-login small {
+  display: block;
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+/* ---- リポジトリ選択 ---- */
+
+.field-label {
+  display: block;
+  font-weight: 600;
+  font-size: 14px;
+  margin-bottom: 4px;
+}
+
+.repo-search input,
+.issue-form input[type="text"],
+.issue-form textarea {
+  width: 100%;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-m);
+  background: var(--color-inset);
+  color: var(--color-text);
+  padding: 8px 12px;
+}
+
+.repo-search input:focus-visible,
+.issue-form input[type="text"]:focus-visible,
+.issue-form textarea:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: -1px;
+}
+
+.repo-list {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.repo-list button {
+  width: 100%;
+  text-align: left;
+  padding: 10px 12px;
+}
+
+/* 選択状態は枠色 + 太字で示す（::before の生成テキストはアクセシブルネームを汚染するため使わない。
+   状態自体は aria-pressed が伝達する）。 */
+.repo-list button[aria-pressed="true"] {
+  border-color: var(--color-primary);
+  outline: 1px solid var(--color-primary);
+  font-weight: 600;
+}
+
+/* ---- 起票フォーム ---- */
+
+.issue-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.target-repo {
+  margin: 0;
+  font-size: 14px;
+  color: var(--color-text-muted);
+}
+
+.target-repo strong {
+  display: inline-block;
+  color: var(--color-text);
+  background: var(--color-inset);
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  padding: 2px 12px;
+}
+
+.issue-form label {
+  display: block;
+}
+
+.issue-form textarea {
+  min-height: 96px;
+  resize: vertical;
+}
+
+/* display は既定（list-item）を維持して開閉マーカー（::marker）を残す。
+   44px タップターゲットは min-height + align-content で確保する（非対応ブラウザは上寄せ表示に劣化するだけ）。 */
+.label-picker summary {
+  cursor: pointer;
+  color: var(--color-accent);
+  font-size: 14px;
+  min-height: 44px;
+  align-content: center;
+}
+
+.label-picker ul {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.label-picker li label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  padding: 0 12px;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.label-picker li label:has(input:checked) {
+  border-color: var(--color-primary);
+  outline: 1px solid var(--color-primary);
+  font-weight: 600;
+}
+
+.label-picker .picker-note {
+  color: var(--color-text-muted);
+  font-size: 13px;
+  margin: 8px 0 0;
+}
+
+/* 送信ボタンは画面下部・幅広（D-5 親指ファースト）。フォームが長い時もスクロール追従する */
+.submit-row {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  padding: 12px 0 calc(4px + env(safe-area-inset-bottom));
+  background: var(--color-surface);
+  border-top: 1px solid var(--color-border);
+}
+
+.submit-row button[type="submit"] {
+  width: 100%;
+}
+
+/* ---- 送信結果 ---- */
+
+.submit-result {
+  border-radius: var(--radius-m);
+  padding: 12px;
+  margin: 12px 0 0;
+  font-size: 14px;
+}
+
+.submit-result.success {
+  border: 1px solid var(--color-primary);
+  background: var(--color-success-bg);
+}
+
+.submit-result.error {
+  border: 1px solid var(--color-danger);
+  background: var(--color-danger-bg);
+}
+
+/* ---- 法的ページ ---- */
+
+.legal-page h1 {
+  font-size: 22px;
+}
+
+.legal-page h2 {
+  font-size: 16px;
+}
+
+.legal-page {
+  line-height: 1.7;
 }
