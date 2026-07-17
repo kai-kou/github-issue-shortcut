@@ -54,7 +54,13 @@ export function useOfflineQueueSync() {
               method: "POST",
               credentials: "same-origin",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ repo: entry.repo, title: entry.title, body: entry.body, labels: entry.labels }),
+              body: JSON.stringify({
+                repo: entry.repo,
+                title: entry.title,
+                body: entry.body,
+                labels: entry.labels,
+                clientRequestId: entry.id,
+              }),
             });
           } catch {
             // ネットワーク到達不能（まだオフライン）。キューに残し、次の online イベントで再試行する。
@@ -94,8 +100,9 @@ export function useOfflineQueueSync() {
     };
   }, [applyAction]);
 
-  /** ネットワーク到達不能で送信できなかった起票をキューへ積む（呼び出し側は catch 節から使う）。 */
-  function enqueue(entry: { repo: string; title: string; body: string; labels: string[] }) {
+  /** ネットワーク到達不能で送信できなかった起票をキューへ積む（呼び出し側は catch 節から使う）。
+   * `id` は呼び出し側が最初の送信試行時に発行済みの client_request_id をそのまま渡す（B4-4）。 */
+  function enqueue(entry: { id: string; repo: string; title: string; body: string; labels: string[] }) {
     setQueue(enqueueOfflineIssue(entry));
   }
 
