@@ -68,13 +68,15 @@ export function LabelPicker({ repoFullName, pushAccess, selected, onChange, init
   }
 
   return (
-    <details open={open} onToggle={handleToggleOpen}>
+    <details className="label-picker" open={open} onToggle={handleToggleOpen}>
       <summary>{t.labelPicker.summary}</summary>
       {pushAccess ? (
         <>
-          {state.status === "loading" ? <p>{t.labelPicker.loading}</p> : null}
-          {state.status === "error" ? <p>{t.labelPicker.loadError}</p> : null}
-          {state.status === "ready" && state.labels.length === 0 ? <p>{t.labelPicker.empty}</p> : null}
+          {state.status === "loading" ? <p className="picker-note">{t.labelPicker.loading}</p> : null}
+          {state.status === "error" ? <p className="picker-note">{t.labelPicker.loadError}</p> : null}
+          {state.status === "ready" && state.labels.length === 0 ? (
+            <p className="picker-note">{t.labelPicker.empty}</p>
+          ) : null}
           {state.status === "ready" && state.labels.length > 0 ? (
             <ul>
               {state.labels.map((label) => (
@@ -93,7 +95,7 @@ export function LabelPicker({ repoFullName, pushAccess, selected, onChange, init
           ) : null}
         </>
       ) : (
-        <p>{t.labelPicker.noPushAccessWarning}</p>
+        <p className="picker-note">{t.labelPicker.noPushAccessWarning}</p>
       )}
     </details>
   );

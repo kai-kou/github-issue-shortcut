@@ -143,24 +143,25 @@ export function RepoPicker({ prefill = null }: RepoPickerProps) {
     }
   }
 
-  if (state.status === "loading") return <p>{t.repoPicker.loading}</p>;
-  if (state.status === "error") return <p>{t.repoPicker.loadError}</p>;
+  if (state.status === "loading") return <p className="status-note">{t.repoPicker.loading}</p>;
+  if (state.status === "error") return <p className="status-note">{t.repoPicker.loadError}</p>;
 
   return (
-    <div>
-      <label>
-        {t.repoPicker.searchLabel}
+    <div className="card">
+      <label className="repo-search">
+        <span className="field-label">{t.repoPicker.searchLabel}</span>
         <input
           type="text"
+          enterKeyHint="search"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder={t.repoPicker.searchPlaceholder}
         />
       </label>
       {filtered.length === 0 ? (
-        <p>{t.repoPicker.empty}</p>
+        <p className="status-note">{t.repoPicker.empty}</p>
       ) : (
-        <ul>
+        <ul className="repo-list">
           {filtered.map((repo) => (
             <li key={repo.id}>
               <button type="button" onClick={() => selectRepo(repo.fullName)} aria-pressed={selected === repo.fullName}>
@@ -183,7 +184,7 @@ export function RepoPicker({ prefill = null }: RepoPickerProps) {
             initialBody={appliesPrefill ? prefill?.body : undefined}
           />
           {submitState.status === "success" ? (
-            <p>
+            <p className="submit-result success">
               {t.issueForm.successMessage} #{submitState.number}{" "}
               <a href={submitState.htmlUrl} target="_blank" rel="noreferrer">
                 {t.issueForm.viewIssueLink}
@@ -191,7 +192,7 @@ export function RepoPicker({ prefill = null }: RepoPickerProps) {
             </p>
           ) : null}
           {submitState.status === "error" ? (
-            <p>
+            <p className="submit-result error">
               {submitErrorMessage(submitState.code, t)}
               {submitState.code === "reauth_required" ? (
                 <>

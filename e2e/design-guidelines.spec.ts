@@ -133,10 +133,15 @@ test.describe("デザインガイドライン: ダークモード smoke", () => 
     const prefersDark = await page.evaluate(() => window.matchMedia("(prefers-color-scheme: dark)").matches);
     expect(prefersDark).toBe(true);
 
-    // body に明示的な白背景が指定されていないこと（指定されていれば dark canvas 描画を上書きし、
-    // 白背景に黒文字のまま崩れる回帰が起こる）。
+    // body がダークモードで暗く描画されていること。透明（canvas 既定描画に委ねる）と、
+    // light-dark() 等で明示指定されたダーク色のどちらも正。白背景固定（明るい色）だと
+    // 白背景に黒文字のまま崩れる回帰なので検出する。
     const bodyBg = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
-    expect(bodyBg).toBe("rgba(0, 0, 0, 0)");
+    const isTransparent = bodyBg === "rgba(0, 0, 0, 0)";
+    const channels = (bodyBg.match(/\d+(\.\d+)?/g) ?? []).map(Number);
+    const [r = 255, g = 255, b = 255] = channels;
+    const luminance = r * 0.299 + g * 0.587 + b * 0.114;
+    expect(isTransparent || luminance < 128, `body background should be transparent or dark, got: ${bodyBg}`).toBe(true);
 
     // フォームが実際に表示され、ダークモードでもレイアウトが崩れず操作可能であること。
     await expect(page.getByRole("textbox", { name: /タイトル|^Title$/ })).toBeVisible();
