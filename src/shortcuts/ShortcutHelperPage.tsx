@@ -214,6 +214,18 @@ function ShortcutHelper() {
     };
   }, []);
 
+  // 編集中の対象が一覧から消えた場合（＝その shortcut 自体を削除した場合）は編集状態を
+  // リセットしてフォームを再マウントする。放置すると ShortcutForm の key
+  // （editingId ベース）が変わらず古い入力値が残ったまま、editing prop だけ null になり、
+  // 次の保存が「更新のつもり」で意図しない新規作成（POST）になってしまう。
+  useEffect(() => {
+    if (!editingId || shortcutsState.status !== "ready") return;
+    if (!shortcutsState.shortcuts.some((s) => s.id === editingId)) {
+      setEditingId(null);
+      setFormVersion((v) => v + 1);
+    }
+  }, [editingId, shortcutsState]);
+
   function upsertShortcut(shortcut: Shortcut) {
     setShortcutsState((state) => {
       if (state.status !== "ready") return state;

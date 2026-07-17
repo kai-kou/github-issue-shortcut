@@ -396,6 +396,14 @@ function shortcutJson(shortcut: { id: string; repo: string; labels: string[]; ti
   return { id: shortcut.id, repo: shortcut.repo, labels: shortcut.labels, title: shortcut.title };
 }
 
+/** CSRF（同一 Origin）検証 + セッション認証をまとめて行う。/api/shortcuts の POST/PUT/DELETE
+ * 3 ルートで同一の 4 行ガードが重複していたため共通化した（セルフレビュー指摘）。 */
+async function requireAuthenticatedSameOrigin(c: Context<{ Bindings: Env }>): Promise<UserRow | Response> {
+  const csrfRejection = requireSameOrigin(c);
+  if (csrfRejection) return csrfRejection;
+  return resolveSessionUser(c);
+}
+
 // GET /api/shortcuts: ログインユーザーのショートカットプリセット一覧（C1-1・FR-16）。
 app.get("/api/shortcuts", async (c) => {
   const user = await resolveSessionUser(c);
@@ -406,9 +414,7 @@ app.get("/api/shortcuts", async (c) => {
 
 // POST /api/shortcuts: ショートカットプリセットを作成する（CSRF: 同一 Origin を要求）。
 app.post("/api/shortcuts", async (c) => {
-  const csrfRejection = requireSameOrigin(c);
-  if (csrfRejection) return csrfRejection;
-  const user = await resolveSessionUser(c);
+  const user = await requireAuthenticatedSameOrigin(c);
   if (user instanceof Response) return user;
 
   const input = await parseShortcutInput(c);
@@ -421,9 +427,7 @@ app.post("/api/shortcuts", async (c) => {
 
 // PUT /api/shortcuts/:id: ショートカットプリセットを更新する（所有者チェック・CSRF: 同一 Origin を要求）。
 app.put("/api/shortcuts/:id", async (c) => {
-  const csrfRejection = requireSameOrigin(c);
-  if (csrfRejection) return csrfRejection;
-  const user = await resolveSessionUser(c);
+  const user = await requireAuthenticatedSameOrigin(c);
   if (user instanceof Response) return user;
 
   const input = await parseShortcutInput(c);
@@ -440,9 +444,7 @@ app.put("/api/shortcuts/:id", async (c) => {
 
 // DELETE /api/shortcuts/:id: ショートカットプリセットを削除する（所有者チェック・CSRF: 同一 Origin を要求）。
 app.delete("/api/shortcuts/:id", async (c) => {
-  const csrfRejection = requireSameOrigin(c);
-  if (csrfRejection) return csrfRejection;
-  const user = await resolveSessionUser(c);
+  const user = await requireAuthenticatedSameOrigin(c);
   if (user instanceof Response) return user;
 
   const deleted = await deleteShortcut(c.env.DB, user.id, c.req.param("id"));
