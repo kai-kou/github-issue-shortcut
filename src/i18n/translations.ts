@@ -19,7 +19,7 @@ interface LegalPage {
 interface Translations {
   home: {
     title: string;
-    hello: string;
+    tagline: string;
     apiStatusLabel: string;
     apiStatusChecking: string;
     apiStatusUnreachable: string;
@@ -97,7 +97,7 @@ export const translations = {
   ja: {
     home: {
       title: "GitHub Issue Shortcut",
-      hello: "Hello World",
+      tagline: "思いついた瞬間に、最短で GitHub Issue を起票",
       apiStatusLabel: "API ステータス",
       apiStatusChecking: "確認中...",
       apiStatusUnreachable: "到達不可",
@@ -264,7 +264,7 @@ export const translations = {
   en: {
     home: {
       title: "GitHub Issue Shortcut",
-      hello: "Hello World",
+      tagline: "Capture ideas as GitHub issues in seconds",
       apiStatusLabel: "API status",
       apiStatusChecking: "checking...",
       apiStatusUnreachable: "unreachable",

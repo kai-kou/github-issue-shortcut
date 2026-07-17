@@ -12,7 +12,9 @@
 import { createServer } from "node:http";
 
 const PORT = Number(process.env.MOCK_GITHUB_PORT ?? 8788);
-const MOCK_USER = { id: 424242, login: "e2e-user", avatar_url: "https://example.com/avatar.png" };
+// avatar_url はモックサーバー自身を指す（UI が <img src> に使うため、外部ホストだと
+// egress 制限のある CI で接続待ちがぶら下がりフレーク要因になる。404 応答で高速に解決させる）。
+const MOCK_USER = { id: 424242, login: "e2e-user", avatar_url: "http://localhost:8788/avatar.png" };
 
 /**
  * @type {{

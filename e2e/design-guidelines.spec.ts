@@ -37,7 +37,7 @@ async function gotoIssueFormScreen(page: Page) {
 
 /** 起票フォーム画面上の可視インタラクティブ要素（button/a/input/select/textarea/role=button）を返す。 */
 async function visibleInteractiveElements(page: Page): Promise<Locator[]> {
-  const all = await page.locator('button, a, input, select, textarea, [role="button"]').all();
+  const all = await page.locator('button, a, input, select, textarea, summary, [role="button"]').all();
   const visible: Locator[] = [];
   for (const el of all) {
     if (await el.isVisible()) visible.push(el);
@@ -133,10 +133,18 @@ test.describe("デザインガイドライン: ダークモード smoke", () => 
     const prefersDark = await page.evaluate(() => window.matchMedia("(prefers-color-scheme: dark)").matches);
     expect(prefersDark).toBe(true);
 
-    // body に明示的な白背景が指定されていないこと（指定されていれば dark canvas 描画を上書きし、
-    // 白背景に黒文字のまま崩れる回帰が起こる）。
+    // body がダークモードで暗く描画されていること。透明（canvas 既定描画に委ねる）と、
+    // light-dark() 等で明示指定されたダーク色のどちらも正。白背景固定（明るい色）だと
+    // 白背景に黒文字のまま崩れる回帰なので検出する。
     const bodyBg = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
-    expect(bodyBg).toBe("rgba(0, 0, 0, 0)");
+    const isTransparent = bodyBg === "rgba(0, 0, 0, 0)" || bodyBg === "transparent";
+    // rgb()/rgba() シリアライズのみ数値解釈する（color(display-p3 …) 等の 0〜1 スケールを
+    // 0〜255 として誤判定しないため）。未知形式は「暗くない」として fail させ人間の確認に回す。
+    const rgbMatch = bodyBg.match(/^rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+    const luminance = rgbMatch
+      ? Number(rgbMatch[1]) * 0.299 + Number(rgbMatch[2]) * 0.587 + Number(rgbMatch[3]) * 0.114
+      : 255;
+    expect(isTransparent || luminance < 128, `body background should be transparent or dark, got: ${bodyBg}`).toBe(true);
 
     // フォームが実際に表示され、ダークモードでもレイアウトが崩れず操作可能であること。
     await expect(page.getByRole("textbox", { name: /タイトル|^Title$/ })).toBeVisible();

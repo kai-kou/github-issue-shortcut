@@ -33,13 +33,17 @@ type InstallState = boolean | null;
 function InstallGuidance() {
   const { t } = useLanguage();
   return (
-    <div>
-      <p>{t.install.title}</p>
+    <div className="card">
+      <p>
+        <strong>{t.install.title}</strong>
+      </p>
       <p>{t.install.body}</p>
       <p>
-        <a href={APP_INSTALL_URL}>{t.install.cta}</a>
+        <a className="btn-primary" href={APP_INSTALL_URL}>
+          {t.install.cta}
+        </a>
       </p>
-      <p>{t.install.orgNotice}</p>
+      <p className="status-note">{t.install.orgNotice}</p>
     </div>
   );
 }
@@ -49,7 +53,7 @@ type DeleteState = "idle" | "confirming" | "deleting" | "error";
 function AccountDeletionGuidance() {
   const { t } = useLanguage();
   return (
-    <div>
+    <div className="card">
       <p>{t.account.deleted}</p>
       <p>
         <a href={GITHUB_INSTALLATIONS_URL}>{t.account.revokeCta}</a>
@@ -78,7 +82,7 @@ function AccountDeletion({ onDeleted }: { onDeleted: () => void }) {
 
   if (state === "confirming" || state === "deleting") {
     return (
-      <p>
+      <p className="status-note">
         {t.account.confirmMessage}{" "}
         <button type="button" onClick={handleDelete} disabled={state === "deleting"}>
           {t.account.confirmButton}
@@ -91,8 +95,8 @@ function AccountDeletion({ onDeleted }: { onDeleted: () => void }) {
   }
 
   return (
-    <p>
-      <button type="button" onClick={() => setState("confirming")}>
+    <p className="status-note">
+      <button type="button" className="btn-link-danger" onClick={() => setState("confirming")}>
         {t.account.deleteButton}
       </button>
       {state === "error" ? <span> {t.account.error}</span> : null}
@@ -157,13 +161,17 @@ function AuthPanel({ prefill, pendingRedirectTarget }: AuthPanelProps) {
   }
 
   if (accountDeleted) return <AccountDeletionGuidance />;
-  if (auth.status === "checking") return <p>{t.auth.checking}</p>;
-  if (auth.status === "error") return <p>{t.auth.loginError}</p>;
+  if (auth.status === "checking") return <p className="status-note">{t.auth.checking}</p>;
+  if (auth.status === "error") return <p className="status-note">{t.auth.loginError}</p>;
   if (auth.status === "authenticated") {
     return (
       <>
-        <p>
-          {t.auth.loggedInAs}: <strong>{auth.me.login}</strong>{" "}
+        <p className="user-row">
+          {auth.me.avatarUrl ? <img className="user-avatar" src={auth.me.avatarUrl} alt="" /> : null}
+          <span className="user-login">
+            <small>{t.auth.loggedInAs}</small>
+            <strong>{auth.me.login}</strong>
+          </span>
           <button type="button" onClick={logout}>
             {t.auth.logoutButton}
           </button>
@@ -175,8 +183,9 @@ function AuthPanel({ prefill, pendingRedirectTarget }: AuthPanelProps) {
     );
   }
   return (
-    <p>
+    <p className="hero-cta">
       <a
+        className="btn-primary"
         href="/auth/login"
         onClick={() => {
           if (pendingRedirectTarget) savePendingRedirect(pendingRedirectTarget);
@@ -216,12 +225,14 @@ function Home({ prefill, pendingRedirectTarget }: HomeProps) {
 
   return (
     <>
-      <h1>{t.home.title}</h1>
-      <p>{t.home.hello}</p>
-      <p>
+      <div className="hero">
+        <h1 className="hero-title">{t.home.title}</h1>
+        <p className="hero-tagline">{t.home.tagline}</p>
+      </div>
+      <AuthPanel prefill={prefill} pendingRedirectTarget={pendingRedirectTarget} />
+      <p className="api-status status-note">
         {t.home.apiStatusLabel}: {apiStatusText}
       </p>
-      <AuthPanel prefill={prefill} pendingRedirectTarget={pendingRedirectTarget} />
     </>
   );
 }
@@ -230,8 +241,8 @@ function LanguageSwitcher() {
   const { locale, setLocale, t } = useLanguage();
 
   return (
-    <label>
-      {t.languageSwitcher.label}:{" "}
+    <label className="language-switcher">
+      {t.languageSwitcher.label}
       <select value={locale} onChange={(e) => setLocale(e.target.value as (typeof SUPPORTED_LOCALES)[number])}>
         {SUPPORTED_LOCALES.map((l) => (
           <option key={l} value={l}>
@@ -263,20 +274,34 @@ function AppContent() {
   const prefill = useMemo(() => (path === "/new" ? parsePrefillParams(search) : null), [path, search]);
   const pendingRedirectTarget = prefill && hasPrefillParams(prefill) ? `${path}${search}` : null;
 
+  const isLegalPage = path === "/terms" || path === "/privacy";
+
   return (
     <>
-      {path === "/terms" ? (
-        <TermsOfService />
-      ) : path === "/privacy" ? (
-        <PrivacyPolicy />
-      ) : (
-        <Home prefill={prefill} pendingRedirectTarget={pendingRedirectTarget} />
-      )}
-      <footer>
-        <a href="/terms">{t.footer.terms}</a> / <a href="/privacy">{t.footer.privacy}</a>
-        <div>
-          <LanguageSwitcher />
-        </div>
+      {isLegalPage ? (
+        <header className="app-header">
+          <a className="app-brand" href="/">
+            <span className="app-brand-mark" aria-hidden="true">
+              ⚡
+            </span>
+            {t.home.title}
+          </a>
+        </header>
+      ) : null}
+      <main className={isLegalPage ? "app-main legal-page" : "app-main"}>
+        {path === "/terms" ? (
+          <TermsOfService />
+        ) : path === "/privacy" ? (
+          <PrivacyPolicy />
+        ) : (
+          <Home prefill={prefill} pendingRedirectTarget={pendingRedirectTarget} />
+        )}
+      </main>
+      <footer className="app-footer">
+        <a href="/terms">{t.footer.terms}</a>
+        <a href="/privacy">{t.footer.privacy}</a>
+        <span className="app-footer-spacer" />
+        <LanguageSwitcher />
       </footer>
     </>
   );
