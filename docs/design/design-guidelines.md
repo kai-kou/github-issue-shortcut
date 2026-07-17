@@ -39,10 +39,10 @@
 | タップターゲット推奨 | 44px（HIG）/ 48px（M3・主要操作） | Apple HIG / Google | 同上（送信ボタン 48px 以上を assert・ベースライン CSS は `button[type="submit"]` 48px / その他コントロール 44px） |
 | ターゲット間隔 | 8px 以上 | M3（Android Accessibility） | レビュー目視（チェックリスト） |
 | フォームコントロール font-size | **16px 以上** | iOS Safari 自動ズーム防止（業界標準・要注意 B ランク） | `tools/check_design_rules.py` + E2E |
-| コントラスト比 | 通常テキスト **4.5:1** / 18pt 以上 3:1 | WCAG AA・Apple HIG 同値 | レビュー目視（axe-core 導入後は自動・#後続） |
-| LCP | < **2.5 秒**（75 パーセンタイル） | web.dev Core Web Vitals | Lighthouse CI（後続 Issue） |
-| INP | ≤ **200ms** | 同上 | 同上 |
-| CLS | ≤ **0.1** | 同上 | 同上 |
+| コントラスト比 | 通常テキスト **4.5:1** / 18pt 以上 3:1 | WCAG AA・Apple HIG 同値 | `e2e/a11y.spec.ts`（axe-core `color-contrast`・既定有効） |
+| LCP | < **2.5 秒**（75 パーセンタイル） | web.dev Core Web Vitals | Lighthouse CI（`lighthouserc.json`・lab 計測・warn） |
+| INP | ≤ **200ms** | 同上 | Lighthouse CI の Total Blocking Time を lab 代理指標として warn（INP 自体はフィールド計測のため lab 完全再現不可） |
+| CLS | ≤ **0.1** | 同上 | Lighthouse CI（`lighthouserc.json`・lab 計測・warn） |
 | 送信タップ応答 | 0.1 秒以内に視覚フィードバック | NN/g 応答時間 3 閾値 | E2E（所要時間計測・後続） |
 | 起票タップ数 | 起動 → 入力 → 送信で **3 タップ以内** | KPI（project-mission.md） | E2E シナリオのステップ数で担保 |
 | manifest shortcuts | 最優先アクションを先頭・**3 件以内**（Chrome for Android の実装値・仕様保証なし・要実機再確認） | web.dev（2020 年記事・fact_check_flags #1） | レビュー目視 + `e2e/pwa.spec.ts` |
@@ -106,8 +106,10 @@
 | 静的チェック（Warning） | `tools/check_design_rules.py`（`self_review_check.py` から自動実行） | 16px フォント・enterkeyhint・placeholder ラベル・reduced-motion・viewport ズーム禁止 |
 | E2E（ブロッキング） | `e2e/design-guidelines.spec.ts` | タップターゲット 24/44px・フォーム 16px・ダークモード smoke |
 | E2E（既存） | `e2e/issue-draft.spec.ts` ほか | 下書き保全・起票フロー |
+| E2E（ブロッキング・a11y） | `e2e/a11y.spec.ts`（`@axe-core/playwright`・wcag2a/wcag2aa/wcag22aa タグ） | ログイン前画面・起票フォーム画面の WCAG 違反 |
+| CI（ブロッキング） | `.github/workflows/ci.yml` `lighthouse` ジョブ（`lighthouserc.json`） | ログイン前トップページの performance / accessibility minScore |
+| CI（ブロッキング・PR コメント） | `.github/workflows/ci.yml` `size` ジョブ（`andresz1/size-limit-action` + package.json `size-limit`） | クライアント/Worker バンドルサイズ予算 |
 | レビュー観点 | `docs/rules/design-review-checklist.md` + `design-review` スキル | 機械化できない原則（D-1〜D-3・D-5・情報階層・文言） |
-| 後続導入（Issue 化） | Lighthouse CI（LCP/INP/CLS・minScore）・@axe-core/playwright（wcag22aa タグ必須）・size-limit（バンドル予算） | パフォーマンス・a11y の自動化 |
 
 ## 6. 参照
 
