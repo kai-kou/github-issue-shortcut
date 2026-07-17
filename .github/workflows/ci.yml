@@ -103,11 +103,20 @@ jobs:
 
       - run: npm ci
 
-      # バンドルサイズ予算（package.json の size-limit）を PR 差分コメントで可視化する。
-      # Vite の chunkSizeWarningLimit は warning のみで CI を失敗させないため size-limit で
+      - run: npm run build
+
+      # バンドルサイズ予算（package.json の size-limit）のハードゲート。Vite の
+      # chunkSizeWarningLimit は warning のみで CI を失敗させないため size-limit で
       # ハード失敗させる（content/research/design-uiux-20260717_deep_research.md §7）。
-      # install は上の npm ci 済みのためスキップし、action には build のみ行わせる。
+      - run: npm run size
+
+      # PR 差分コメント（付加価値・非ブロッキング）。andresz1/size-limit-action は比較対象の
+      # main ブランチ側でも size-limit 設定 + 依存が揃っている前提のため、本 PR（size-limit を
+      # 初導入する PR）の main には未導入で比較に失敗する（鶏卵問題）。本 PR マージ後は main 側
+      # にも設定が揃うため以降の PR では正常に動作する。上のハードゲートで CI 失敗は既に担保済み
+      # のため continue-on-error でコメント失敗が merge をブロックしないようにする。
       - uses: andresz1/size-limit-action@e7493a72a44b113341c0cf6186ab49c17c4b65c1 # v1
+        continue-on-error: true
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           skip_step: install
