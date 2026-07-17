@@ -28,8 +28,13 @@ export function LabelPicker({ repoFullName, pushAccess, selected, onChange, init
   const [state, setState] = useState<LabelsState>({ status: "idle" });
   const [open, setOpen] = useState(initiallyOpen);
 
+  // open（初期展開・手動トグルどちらも含む）になったタイミングで一度だけ取得する。
+  // state.status は意図的に依存配列から外している: 含めると、この effect 自身が呼ぶ
+  // setState({status:"loading"}) で effect が再実行され、直前の実行の cleanup が
+  // active を false にして取得中の fetch の結果を握りつぶし、"読み込み中" のまま
+  // 固まってしまう（React effect の自己再トリガーによる競合）。
   useEffect(() => {
-    if (!initiallyOpen || !pushAccess) return;
+    if (!open || !pushAccess || state.status !== "idle") return;
     let active = true;
     setState({ status: "loading" });
     fetchLabels(repoFullName)
@@ -42,18 +47,20 @@ export function LabelPicker({ repoFullName, pushAccess, selected, onChange, init
     return () => {
       active = false;
     };
-    // repoFullName/pushAccess/initiallyOpen は親が key={repoFullName} で固定する props のため mount 時のみでよい。
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [open, pushAccess, repoFullName]);
+
+  // URL パラメータ起動（B1-2）の labels は実在確認前の生の文字列のため、取得完了後に
+  // 実際にこのリポジトリへ存在するラベル名だけへ絞り込む（存在しない名前を誤って
+  // GitHub への Issue 作成リクエストへ持ち込ませない）。
+  useEffect(() => {
+    if (state.status !== "ready") return;
+    const valid = new Set(state.labels.map((l) => l.name));
+    const filtered = selected.filter((name) => valid.has(name));
+    if (filtered.length !== selected.length) onChange(filtered);
+  }, [state, selected, onChange]);
 
   function handleToggleOpen(e: React.SyntheticEvent<HTMLDetailsElement>) {
-    const isOpen = e.currentTarget.open;
-    setOpen(isOpen);
-    if (!isOpen || state.status !== "idle" || !pushAccess) return;
-    setState({ status: "loading" });
-    fetchLabels(repoFullName)
-      .then((labels) => setState({ status: "ready", labels }))
-      .catch(() => setState({ status: "error" }));
+    setOpen(e.currentTarget.open);
   }
 
   function toggleLabel(name: string) {

@@ -13,7 +13,10 @@ test.describe("URL パラメータ起動（モック GitHub・モバイルエミ
         installations: [
           {
             id: 1001,
-            repos: [{ id: 1, full_name: "kai-kou/alpha", private: false, permissions: { push: true } }],
+            repos: [
+              { id: 1, full_name: "kai-kou/alpha", private: false, permissions: { push: true } },
+              { id: 2, full_name: "kai-kou/beta", private: false, permissions: { push: true } },
+            ],
           },
         ],
         labels: [
@@ -69,5 +72,43 @@ test.describe("URL パラメータ起動（モック GitHub・モバイルエミ
     await expect(page).toHaveURL(/\/new\?/);
     await expect(page.getByRole("button", { name: "kai-kou/alpha" })).toHaveAttribute("aria-pressed", "true");
     await expect(page.getByRole("textbox", { name: /タイトル|^Title$/ })).toHaveValue("未ログインプレフィル");
+  });
+
+  test("プレフィル後に別リポジトリへ手動で切り替えると、プレフィルは引き継がれない", async ({ page }) => {
+    await page.goto("/");
+    await page.getByRole("link", { name: /GitHub でログイン|Sign in with GitHub/ }).click();
+    await expect(page.getByText(/e2e-user/)).toBeVisible();
+
+    await page.goto(
+      "/new?repo=kai-kou%2Falpha&labels=bug&title=%E3%83%97%E3%83%AC%E3%83%95%E3%82%A3%E3%83%AB%E8%B5%B7%E7%A5%A8",
+    );
+    await expect(page.getByRole("textbox", { name: /タイトル|^Title$/ })).toHaveValue("プレフィル起票");
+
+    // プレフィル対象外の別リポジトリへ手動で切り替える
+    await page.getByRole("button", { name: "kai-kou/beta" }).click();
+
+    // 切り替え後のフォームはプレフィルを引き継がず空のまま
+    await expect(page.getByRole("textbox", { name: /タイトル|^Title$/ })).toHaveValue("");
+    await page.getByText(/ラベルを追加|Add labels/).click();
+    await expect(page.getByRole("checkbox", { name: "bug" })).not.toBeChecked();
+  });
+
+  test("URL のラベルがリポジトリに実在しない場合、送信内容から自動的に除外される", async ({ page }) => {
+    await page.goto("/");
+    await page.getByRole("link", { name: /GitHub でログイン|Sign in with GitHub/ }).click();
+    await expect(page.getByText(/e2e-user/)).toBeVisible();
+
+    await page.goto(
+      "/new?repo=kai-kou%2Falpha&labels=not-a-real-label&title=%E5%AD%98%E5%9C%A8%E3%81%97%E3%81%AA%E3%81%84%E3%83%A9%E3%83%99%E3%83%AB",
+    );
+    await expect(page.getByRole("textbox", { name: /タイトル|^Title$/ })).toHaveValue("存在しないラベル");
+
+    // 実在しないラベル名はラベル一覧取得後に自動的に選択解除され、送信リクエストに含まれない
+    await page.getByRole("button", { name: /Issue を作成|Create issue/ }).click();
+    await expect(page.getByText(/Issue を作成しました|Issue created/)).toBeVisible();
+
+    // labels が空になったリクエストは labels フィールド自体を省略する（worker/github.ts createIssue）。
+    const lastIssue = await (await page.request.get(`${MOCK_GITHUB_URL}/mock/last-issue`)).json();
+    expect(lastIssue.labels).toBeUndefined();
   });
 });

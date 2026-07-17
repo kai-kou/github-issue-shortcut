@@ -62,9 +62,6 @@ export function RepoPicker({ prefill = null }: RepoPickerProps) {
   const [selected, setSelected] = useState<string | null>(() => loadDraft()?.repo ?? prefill?.repo ?? null);
   const [submitState, setSubmitState] = useState<SubmitState>({ status: "idle" });
   const [formKey, setFormKey] = useState(0);
-  // URL パラメータ起動（B1-2）のタイトル/ラベルは初回起票のみに適用する。連続起票で同じ雛形が
-  // 繰り返し復活しないよう、1 回送信できたら以降のフォームには適用しない。
-  const [prefillConsumed, setPrefillConsumed] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -103,6 +100,11 @@ export function RepoPicker({ prefill = null }: RepoPickerProps) {
     return state.repos.find((r) => r.fullName === selected)?.pushAccess ?? false;
   }, [state, selected]);
 
+  // URL パラメータ起動（B1-2）のタイトル/ラベルは、まだ一度も送信していない・かつプレフィルが
+  // 指定したリポジトリのままである場合のみ適用する。ユーザーが別リポジトリへ手動で切り替えた
+  // 場合や、一度送信して連続起票に入った場合は引き継がない。
+  const appliesPrefill = formKey === 0 && (!prefill?.repo || prefill.repo === selected);
+
   function selectRepo(fullName: string) {
     setSelected(fullName);
     setRecent(recordRecentRepo(fullName));
@@ -131,8 +133,9 @@ export function RepoPicker({ prefill = null }: RepoPickerProps) {
       const data = (await res.json()) as { number: number; htmlUrl: string };
       clearDraft();
       setSubmitState({ status: "success", number: data.number, htmlUrl: data.htmlUrl });
-      setPrefillConsumed(true);
       // 送信成功のたびにフォームを再マウントして入力内容をクリアする（連続起票を想定）。
+      // formKey>0 は「1 回送信済み」を意味し、URL パラメータ起動のプレフィルを以降の
+      // 連続起票へ引き継がない判定にも流用する（同じ雛形が繰り返し復活しないように）。
       setFormKey((k) => k + 1);
     } catch {
       // fetch 自体の失敗（オフライン等）はネットワーク断とみなし汎用メッセージにフォールバックする。
@@ -175,8 +178,8 @@ export function RepoPicker({ prefill = null }: RepoPickerProps) {
             pushAccess={selectedPushAccess}
             onSubmit={submitIssue}
             submitting={submitState.status === "submitting"}
-            initialTitle={prefillConsumed ? undefined : prefill?.title}
-            initialLabels={prefillConsumed ? undefined : prefill?.labels}
+            initialTitle={appliesPrefill ? prefill?.title : undefined}
+            initialLabels={appliesPrefill ? prefill?.labels : undefined}
           />
           {submitState.status === "success" ? (
             <p>
