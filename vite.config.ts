@@ -36,6 +36,30 @@ export default defineConfig({
             url: "url",
           },
         },
+        // アイコン長押しメニューの定番プリセット（C2-1・FR-17）。manifest shortcuts は
+        // 全ユーザー共通の静的定義（Android Chrome 最大 3 個・WebAPK 反映は約 24h 周期）のため、
+        // リポジトリ個別のプリセットではなく汎用のラベル起票導線にとどめる
+        // （ユーザー個別プリセットは URL ベースのショートカット作成ヘルパー C1-1/#13 が担当）。
+        shortcuts: [
+          {
+            name: "新しい Issue を作成",
+            short_name: "新規 Issue",
+            url: "/new",
+            icons: [{ src: "/icons/icon-192.png", sizes: "192x192", type: "image/png" }],
+          },
+          {
+            name: "バグを報告",
+            short_name: "バグ報告",
+            url: "/new?labels=bug",
+            icons: [{ src: "/icons/icon-192.png", sizes: "192x192", type: "image/png" }],
+          },
+          {
+            name: "改善案を起票",
+            short_name: "改善案",
+            url: "/new?labels=enhancement",
+            icons: [{ src: "/icons/icon-192.png", sizes: "192x192", type: "image/png" }],
+          },
+        ],
       },
       workbox: {
         // /auth/* は SW のナビゲーションフォールバック対象外にする（MUST・OAuth コールバックのキャッシュ応答による破壊を防止）。

@@ -12,6 +12,15 @@ test.describe("PWA インストール可能要件", () => {
     expect(manifest.display).toBe("standalone");
     expect(manifest.icons.length).toBeGreaterThanOrEqual(2);
 
+    // アイコン長押しメニューの定番プリセット（C2-1・FR-17・#11）。
+    // Android Chrome の上限（最大 3 個）と、各エントリが起票画面（/new）を指すことを検証する。
+    expect(manifest.shortcuts.length).toBeLessThanOrEqual(3);
+    for (const shortcut of manifest.shortcuts) {
+      expect(shortcut.name).toBeTruthy();
+      expect(shortcut.url).toMatch(/^\/new(\?.*)?$/);
+      expect(shortcut.icons?.length).toBeGreaterThanOrEqual(1);
+    }
+
     const swRes = await page.request.get("/sw.js");
     expect(swRes.status()).toBe(200);
     expect(swRes.headers()["content-type"]).toMatch(/javascript/);
