@@ -68,15 +68,25 @@ export function IssueForm({
   );
   const cleanTitle = useMemo(() => stripTokens(title, matchedTitleTokens), [title, matchedTitleTokens]);
 
+  /** マッチしたトークン群を対応するラベル名（重複除去済み）へ変換する。同じラベルを指す
+   * トークンが複数あっても（例: 大文字小文字違いの `@Bug` `@bug`）1 回しか数えない。 */
+  function matchedLabelNames(tokens: SmartToken[]): string[] {
+    const names = new Set<string>();
+    for (const tok of tokens) {
+      const name = labelIndex.get(tok.name.toLowerCase());
+      if (name) names.add(name);
+    }
+    return [...names];
+  }
+
   // 空白の後続がある（＝入力確定済みの）@label トークンだけを、入力中にラベル選択へ自動反映する
   // （末尾のトークンはまだ入力中の可能性があるため対象外・タップ削除やチェックボックス解除で戻せる）。
   useEffect(() => {
     const committed = committedTokens(matchedTitleTokens, title);
     if (committed.length === 0) return;
+    const names = matchedLabelNames(committed);
     setLabels((prev) => {
-      const additions = committed
-        .map((tok) => labelIndex.get(tok.name.toLowerCase()))
-        .filter((name): name is string => typeof name === "string" && !prev.includes(name));
+      const additions = names.filter((name) => !prev.includes(name));
       return additions.length > 0 ? [...prev, ...additions] : prev;
     });
   }, [matchedTitleTokens, title, labelIndex]);
@@ -108,13 +118,26 @@ export function IssueForm({
     if (name) setLabels((prev) => prev.filter((l) => l !== name));
   }
 
+  /** LabelPicker のチェックボックス経由の変更。@label トークン由来のラベルをここで外した場合、
+   * タイトルにトークン文字列が残ったままだと自動反映 useEffect や送信時の再確定で復活してしまう
+   * ため、対応するトークンもタイトルから一緒に取り除く（チップのタップ解除と同じ結果にする）。 */
+  function handleLabelsChange(next: string[]) {
+    const removedNames = labels.filter((l) => !next.includes(l));
+    if (removedNames.length > 0) {
+      const tokensToStrip = matchedTitleTokens.filter((tok) => {
+        const name = labelIndex.get(tok.name.toLowerCase());
+        return name ? removedNames.includes(name) : false;
+      });
+      if (tokensToStrip.length > 0) handleTitleChange(stripTokens(title, tokensToStrip));
+    }
+    setLabels(next);
+  }
+
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
     if (!canSubmit) return;
     // 末尾のトークン（入力確定前）も送信時点では確定として扱い、ラベルへ反映してからタイトルを送る。
-    const extraLabels = matchedTitleTokens
-      .map((tok) => labelIndex.get(tok.name.toLowerCase()))
-      .filter((name): name is string => typeof name === "string" && !labels.includes(name));
+    const extraLabels = matchedLabelNames(matchedTitleTokens).filter((name) => !labels.includes(name));
     onSubmit({
       title: cleanTitle,
       body: body.trim(),
@@ -167,7 +190,7 @@ export function IssueForm({
         key={repoFullName}
         pushAccess={pushAccess}
         selected={labels}
-        onChange={setLabels}
+        onChange={handleLabelsChange}
         initiallyOpen={(initialLabels?.length ?? 0) > 0}
         labelsState={labelsState}
       />
