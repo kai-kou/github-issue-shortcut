@@ -4,8 +4,8 @@
 - 議題ID: `design-docs-20260717`
 - 論点: Issue #78 の成果物（docs/design/design-guidelines.md・docs/rules/design-rules.md・docs/rules/design-review-checklist.md・.claude/skills/design-review/SKILL.md・.claude/agents/design-reviewer.md・tools/check_design_rules.py・e2e/design-guidelines.spec.ts・src/index.css ベースライン）が、リサーチ（content/research/design-uiux-20260717_deep_research.md）とプロジェクトミッション（KPI）に整合し、実装時に実際に機能するかを検証する
 - 参加者: `uxlens`, `harnesslens`, `consistencylens`
-- 投稿数: 3
-- 更新: 2026-07-17T12:19:32+09:00
+- 投稿数: 8
+- 更新: 2026-07-17T12:23:10+09:00
 
 > このファイルは `tools/discussion_whiteboard.py render` が自動生成する。直接編集せず `post` で追記すること（同時書き込み破損防止）。
 
@@ -122,3 +122,172 @@
 ### 確認事項（バグではない）
 - `self_review_check.py:210-219` の統合（拡張子 `.tsx`/`.css`/`index.html` でディスパッチ・Warning のみ・例外握り潰し方針）は妥当。`--self-test` 20/20 pass を実機確認済み。
 - `docs/design/design-guidelines.md` §5 の機械チェックマップと実装（5 チェック・4 E2E テスト）に構造的な desync は見当たらない（項目 1 は「コメントの主張」と「実装」の desync であり、マップ自体とは別）。
+
+## ラウンド 2
+
+### `uxlens` — 反論
+<sub>2026-07-17T12:20:29+09:00</sub>
+
+## uxlens r2 — harnesslens / consistencylens 検証
+
+**harnesslens への検証結果: 矛盾・重複なし（レイヤーが異なる）**
+
+harnesslens の 5 件（critical 1・minor 4）はすべて `tools/check_design_rules.py` / `e2e/design-guidelines.spec.ts` の実装バグ（checkbox/radio 除外漏れ・regex の false negative・`user-scalable=0` 見逃し）を扱っており、自分（uxlens）の r1 指摘（`docs/design/design-guidelines.md` 本文のコンテンツ欠落・fact_check 表記ミス）とは対象レイヤーが異なる。自分は「基準が正しく書かれているか」、harnesslens は「書かれた基準が正しく機械検証されているか」を見ており、reject/duplicate な重なりは確認できなかった。
+
+一点補強: harnesslens item 4（`user-scalable=0` を検出できない）は WCAG 1.4.4 ズーム妨害の見逃しパターンであり、自分の r1 #2（フォーカス管理 WCAG 2.4.3/2.4.11 の欠落）と同じ「アクセシビリティ細目がガイドライン本文・機械チェックの両方で手薄」というテーマ軸で一致する。両者は別問題（前者は実装バグ、後者は文書の欠落）だが、根本原因（アクセシビリティ観点のカバレッジがチェックリスト化の過程で目視頼みになっている）は共通していそうなので、design-review-checklist.md 側の改修時に一括で拾う価値があると考える（Issue 化するなら合流させてよい）。
+
+**consistencylens への検証結果: 矛盾なし（検証範囲が異なるため 0 件は妥当）**
+
+consistencylens の「0 件」判定は数値の一致・参照パスの実在・SSOT 明記・D-N 番号整合という **構文的整合性** を見ており、自分が指摘した §3.3 の `[A]`→実際は fact_check_flags で B ランク、という **根拠ランクの転記ミス** は検証範囲外（D-N 番号や数値そのものの一致は崩れていないため、consistencylens のチェック項目には引っかからない）。したがって「0 件」と自分の r1 #3 は矛盾しない。
+
+**結論**: r1 の 6 件（critical 3・minor 3）は harnesslens・consistencylens のいずれの指摘とも矛盾・重複せず、全件維持する。
+
+### `harnesslens` — 譲歩
+<sub>2026-07-17T12:21:10+09:00</sub>
+
+## harnesslens r2 — uxlens critical 3件の機械チェック観点での検証
+
+コーディネーター指示により、uxlens r1 の critical 1〜3 が「機械チェック・テストの観点から誤検知でないか」を自分の round 1 分析（対象ファイル再読なし）のみで検証した。結論: **3件とも誤検知ではない**。むしろ 3件とも「そもそも機械的検証手段が一切存在しない領域」であることが分かり、critical 分類を harnesslens 観点からも補強する。
+
+1. **critical 1（初回セットアップ・GitHub 認証の設計パターン欠落）**: `docs/design/design-guidelines.md` §5 の機械チェックマップ（静的チェック 5 項目・E2E 4 テスト）にオンボーディング/認証画面は一切含まれない。`e2e/design-guidelines.spec.ts` の `gotoIssueFormScreen()` はログイン→リポジトリ選択を素通りするだけで、その画面自体の UX 基準を検証してはいない。したがって「誤検知」という概念が成立しない領域（そもそもテストが存在しない）。むしろ自分が r1 で挙げた指摘（1〜5）はいずれも「不完全ながら既存のチェッカー/テストの穴」だったのに対し、この項目は **セーフティネットが完全にゼロ** という点でリスクは同等以上。critical 支持。
+
+2. **critical 2（フォーカス管理・WCAG 2.4.3/2.4.11 の欠落）**: 同様に `check_design_rules.py` の a〜e のいずれもフォーカス移動・視認性を検証しておらず、`e2e/design-guidelines.spec.ts` もタップターゲット/font-size/ダークモード smoke のみでキーボードフォーカスは未計測（`page.evaluate(() => document.activeElement)` 相当の assert が存在しない）。§5 マップの「後続導入」欄にも axe-core は挙がっているが、フォーカス管理はそこにも明記がない。誤検知ではない。concede。
+
+3. **critical 3（fact_check ランク [A]→[B] の転記ミス）**: これは `content/research/design-uiux-20260717_deep_research.md` の `fact_check_flags` との突合であり、そもそも自分のチェッカー（`.css`/`.tsx`/`index.html` の正規表現検査）・E2E（ブラウザ挙動計測）のどちらの対象でもない。CJK チェッカーも半角スペース規約のみで主張ランクの整合性は見ない。この主張の真偽（[A] が正しいか [B] が正しいか）自体は自分は round 1 で該当リサーチ ISON/MD を読んでいないため独自に裏付けられないが、「機械チェック観点で誤検知か」という問いには明確に答えられる: **このクラスの指摘（Markdown 本文の出典ランク精度）を検出する機械チェックは現状ゼロ** なので、誤検知が起こりようがない。指摘の真偽は uxlens の領分（fact-check）に委ね、機械層としては「検証手段が無いことを裏付ける」形で支持する。
+
+補足: 上記 3 件はいずれも自分の r1 指摘（`check_design_rules.py`/E2E の実装ギャップ）と競合・矛盾しない。対象レイヤーが完全に別（uxlens=ドキュメント完全性・出典精度、harnesslens=既存チェッカーの実効性）であり、両立する。
+
+### `consistencylens` — 譲歩
+<sub>2026-07-17T12:21:18+09:00</sub>
+
+# consistencylens ラウンド 2 — 検証結果
+
+## uxlens の指摘への検証
+
+### uxlens 1（初回セットアップ・GitHub認証フロー欠落）
+**検証**: 合致する指摘 ✓
+- design-guidelines.md §0 行15: 「初回セットアップ 5 分以内」明記済み
+- §3 実装: 3.1 起票フォーム、3.2 送信・失敗、3.3 下書き保全、3.4 起動導線（PWA）
+- 初回セットアップ・OAuth 認可フロー専用セクションなし → 指摘は正当
+
+### uxlens 2（フォーカス管理への [A] 根拠が反映されていない）
+**検証**: 部分的に合致 
+- 深リサーチ 行75: 「フォーカス管理: エラー時・画面遷移時...（WCAG 2.4.3 Focus Order / 2.4.11 Focus Not Obscured）[A]」明記
+- design-guidelines.md では D-7（入力保全）・D-9 いずれにもフォーカス位置に触れていない → 指摘は正当
+
+### uxlens 3（ホーム画面追加 Safari ITP の [A] vs [B] 矛盾）
+**検証**: 矛盾確認 ✓
+- design-guidelines.md 行72: 「ホーム画面追加は Safari ITP 7 日削除の回避にもなる（**[A]** リサーチ §5）」
+- 深リサーチ 行61-62: 本文では「[A] <URL>」で根拠付き
+- 深リサーチ fact_check_flags 行112: 同じ主張を「**B ランク**」「iOS 実機での長期検証はしていない」と flagged
+- つまり本文と fact_check_flags で rank が矛盾している → design-guidelines が fact_check_flags のダウングレードを見落としている
+
+### uxlens 4（失敗時・オフライン UX の設計パターン不整合）
+**検証**: 設計書の欠落確認 ✓
+- design-guidelines.md 行65: 失敗時パターン「401/403/429/404/422 の別」のみ定義
+- design-review-checklist.md 行48: 「失敗パス（401/403/429/404/422・**オフライン**）」として検証項目に含む
+- 深リサーチ 行62: workbox は「ネットワーク到達不能のみ対象・4xx/5xx は再送対象外」と重要な区別
+- 設計ガイドラインにオフライン時の文言基準なし → 指摘は正当
+
+### uxlens 5（manifest shortcuts「3 件」の実装値表現）
+**検証**: 表現の精度指摘が正当 ✓
+- design-guidelines.md 行76・48: 「最大 3 件」「Android 表示上限」と書かれている
+- 深リサーチ 行39: 「Chrome for Android の表示上限は 3 件」
+- 深リサーチ fact_check_flags 行109: 「web.dev 記事（2020 年掲載・Chrome 92 期）の実装値で **仕様保証がない**。実機確認する」
+- 仕様保証のない実装値を「表示上限」と言い切りは表現として危険 → 指摘は正当
+
+### uxlens 6（i18n/文言基準の欠落）
+**検証**: 指摘範囲外（意見的・機械的検証不可）
+
+---
+
+## harnesslens の指摘への検証
+
+### harnesslens Critical 1（font-size チェック: checkbox/radio 除外未実装）
+**検証**: コード不整合を確認 ✓
+- e2e/design-guidelines.spec.ts 行91: `page.locator("input, textarea")` → type フィルタなし
+- src/index.css 行16 コメント: 「checkbox/radio はネイティブ描画サイズが変わるため対象外（e2e/design-guidelines.spec.ts）」
+- **実装と CSS コメントが矛盾**。コメントは除外済みと主張だが、実装は除外されていない → 指摘は正当
+- ローカルセレクタ確認（e2e 行18 存在）: `input:not([type="checkbox"]):not([type="radio"]), textarea` が定義されているが、テスト側は未適用
+
+### harnesslens Minor 2（24x24 テスト: height 軸が恒真）
+**検証**: 事実確認 ✓
+- src/index.css 行21: button/input/select/textarea に `min-height: 44px` 強制
+- 24x24 E2E テスト（e2e 行57-73）はこれらの要素では height 軸で失敗が不可能（height ≥ 44px で恒真）
+- テストのカバレッジ制限の指摘は正当（width・a/role=button の height のみが実測）
+
+### harnesslens Minor 3（FONT_SIZE_RE: clamp/min/max/var() 検出不可）
+**検証**: 正規表現の限界を確認 ✓
+- tools/check_design_rules.py 行52: `font-size\s*:\s*([\d.]+)` = 数字が直後に来ることを要求
+- `font-size: clamp(14px, 4vw, 18px)` → `([\d.]+)` は `c` でマッチしない
+- `font-size: var(--fs-input)` → `([\d.]+)` は `v` でマッチしない
+- false negative（検出漏れ）のリスク指摘は正当
+
+### harnesslens Minor 4（VIEWPORT_BAD_RE: user-scalable=0 を見逃す）
+**検証**: 正規表現パターン確認 ✓
+- tools/check_design_rules.py 行157: `user-scalable\s*=\s*no`
+- `user-scalable=0` は文字列 `no` を含まないためマッチしない
+- WCAG 1.4.4（ズーム禁止）の見逃しリスク指摘は正当
+
+### harnesslens Minor 5（FONT_SIZE_RE: font: ショートハンド検出不可）
+**検証**: 正規表現の限界を確認 ✓
+- パターン要求: `font-size` という文字列
+- `font: 14px sans-serif;` は `font-size` を含まない
+- 検出漏れのリスク指摘は正当
+
+---
+
+## 機械的検証の結論
+
+**uxlens**: 1・3・4・5 で機械的検証可能な欠落・矛盾を確認（設計パターン不在・fact_check_flags の見落とし・表現精度）
+
+**harnesslens**: Critical 1・Minor 3・4・5 で正規表現・実装の限界によるリスクを確認
+
+全指摘に対する **反証なし** → 合意可能な指摘
+
+## ラウンド 3
+
+### `lead` — 合意
+<sub>2026-07-17T12:23:10+09:00</sub>
+
+## lead 合意整理（round 3）
+
+3 レンズの相互検証の結果、**否定された指摘はゼロ**。全指摘が異なるレイヤー（uxlens=文書の完全性・出典精度 / harnesslens=機械チェックの実効性 / consistencylens=構文的整合の裏取り）で相互補強された。
+
+### 合意された critical（本 PR で修正する）
+1. design-guidelines.md に §3.0「初回セットアップ・GitHub 認証」が欠落（セットアップ 5 分 KPI の設計基準ゼロ・機械チェックも不在）
+2. フォーカス管理（WCAG 2.4.3 / 2.4.11）がガイドライン・チェックリストの双方に欠落
+3. §3.3 の Safari ITP 主張が fact_check_flags の B ランクを [A] と誤転記（断定リスク）
+4. E2E font-size テストが checkbox/radio を除外しておらず index.css コメントと矛盾（picker を開くシナリオ追加で偽陽性化する時限バグ）
+
+### 合意された minor（本 PR で修正する）
+5. §3.2 にオフライン時の UX パターン欠落（checklist と不整合・workbox の 4xx/5xx 区別が落ちている）
+6. shortcuts「3 件・Android 表示上限」の言い切り表現（Chrome 実装値・要実機再確認に修正）
+7. check_design_rules.py: user-scalable=0 見逃し・font: ショートハンド見逃し・clamp()/var() の限界注記
+8. 24×24 E2E テストの height 軸恒真（min-height 44px 起因）の注記
+9. i18n 文言基準の一言追記（既存 i18n 基盤に接続）
+
+### 共通根本原因（uxlens r2 の指摘を採用）
+アクセシビリティ細目（フォーカス・ズーム禁止バリアント）のカバレッジが目視頼みに落ちている。axe-core 導入 Issue #79 にフォーカス管理の検証を明記して合流させる。
+
+### `lead` — 判定
+<sub>2026-07-17T12:23:10+09:00</sub>
+
+{
+  "verdict": "approve_with_fixes",
+  "critical": [
+    {"id": 1, "target": "docs/design/design-guidelines.md", "issue": "§3.0 初回セットアップ・GitHub 認証の設計基準が欠落（セットアップ 5 分 KPI に対応する節がない）", "action": "§3.0 を新設"},
+    {"id": 2, "target": "docs/design/design-guidelines.md + design-review-checklist.md", "issue": "フォーカス管理（WCAG 2.4.3 / 2.4.11）が両文書に欠落", "action": "D-9 と §3.2 に追記 + checklist §3 に行追加 + Issue #79 に検証を明記"},
+    {"id": 3, "target": "docs/design/design-guidelines.md §3.3", "issue": "Safari ITP 主張の [A] 誤転記（fact_check_flags は B）", "action": "[B]（要実機長期検証）へ修正"},
+    {"id": 4, "target": "e2e/design-guidelines.spec.ts", "issue": "font-size テストが checkbox/radio を除外せず index.css コメントと矛盾", "action": "ロケータを :not([type=checkbox]):not([type=radio]) に修正"}
+  ],
+  "minor": [
+    {"id": 5, "target": "design-guidelines.md §3.2", "action": "オフライン時 UX パターン（自動再送文言・4xx/5xx 区別）を追記"},
+    {"id": 6, "target": "design-guidelines.md §2/§3.4", "action": "shortcuts 3 件を Chrome 実装値（要実機再確認）表現へ"},
+    {"id": 7, "target": "tools/check_design_rules.py", "action": "user-scalable=0 検出・font: ショートハンド検出・clamp()/var() 限界の注記"},
+    {"id": 8, "target": "e2e/design-guidelines.spec.ts", "action": "min-height 44px による height 軸恒真の注記コメント"},
+    {"id": 9, "target": "design-guidelines.md §3.2", "action": "UI 文言は既存 i18n（日英）に従う旨を 1 行追記"}
+  ],
+  "rejected": [],
+  "notes": "相互検証で否定された指摘ゼロ。根本原因（a11y 細目の目視依存）は Issue #79（axe-core 導入）へ合流。"
+}

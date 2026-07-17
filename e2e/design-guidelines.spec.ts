@@ -54,6 +54,8 @@ test.describe("デザインガイドライン: タップターゲット / フォ
     await resetMockRepo(request);
   });
 
+  // 注: button/input/select/textarea は src/index.css の min-height: 44px により height 軸は恒真。
+  // このテストが実質検出するのは全要素の width と、a / [role="button"] の height の退行。
   test("全インタラクティブ要素が24x24px以上（WCAG 2.2 SC 2.5.8 AA最低ライン）", async ({ page }) => {
     await gotoIssueFormScreen(page);
 
@@ -88,7 +90,8 @@ test.describe("デザインガイドライン: タップターゲット / フォ
   }) => {
     await gotoIssueFormScreen(page);
 
-    const controls = page.locator("input, textarea");
+    // checkbox/radio はネイティブ描画でフォントサイズ規準の対象外（src/index.css の除外セレクタと揃える）。
+    const controls = page.locator('input:not([type="checkbox"]):not([type="radio"]), textarea');
     const count = await controls.count();
     expect(count).toBeGreaterThan(0);
 

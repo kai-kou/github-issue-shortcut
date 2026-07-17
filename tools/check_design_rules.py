@@ -49,7 +49,13 @@ FORM_TAGS = ("input", "textarea", "select", "button")
 # finditer が左から順に試行する過程で正しく拾える（外側の @media 自体は
 # 「[^{}]*」が内側の { で止まるためマッチしない＝無視される）。
 BLOCK_RE = re.compile(r"([^{}]+)\{([^{}]*)\}")
+# 既知の限界: clamp()/min()/max()/var() など数値が直後に来ない指定は判定できない
+# （false negative）。computed style を実測する e2e/design-guidelines.spec.ts が
+# バックストップとして担保する。
 FONT_SIZE_RE = re.compile(r"font-size\s*:\s*([\d.]+)\s*(px|rem|em|%)?", re.IGNORECASE)
+# font ショートハンド（例: font: 14px sans-serif / font: italic 700 13px/1.4 serif）の
+# px 値も拾う（font-size プロパティ名を含まない指定の見逃し対策）。
+FONT_SHORTHAND_RE = re.compile(r"\bfont\s*:\s*[^;{}]*?([\d.]+)px\b", re.IGNORECASE)
 
 
 def _selector_targets_form_control(selector: str) -> bool:
@@ -81,8 +87,12 @@ def check_css_font_size(text: str) -> list[tuple[int, str]]:
             continue
         fm = FONT_SIZE_RE.search(body)
         if not fm:
-            continue
-        num, unit = fm.group(1), (fm.group(2) or "").lower()
+            sm = FONT_SHORTHAND_RE.search(body)
+            if not sm:
+                continue
+            fm, num, unit = sm, sm.group(1), "px"
+        else:
+            num, unit = fm.group(1), (fm.group(2) or "").lower()
         try:
             val = float(num)
         except ValueError:
@@ -154,7 +164,7 @@ def check_tsx_placeholder_label(text: str) -> list[tuple[int, str]]:
 
 
 # --- e. index.html viewport ------------------------------------------------
-VIEWPORT_BAD_RE = re.compile(r"maximum-scale\s*=\s*1(?:\.0+)?\b|user-scalable\s*=\s*no", re.IGNORECASE)
+VIEWPORT_BAD_RE = re.compile(r"maximum-scale\s*=\s*1(?:\.0+)?\b|user-scalable\s*=\s*(?:no|0)\b", re.IGNORECASE)
 
 
 def check_html_viewport(text: str) -> list[tuple[int, str]]:
@@ -239,6 +249,9 @@ def self_test() -> int:
             ".custom-input-box { font-size: 10px; }",
             0,
         ),
+        ("font ショートハンドの px も検出", "input { font: 14px sans-serif; }", 1),
+        ("font ショートハンド 16px 以上は OK", "input { font: 16px/1.5 sans-serif; }", 0),
+        ("clamp() は判定スキップ（既知の限界）", "input { font-size: clamp(14px, 4vw, 18px); }", 0),
     ]
     passed = 0
     failed = 0
@@ -318,6 +331,11 @@ def self_test() -> int:
             "通常の viewport は OK",
             '<meta name="viewport" content="width=device-width, initial-scale=1.0">',
             0,
+        ),
+        (
+            "user-scalable=0 も違反",
+            '<meta name="viewport" content="width=device-width, user-scalable=0">',
+            1,
         ),
     ]
     for name, text, expected in viewport_cases:
