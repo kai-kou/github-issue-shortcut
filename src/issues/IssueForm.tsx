@@ -81,6 +81,7 @@ export function IssueForm({
           type="text"
           enterKeyHint="send"
           autoCapitalize="sentences"
+          autoFocus
           value={title}
           onChange={(e) => handleTitleChange(e.target.value)}
           placeholder={t.issueForm.titlePlaceholder}
