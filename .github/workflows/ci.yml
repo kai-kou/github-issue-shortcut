@@ -51,8 +51,73 @@ jobs:
 
       - run: npx playwright install --with-deps chromium
 
-      # OAuth ログインフローの E2E（Playwright・モバイルエミュレーション・モック GitHub）。
-      # webServer が wrangler dev（ローカル D1・モック GitHub base）とモックを起動する。
+      # OAuth ログインフロー + デザインガイドライン + a11y（axe-core）の E2E（Playwright・
+      # モバイルエミュレーション・モック GitHub）。webServer が wrangler dev（ローカル D1・
+      # モック GitHub base）とモックを起動する。
       - run: npm run e2e
         env:
           WRANGLER_SEND_METRICS: "false"
+
+  lighthouse:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run build
+
+      - run: npx wrangler d1 migrations apply DB --local
+
+      # ログイン前トップページ（未認証）の performance / accessibility スコアを Lighthouse で
+      # 監査する（design-guidelines.md §5「後続導入」の消化・lighthouserc.json で minScore を
+      # assert）。このジョブはモック GitHub（e2e/mock-github.mjs）を起動しないため、
+      # lighthouserc.json の collect.url に認証後ページを追加する場合は e2e ジョブと同様に
+      # モック GitHub の起動を追加すること（現状は /api/me 等が 401 を返すだけの未認証ページのみが対象）。
+      - uses: treosh/lighthouse-ci-action@3e7e23fb74242897f95c0ba9cabad3d0227b9b18 # v12
+        with:
+          configPath: "./lighthouserc.json"
+          uploadArtifacts: true
+          temporaryPublicStorage: true
+        env:
+          WRANGLER_SEND_METRICS: "false"
+
+  size:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run build
+
+      # バンドルサイズ予算（package.json の size-limit）のハードゲート。Vite の
+      # chunkSizeWarningLimit は warning のみで CI を失敗させないため size-limit で
+      # ハード失敗させる（content/research/design-uiux-20260717_deep_research.md §7）。
+      - run: npm run size
+
+      # PR 差分コメント（付加価値・非ブロッキング）。andresz1/size-limit-action は比較対象の
+      # main ブランチ側でも size-limit 設定 + 依存が揃っている前提のため、本 PR（size-limit を
+      # 初導入する PR）の main には未導入で比較に失敗する（鶏卵問題）。本 PR マージ後は main 側
+      # にも設定が揃うため以降の PR では正常に動作する。上のハードゲートで CI 失敗は既に担保済み
+      # のため continue-on-error でコメント失敗が merge をブロックしないようにする。
+      - uses: andresz1/size-limit-action@e7493a72a44b113341c0cf6186ab49c17c4b65c1 # v1
+        continue-on-error: true
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          skip_step: install
+          build_script: build
