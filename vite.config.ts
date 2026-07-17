@@ -66,6 +66,25 @@ export default defineConfig({
         // /setup（GitHub App Setup URL 着地点）・/api/* も同様に Worker が都度処理すべきパスのため除外する。
         // 末尾スラッシュなし（例: 将来の /auth・/api 単体ルート）も除外できるよう (\/|$) で揃える。
         navigateFallbackDenylist: [/^\/auth(\/|$)/, /^\/setup(\/|$)/, /^\/api(\/|$)/],
+        // オフラインキュー（B4-2・FR-22）: ネットワーク到達不能時の起票 POST を Workbox Background
+        // Sync（IndexedDB キュー・約 24h 保持）に積み、オンライン復帰時に自動再送する。ページを閉じて
+        // いても再送される保証はこの SW 側の経路が担い、フォアグラウンドでの確実な UI 更新・キュー表示は
+        // クライアント側の再送経路（src/issues/useOfflineQueueSync.ts）が担う（二重化。重複は
+        // 既存の issue_log 照合・B4-3・#70 がサーバー側で吸収する）。4xx/5xx はネットワーク成功
+        // レスポンスのため Background Sync のリトライ対象にならず、要件どおり自動再送されない。
+        runtimeCaching: [
+          {
+            urlPattern: /^\/api\/issues$/,
+            method: "POST",
+            handler: "NetworkOnly",
+            options: {
+              backgroundSync: {
+                name: "issue-post-queue",
+                options: { maxRetentionTime: 24 * 60 },
+              },
+            },
+          },
+        ],
       },
     }),
   ],
