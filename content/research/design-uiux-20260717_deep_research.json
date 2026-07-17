@@ -1,0 +1,570 @@
+{
+ "research_id": "design-uiux-20260717",
+ "theme": "モバイル最速 Issue 起票 PWA（Android ホーム画面ショートカット起点）の UI/UX デザイン原則・ベストプラクティス",
+ "generated_at": "2026-07-17T21:20:00+09:00",
+ "engine": "claude-deep-research-workflow",
+ "engine_version": "claude-fable-5 (native /deep-research workflow + DIY 補完 4 領域)",
+ "sections": [
+  {
+   "heading": "クイックキャプチャ UX パターン",
+   "body_markdown": "最速入力ツールの共通原則: (1) 入力 1 フィールド主義 + 記号ショートカットによる省略可能メタデータ（Todoist Quick Add の #/@/p1〜p3 [A] https://www.todoist.com/help/articles/use-task-quick-add-in-todoist-va4Lhpzz）、(2) 起動 = 即入力可能・前置き操作ゼロ（Drafts [A] https://docs.getdrafts.com/gettingstarted/）、(3) キャプチャとトリアージの分離（整理は GitHub 側に委ねる）、(4) ホーム画面起点キャプチャの先行実例（Todoist Add Task ウィジェット [A]）。制約: Android Chrome はコールドローンチで autofocus してもキーボードが開かない（ユーザージェスチャ内 focus() のみ [B] https://discourse.wicg.io/t/how-should-browsers-treat-the-autofocus-attribute-on-mobile-devices/5238/）→「起動 → 1 タップ → キーボード」が現実的最短。詳細は同名 md セクション 1。",
+   "source_ids": [
+    "s001",
+    "s002",
+    "s003",
+    "s004",
+    "s005",
+    "s006"
+   ]
+  },
+  {
+   "heading": "モバイルフォーム設計（タップターゲット・入力属性）",
+   "body_markdown": "タップターゲット規範値: WCAG 2.2 SC 2.5.8 = 24×24 CSS px（AA・Spacing 例外あり [A] https://www.w3.org/WAI/WCAG22/Understanding/target-size-minimum.html）/ M3・Android = 48×48dp + 間隔 8dp [A] https://support.google.com/accessibility/android/answer/7101858 / Apple HIG = 44×44pt 既定 [A] https://developer.apple.com/design/human-interface-guidelines/accessibility。主要操作 48px・その他 44px・機械チェック最低ライン 24px と整合させる。enterkeyhint=\"send\"（Baseline・7 値 [A] MDN）・inputmode・autocapitalize はライブラリゼロで効く標準属性。iOS Safari はフォーム font-size 16px 未満で自動ズーム（[B] https://css-tricks.com/16px-or-larger-text-prevents-ios-form-zoom/）。placeholder のみのラベルは有害（NN/g [A] https://www.nngroup.com/articles/form-design-placeholders/）→ ラベルは入力欄の上に常時表示。",
+   "source_ids": [
+    "s007",
+    "s008",
+    "s009",
+    "s010",
+    "s011",
+    "s012",
+    "s013",
+    "s014",
+    "s015",
+    "s025",
+    "s026"
+   ]
+  },
+  {
+   "heading": "PWA 起動導線・インストール（shortcuts / app shell）",
+   "body_markdown": "manifest shortcuts はアイコン長押しの標準起動導線（Chrome for Android 表示上限 3 件・優先順に記載 [A] https://web.dev/articles/app-shortcuts）。Chrome 108（モバイル）以降、メニューからのインストールに fetch ハンドラ付き SW は不要 [A] https://developer.chrome.com/blog/update-install-criteria。manifest は 512×512 + 192×192 アイコン・standalone display を推奨 [A] https://web.dev/learn/pwa/web-app-manifest。起動速度は app shell（HTML/CSS/JS/画像）を SW install 時に event.waitUntil() でプリキャッシュ [A] https://web.dev/learn/pwa/caching。Twitter Lite は app shell 化で投稿数 75% 増（compose 摩擦低減の実証 [A] https://web.dev/case-studies/twitter）。反証済み: beforeinstallprompt に fetch ハンドラ必須／manifest が全ブラウザで必須、の 2 点は断定禁止。",
+   "source_ids": [
+    "s016",
+    "s017",
+    "s018",
+    "s042",
+    "s043",
+    "s044"
+   ]
+  },
+  {
+   "heading": "体感速度・パフォーマンス UX（CWV・知覚閾値・楽観的 UI）",
+   "body_markdown": "Core Web Vitals 閾値（75 パーセンタイル [A] https://web.dev/articles/vitals）: LCP < 2.5s / INP ≤ 200ms（2024-03-12 に FID を置換）/ CLS ≤ 0.1。Nielsen の知覚閾値（[A] https://www.nngroup.com/articles/response-times-3-important-limits/）: 0.1 秒 = 瞬時・1 秒 = 思考の連続性・10 秒 = 注意の限界。起票 10 秒 KPI はタップ応答 0.1 秒（INP 200ms）+ 送信 1 秒以内で設計する。React 19 useOptimistic による楽観的 UI（即時成功表示 + 失敗時自動ロールバック [A] https://react.dev/reference/react/useOptimistic）は Issue 起票のような高成功率・復旧容易な操作に好適。失敗時のサイレントロールバックは禁止（明示エラー + 救済 UI [B] Smashing Magazine）。1 秒未満の処理にインジケーター不要・フォーム送信はスケルトンでなく軽量インジケーター [B]。",
+   "source_ids": [
+    "s019",
+    "s020",
+    "s021",
+    "s022",
+    "s023",
+    "s024"
+   ]
+  },
+  {
+   "heading": "失敗時 UX・入力内容の保全",
+   "body_markdown": "下書きは入力中に随時保存（小さな下書きは localStorage で足りるが高頻度保存は非同期の IndexedDB が安全 [B] dev.to）。Safari ITP は 7 日間未訪問でスクリプト書き込みストレージを全削除するが、ホーム画面追加した PWA は対象外 [A] https://support.didomi.io/apple-adds-a-7-day-cap-on-all-script-writable-storage。workbox-background-sync はネットワーク失敗のみ再送（約 24h 保持）で 4xx/5xx は対象外 → GitHub API エラーはアプリ側で明示表示 [A] https://developer.chrome.com/docs/workbox/modules/workbox-background-sync。エラーメッセージは発生箇所近傍・非難しないトーン・次アクション提示・入力保持（NN/g [A] https://www.nngroup.com/articles/error-message-guidelines/）。GitHub API: 401=再ログイン導線・403/429=retry-after / x-ratelimit-reset 解析・404=プライベートリポの権限不足秘匿仕様・422=errors[].field をフィールド直下へ [A] docs.github.com。保存トリガーは visibilitychange(hidden)+pagehide（beforeunload はモバイルで信頼不可 [A] MDN）。",
+   "source_ids": [
+    "s029",
+    "s030",
+    "s031",
+    "s032",
+    "s033",
+    "s034",
+    "s035",
+    "s045"
+   ]
+  },
+  {
+   "heading": "アクセシビリティ・片手操作・ダークモード",
+   "body_markdown": "コントラストは WCAG AA 値（通常 4.5:1・大文字 3:1）を両アピアランスで検証 [A] https://developer.apple.com/design/human-interface-guidelines/accessibility。Hoober の実地研究（1,333 件）でタップ操作の 75% が親指駆動 [A] https://www.uxmatters.com/mt/archives/2013/02/how-do-users-really-hold-mobile-devices.php → 送信ボタンは画面下部固定（thumb zone・[B] Smashing Magazine）。フォーカス管理は WCAG 2.2 の Focus Not Obscured 等に従う [A] W3C。ダークモードは color-scheme + prefers-color-scheme で OS 追従。アニメーションは prefers-reduced-motion: reduce で無効化 [A] https://developer.mozilla.org/en-US/docs/Web/CSS/@media/prefers-reduced-motion。",
+   "source_ids": [
+    "s009",
+    "s027",
+    "s028",
+    "s007",
+    "s041"
+   ]
+  },
+  {
+   "heading": "デザイン原則の機械チェック化・レビュー体制・トレンド",
+   "body_markdown": "axe-core は @axe-core/playwright の AxeBuilder で CI 統合し、target-size ルール（WCAG 2.2）はデフォルト無効のため withTags(['wcag22aa']) の明示が必須 [A] https://www.deque.com/blog/axe-core-4-5-first-wcag-2-2-support-and-more/。タップターゲット実寸は Playwright boundingBox() で 24px 以上を直接検証・ダークモードは test.use({colorScheme:'dark'}) [A] https://playwright.dev/docs/emulation。Lighthouse CI は categories:performance / accessibility の minScore を assert（PWA カテゴリは v12 で廃止 [A] https://developer.chrome.com/docs/lighthouse/pwa/installable-manifest）。バンドル予算は Vite の chunkSizeWarningLimit が warning 止まりのため size-limit で CI 失敗させる [A] https://github.com/andresz1/size-limit-action。数値基準は機械チェック・非数値原則はレビューチェックリストに落とすのが体制のベストプラクティス。トレンド（意図的ミニマリズム・ボトムシート・ダークモード標準化）は [C] 参考扱い。",
+   "source_ids": [
+    "s036",
+    "s037",
+    "s038",
+    "s039",
+    "s040",
+    "s046",
+    "s047"
+   ]
+  }
+ ],
+ "official_names": [
+  {
+   "term": "WCAG 2.2 タップターゲット基準",
+   "official": "Success Criterion 2.5.8 Target Size (Minimum)",
+   "japanese": "ターゲットのサイズ（最小）",
+   "source_id": "s007"
+  },
+  {
+   "term": "INP",
+   "official": "Interaction to Next Paint",
+   "source_id": "s019"
+  },
+  {
+   "term": "Todoist の高速入力機能",
+   "official": "Quick Add",
+   "japanese": "クイック追加",
+   "source_id": "s001"
+  },
+  {
+   "term": "Apple のデザインガイドライン",
+   "official": "Human Interface Guidelines",
+   "japanese": "ヒューマンインターフェイスガイドライン",
+   "source_id": "s009"
+  },
+  {
+   "term": "Google のデザインシステム",
+   "official": "Material Design 3",
+   "japanese": "マテリアルデザイン 3",
+   "source_id": "s026"
+  },
+  {
+   "term": "Enter キー表示属性",
+   "official": "enterkeyhint",
+   "source_id": "s010"
+  },
+  {
+   "term": "Workbox の再送モジュール",
+   "official": "workbox-background-sync",
+   "source_id": "s031"
+  },
+  {
+   "term": "React 19 楽観的更新 Hook",
+   "official": "useOptimistic",
+   "source_id": "s022"
+  },
+  {
+   "term": "Safari のトラッキング防止機構",
+   "official": "Intelligent Tracking Prevention",
+   "source_id": "s030"
+  },
+  {
+   "term": "アクセシビリティ検査エンジン",
+   "official": "axe-core",
+   "source_id": "s036"
+  }
+ ],
+ "sources": [
+  {
+   "id": "s001",
+   "url": "https://www.todoist.com/help/articles/use-task-quick-add-in-todoist-va4Lhpzz",
+   "title": "Use task Quick Add in Todoist",
+   "publisher": "Todoist",
+   "rank": "A",
+   "language": "en"
+  },
+  {
+   "id": "s002",
+   "url": "https://www.todoist.com/inspiration/add-tasks-todoist",
+   "title": "Add tasks to Todoist",
+   "publisher": "Todoist",
+   "rank": "A",
+   "language": "en"
+  },
+  {
+   "id": "s003",
+   "url": "https://www.todoist.com/help/articles/use-a-todoist-widget-on-your-android-device-632pZA",
+   "title": "Use a Todoist widget on Android",
+   "publisher": "Todoist",
+   "rank": "A",
+   "language": "en"
+  },
+  {
+   "id": "s004",
+   "url": "https://docs.getdrafts.com/gettingstarted/",
+   "title": "Drafts Getting Started",
+   "publisher": "Agile Tortoise",
+   "rank": "A",
+   "language": "en"
+  },
+  {
+   "id": "s005",
+   "url": "https://github.blog/changelog/2023-07-13-improved-issue-creation-experience-for-github-mobile/",
+   "title": "Improved issue creation for GitHub Mobile",
+   "publisher": "GitHub",
+   "rank": "A",
+   "language": "en"
+  },
+  {
+   "id": "s006",
+   "url": "https://discourse.wicg.io/t/how-should-browsers-treat-the-autofocus-attribute-on-mobile-devices/5238/",
+   "title": "autofocus on mobile devices",
+   "publisher": "WICG Discourse",
+   "rank": "B",
+   "language": "en"
+  },
+  {
+   "id": "s007",
+   "url": "https://www.w3.org/WAI/WCAG22/Understanding/target-size-minimum.html",
+   "title": "Understanding SC 2.5.8 Target Size (Minimum)",
+   "publisher": "W3C",
+   "rank": "A",
+   "language": "en"
+  },
+  {
+   "id": "s008",
+   "url": "https://support.google.com/accessibility/android/answer/7101858",
+   "title": "Touch target size (Android Accessibility Help)",
+   "publisher": "Google",
+   "rank": "A",
+   "language": "en"
+  },
+  {
+   "id": "s009",
+   "url": "https://developer.apple.com/design/human-interface-guidelines/accessibility",
+   "title": "HIG: Accessibility",
+   "publisher": "Apple",
+   "rank": "A",
+   "language": "en"
+  },
+  {
+   "id": "s010",
+   "url": "https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Global_attributes/enterkeyhint",
+   "title": "enterkeyhint",
+   "publisher": "MDN",
+   "rank": "A",
+   "language": "en"
+  },
+  {
+   "id": "s011",
+   "url": "https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Global_attributes/inputmode",
+   "title": "inputmode",
+   "publisher": "MDN",
+   "rank": "A",
+   "language": "en"
+  },
+  {
+   "id": "s012",
+   "url": "https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Global_attributes/autocapitalize",
+   "title": "autocapitalize",
+   "publisher": "MDN",
+   "rank": "A",
+   "language": "en"
+  },
+  {
+   "id": "s013",
+   "url": "https://css-tricks.com/16px-or-larger-text-prevents-ios-form-zoom/",
+   "title": "16px or Larger Text Prevents iOS Form Zoom",
+   "publisher": "CSS-Tricks",
+   "rank": "B",
+   "language": "en"
+  },
+  {
+   "id": "s014",
+   "url": "https://www.nngroup.com/articles/form-design-placeholders/",
+   "title": "Placeholders in Form Fields Are Harmful",
+   "publisher": "NN/g",
+   "rank": "A",
+   "language": "en"
+  },
+  {
+   "id": "s015",
+   "url": "https://developer.chrome.com/blog/viewport-resize-behavior",
+   "title": "Viewport resize behavior",
+   "publisher": "Chrome Developers",
+   "rank": "A",
+   "language": "en"
+  },
+  {
+   "id": "s016",
+   "url": "https://web.dev/articles/app-shortcuts",
+   "title": "Get things done quickly with app shortcuts",
+   "publisher": "web.dev",
+   "rank": "A",
+   "language": "en"
+  },
+  {
+   "id": "s017",
+   "url": "https://developer.mozilla.org/en-US/docs/Web/Progressive_web_apps/Manifest/Reference/shortcuts",
+   "title": "Manifest: shortcuts",
+   "publisher": "MDN",
+   "rank": "A",
+   "language": "en"
+  },
+  {
+   "id": "s018",
+   "url": "https://developer.chrome.com/blog/update-install-criteria",
+   "title": "Updated install criteria",
+   "publisher": "Chrome Developers",
+   "rank": "A",
+   "language": "en"
+  },
+  {
+   "id": "s019",
+   "url": "https://web.dev/articles/vitals",
+   "title": "Web Vitals",
+   "publisher": "web.dev",
+   "rank": "A",
+   "language": "en"
+  },
+  {
+   "id": "s020",
+   "url": "https://web.dev/articles/defining-core-web-vitals-thresholds",
+   "title": "Defining Core Web Vitals thresholds",
+   "publisher": "web.dev",
+   "rank": "A",
+   "language": "en"
+  },
+  {
+   "id": "s021",
+   "url": "https://www.nngroup.com/articles/response-times-3-important-limits/",
+   "title": "Response Times: The 3 Important Limits",
+   "publisher": "NN/g",
+   "rank": "A",
+   "language": "en"
+  },
+  {
+   "id": "s022",
+   "url": "https://react.dev/reference/react/useOptimistic",
+   "title": "useOptimistic",
+   "publisher": "React",
+   "rank": "A",
+   "language": "en"
+  },
+  {
+   "id": "s023",
+   "url": "https://www.smashingmagazine.com/2016/11/true-lies-of-optimistic-user-interfaces/",
+   "title": "True Lies of Optimistic UIs",
+   "publisher": "Smashing Magazine",
+   "rank": "B",
+   "language": "en"
+  },
+  {
+   "id": "s024",
+   "url": "https://blog.logrocket.com/ux-design/skeleton-loading-screen-design/",
+   "title": "Skeleton loading screen design",
+   "publisher": "LogRocket",
+   "rank": "B",
+   "language": "en"
+  },
+  {
+   "id": "s025",
+   "url": "https://developer.android.com/guide/topics/ui/accessibility/apps",
+   "title": "Make apps more accessible",
+   "publisher": "Android Developers",
+   "rank": "A",
+   "language": "en"
+  },
+  {
+   "id": "s026",
+   "url": "https://m3.material.io/components/text-fields/specs",
+   "title": "M3 Text fields specs",
+   "publisher": "Material Design",
+   "rank": "B",
+   "language": "en"
+  },
+  {
+   "id": "s027",
+   "url": "https://www.uxmatters.com/mt/archives/2013/02/how-do-users-really-hold-mobile-devices.php",
+   "title": "How Do Users Really Hold Mobile Devices?",
+   "publisher": "UXmatters (Hoober)",
+   "rank": "A",
+   "language": "en"
+  },
+  {
+   "id": "s028",
+   "url": "https://www.smashingmagazine.com/2016/09/the-thumb-zone-designing-for-mobile-users/",
+   "title": "The Thumb Zone",
+   "publisher": "Smashing Magazine",
+   "rank": "B",
+   "language": "en"
+  },
+  {
+   "id": "s029",
+   "url": "https://dev.to/tene/localstorage-vs-indexeddb-javascript-guide-storage-limits-best-practices-fl5",
+   "title": "localStorage vs IndexedDB",
+   "publisher": "dev.to",
+   "rank": "B",
+   "language": "en"
+  },
+  {
+   "id": "s030",
+   "url": "https://support.didomi.io/apple-adds-a-7-day-cap-on-all-script-writable-storage",
+   "title": "Apple 7-day cap on script-writable storage",
+   "publisher": "Didomi (WebKit blog summary)",
+   "rank": "A",
+   "language": "en"
+  },
+  {
+   "id": "s031",
+   "url": "https://developer.chrome.com/docs/workbox/modules/workbox-background-sync",
+   "title": "workbox-background-sync",
+   "publisher": "Chrome Developers",
+   "rank": "A",
+   "language": "en"
+  },
+  {
+   "id": "s032",
+   "url": "https://www.nngroup.com/articles/error-message-guidelines/",
+   "title": "Error Message Guidelines",
+   "publisher": "NN/g",
+   "rank": "A",
+   "language": "en"
+  },
+  {
+   "id": "s033",
+   "url": "https://docs.github.com/en/rest/using-the-rest-api/troubleshooting-the-rest-api",
+   "title": "Troubleshooting the REST API",
+   "publisher": "GitHub Docs",
+   "rank": "A",
+   "language": "en"
+  },
+  {
+   "id": "s034",
+   "url": "https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api",
+   "title": "Rate limits for the REST API",
+   "publisher": "GitHub Docs",
+   "rank": "A",
+   "language": "en"
+  },
+  {
+   "id": "s035",
+   "url": "https://developer.chrome.com/docs/web-platform/page-lifecycle-api",
+   "title": "Page Lifecycle API",
+   "publisher": "Chrome Developers",
+   "rank": "A",
+   "language": "en"
+  },
+  {
+   "id": "s036",
+   "url": "https://github.com/dequelabs/axe-core-npm/blob/develop/packages/playwright/README.md",
+   "title": "@axe-core/playwright README",
+   "publisher": "Deque",
+   "rank": "A",
+   "language": "en"
+  },
+  {
+   "id": "s037",
+   "url": "https://www.deque.com/blog/axe-core-4-5-first-wcag-2-2-support-and-more/",
+   "title": "axe-core 4.5: first WCAG 2.2 support",
+   "publisher": "Deque",
+   "rank": "A",
+   "language": "en"
+  },
+  {
+   "id": "s038",
+   "url": "https://github.com/GoogleChrome/lighthouse-ci/blob/main/docs/configuration.md",
+   "title": "Lighthouse CI configuration",
+   "publisher": "Google",
+   "rank": "A",
+   "language": "en"
+  },
+  {
+   "id": "s039",
+   "url": "https://developer.chrome.com/docs/lighthouse/pwa/installable-manifest",
+   "title": "Lighthouse PWA (deprecated) / installable-manifest",
+   "publisher": "Chrome Developers",
+   "rank": "A",
+   "language": "en"
+  },
+  {
+   "id": "s040",
+   "url": "https://github.com/andresz1/size-limit-action",
+   "title": "size-limit-action",
+   "publisher": "GitHub",
+   "rank": "A",
+   "language": "en"
+  },
+  {
+   "id": "s041",
+   "url": "https://developer.mozilla.org/en-US/docs/Web/CSS/@media/prefers-reduced-motion",
+   "title": "prefers-reduced-motion",
+   "publisher": "MDN",
+   "rank": "A",
+   "language": "en"
+  },
+  {
+   "id": "s042",
+   "url": "https://web.dev/learn/pwa/web-app-manifest",
+   "title": "Learn PWA: Web app manifest",
+   "publisher": "web.dev",
+   "rank": "A",
+   "language": "en"
+  },
+  {
+   "id": "s043",
+   "url": "https://web.dev/learn/pwa/caching",
+   "title": "Learn PWA: Caching",
+   "publisher": "web.dev",
+   "rank": "A",
+   "language": "en"
+  },
+  {
+   "id": "s044",
+   "url": "https://web.dev/case-studies/twitter",
+   "title": "Twitter Lite case study",
+   "publisher": "web.dev",
+   "rank": "A",
+   "language": "en"
+  },
+  {
+   "id": "s045",
+   "url": "https://developer.mozilla.org/en-US/docs/Web/API/Window/beforeunload_event",
+   "title": "beforeunload event",
+   "publisher": "MDN",
+   "rank": "A",
+   "language": "en"
+  },
+  {
+   "id": "s046",
+   "url": "https://playwright.dev/docs/emulation",
+   "title": "Playwright: Emulation",
+   "publisher": "Playwright",
+   "rank": "A",
+   "language": "en"
+  },
+  {
+   "id": "s047",
+   "url": "https://muz.li/blog/whats-changing-in-mobile-app-design-ui-patterns-that-matter-in-2026/",
+   "title": "Mobile UI patterns 2026 (trend)",
+   "publisher": "Muzli",
+   "rank": "C",
+   "language": "en"
+  }
+ ],
+ "fact_check_flags": [
+  {
+   "claim": "Chrome for Android の manifest shortcuts 表示上限は 3 件",
+   "rank": "B",
+   "reason": "web.dev 記事（2020 年掲載・Chrome 92 期）の実装値で仕様保証がない。実装時に実機確認する",
+   "source_id": "s016"
+  },
+  {
+   "claim": "M3 テキストフィールドの標準高さは 56dp",
+   "rank": "B",
+   "reason": "m3.material.io が JS レンダリングで本文直接取得不可。スニペット・複数実装での裏取りに留まる",
+   "source_id": "s026"
+  },
+  {
+   "claim": "iOS Safari は input フォントサイズ 16px 未満でフォーカス時に自動ズームする",
+   "rank": "B",
+   "reason": "挙動は広く再現されているが Apple 公式ドキュメントの明文が存在しない",
+   "source_id": "s013"
+  },
+  {
+   "claim": "ホーム画面追加した PWA は Safari ITP 7 日削除の対象外",
+   "rank": "B",
+   "reason": "WebKit 公式ブログ由来の二次まとめで確認。iOS 実機での長期検証はしていない",
+   "source_id": "s030"
+  }
+ ],
+ "metrics": {
+  "duration_seconds": 2981,
+  "cost_usd": 0.0,
+  "search_count": 24,
+  "rank_distribution": {
+   "A": 39,
+   "B": 7,
+   "C": 1
+  }
+ }
+}

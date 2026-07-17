@@ -103,6 +103,14 @@
 | ☐ | title_call テーマ画像ゲート（`python3 tools/check_theme_image.py --video V{ID}`） | 機械（別ツール） | #2677 |
 | ☐ | imageMap に backgrounds/ パスが混入していないか | grep | design-spec |
 
+## 6. フロントエンド・デザイン（`src/` `index.html` manifest・CSS）
+
+| ✓ | チェック項目 | 検証 | 根拠 |
+|---|------------|------|------|
+| ☐ | デザインルール準拠（16px フォント・enterkeyhint・placeholder ラベル・reduced-motion・viewport ズーム禁止） | **機械**（`tools/check_design_rules.py`・self_review_check.py が自動実行・Warning） | `docs/design/design-guidelines.md` §2 |
+| ☐ | タップターゲット 24px 以上（送信 44px 以上）・ダークモード表示 | 機械（`e2e/design-guidelines.spec.ts`・CI ブロッキング） | 同上 |
+| ☐ | 起票フロー（起動 → 入力 → 送信）にタップ・画面・待ちを追加していないか / 失敗時に入力が保持されるか | 目視（`docs/rules/design-review-checklist.md` セクション 0・3） | D-3 / D-7 |
+
 ---
 
 ## 深刻度と対応（self-reviewer SKILL.md Step 5 と同一）
