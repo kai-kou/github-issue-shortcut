@@ -13,6 +13,11 @@ export default defineConfig({
   fullyParallel: false,
   workers: 1,
   timeout: 30_000,
+  // CI 環境ではマシン速度差により非同期 UI 更新（revalidate 差分反映・起票結果表示）が
+  // まれに遅延して flaky になる。ローカルは 0（flaky を隠さず気づけるように）、CI のみ
+  // リトライで吸収する（#106）。真因が環境速度でなくレート制限等の場合はリトライでも
+  // 落ち続けるため、リトライ後も失敗するテストは docs/testing-e2e.md の切り分け手順で調べる。
+  retries: process.env.CI ? 2 : 0,
   reporter: "list",
   use: {
     baseURL: "http://localhost:8789",

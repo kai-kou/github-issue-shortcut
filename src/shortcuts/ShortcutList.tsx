@@ -1,9 +1,21 @@
 import { useEffect, useState } from "react";
 import { useLanguage } from "../i18n/LanguageContext";
-import { buildLaunchUrl, type ShortcutPreset } from "./launchUrl";
+import { buildLaunchUrl } from "./launchUrl";
+import { loadShortcutsCache, saveShortcutsCache, type Shortcut } from "./shortcutsCache";
 
-type Shortcut = ShortcutPreset & { id: string };
 type ShortcutsState = { status: "loading" } | { status: "error" } | { status: "ready"; shortcuts: Shortcut[] };
+
+/** ローカルキャッシュ（#101・SWR）が現在ユーザーのものであれば起動直後から ready で表示し、
+ * fetch 完了を待たせない（別ユーザーのキャッシュは userId 不一致で無視され loading 初期化になる）。 */
+function initialShortcutsState(userId: number): ShortcutsState {
+  const cached = loadShortcutsCache(userId);
+  return cached ? { status: "ready", shortcuts: cached } : { status: "loading" };
+}
+
+interface ShortcutListProps {
+  /** ログイン中ユーザーの GitHub ユーザー ID。SWR キャッシュの所有者照合に使う（#101・別アカウント混入防止）。 */
+  userId: number;
+}
 
 /**
  * ホーム画面のリポジトリ選択エリアの上に表示する、保存済みショートカットのクイック一覧（#98）。
@@ -13,9 +25,9 @@ type ShortcutsState = { status: "loading" } | { status: "error" } | { status: "r
  * ログイン済み（`AuthPanel` が `installed === true` のときのみ描画）が前提のため、
  * 未ログイン時のガードはこのコンポーネントでは行わない。
  */
-export function ShortcutList() {
+export function ShortcutList({ userId }: ShortcutListProps) {
   const { t } = useLanguage();
-  const [state, setState] = useState<ShortcutsState>({ status: "loading" });
+  const [state, setState] = useState<ShortcutsState>(() => initialShortcutsState(userId));
 
   useEffect(() => {
     let active = true;
@@ -25,15 +37,19 @@ export function ShortcutList() {
         return (await res.json()) as { shortcuts: Shortcut[] };
       })
       .then((data) => {
-        if (active) setState({ status: "ready", shortcuts: data.shortcuts });
+        if (!active) return;
+        saveShortcutsCache(userId, data.shortcuts);
+        setState({ status: "ready", shortcuts: data.shortcuts });
       })
       .catch(() => {
-        if (active) setState({ status: "error" });
+        // キャッシュ由来で既に ready なら、fetch 失敗（オフライン等）で表示を壊さず維持する
+        // （SWR: revalidate 失敗時は stale データを見せ続ける・#101）。
+        if (active) setState((prev) => (prev.status === "ready" ? prev : { status: "error" }));
       });
     return () => {
       active = false;
     };
-  }, []);
+  }, [userId]);
 
   if (state.status === "loading") return null;
   if (state.status === "error") return <p className="status-note">{t.shortcuts.homeListLoadError}</p>;
