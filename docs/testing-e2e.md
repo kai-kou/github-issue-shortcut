@@ -64,9 +64,58 @@ tools/smoke_prod.sh   # 既定で本番 URL を検査。引数でプレビュー
 
 `.github/workflows/smoke.yml` がスケジュール（6 時間ごと）+ 手動実行で本番に対して走らせ、本番デグレを早期検知する。**新しいマイグレーション・secret 変更・デプロイの後は、このスモークが緑であることをリリースの合否とする。**
 
+## E2E の CI flaky 切り分け手順（#106）
+
+E2E は `fullyParallel: false` / `workers: 1` の直列実行だが、CI では **同じテストがローカルで通るのに CI でだけ落ちる** flaky が起きうる。原因は大きく 2 系統あり、**対処が正反対**（リトライで直る／リトライでは直らない）なので、まず切り分ける。
+
+| 系統 | 典型症状 | 根本原因 | 対処 |
+|------|---------|---------|------|
+| **A. 環境速度差（timeout）** | `toBeVisible` / `toHaveText` が `Timeout ...ms exceeded`。特に revalidate 差分反映・起票結果表示など **非同期 UI 更新** を待つアサーション | CI マシンが遅く、非同期 UI 更新（fetch → setState → 再描画）がアサーションの猶予内に間に合わない | `playwright.config.ts` の `retries: process.env.CI ? 2 : 0` が吸収する（リトライで通る）。恒常的に遅いアサーションは個別に `{ timeout }` を延長 |
+| **B. テスト分離漏れ（レート制限 429）** | スイート後半の起票系テストが `429` / 「時間をおいて…」表示で失敗。**リトライしても落ち続ける**（フルスイート実行時のみ・単体実行では再現しない） | 全 spec（~40 件）が単一モックユーザー（`e2e-user`）を共有し、本番の起票レート制限（10 件/分・`worker/index.ts` `ISSUE_RATE_LIMIT_PER_WINDOW`）を超える | `playwright.config.ts` の webServer で `--var ISSUE_RATE_LIMIT_PER_WINDOW_OVERRIDE:1000` を渡し、E2E 実行時だけ上限を引き上げる（**本番既定値は変更しない**）。新規に起票系 spec を足すときも同じ webServer 上で走るので追加設定は不要 |
+
+### 切り分けフロー
+
+```
+CI で E2E が落ちた
+  ↓ ローカルで対象 spec を単体実行（npm run e2e -- <spec>）
+  ├─ 単体では通る／フルスイートで落ちる → B（テスト分離）。429 か確認。
+  │    override が効いていない or 新しい共有状態の枯渇を疑う（レート制限以外の
+  │    D1 行・localStorage 汚染も含む。afterEach のクリーンアップ漏れを点検）
+  └─ 単体でも CI でだけ落ちる → A（環境速度）。retries で吸収されるはず。
+       retries 後も落ちるなら真の不具合（アサーション対象の非同期処理が壊れている）
+```
+
+**リトライ後も落ち続けるテストを「flaky だから」で放置しない**（B か真の不具合の兆候）。`retries` はローカルでは `0`（flaky を隠さず気づけるように）、CI でのみ `2`。
+
+### 新規 E2E を足すときの再発防止
+
+- 起票（`POST /api/issues`）を含む spec は、上記 webServer の override 前提で書く（追加設定不要）。
+- テスト間で共有される状態（D1 のショートカット行・localStorage）は `afterEach` / `finally` で必ず片付ける（`e2e/repos-shortcuts-swr-cache.spec.ts` の `finally` が模範）。
+- プレースホルダ等の **表示文言をセレクタに使うテキストと衝突させない**（例: name プレースホルダ「日報」を title セレクタ `/バグ報告|Bug report/` と別語にした回帰・strict mode 違反回避）。
+
+## Workers Builds の「テスト → ビルド」順と unit テストの制約（#107）
+
+デプロイ品質ゲートである **Cloudflare Workers Builds は `npm test`（unit）を `npm run build` より前に実行する**。このため **ビルド生成物（`dist/client`）に依存する unit テストは Workers Builds で必ず 404/500 で落ちる**（ローカルでは `npm run build` 済みなので気づけない）。
+
+### 原則: dist 依存の結合テストを unit テストに置かない
+
+- `SELF.fetch("/manifest.webmanifest")` のように **`ASSETS` バインディング経由でビルド済みファイルを読む** エンドポイントの結合テストを `worker/*.test.ts`（vitest・miniflare）に書くと、Workers Builds のテスト段では `dist/client` が未生成のため落ちる。
+- 代わりに **2 層で担保** する:
+  1. **純関数の unit テスト**: ビルド生成物に依存しないロジック（例: `buildDynamicManifest` — ユーザーの上位 3 ショートカットを `manifest.shortcuts` に反映する純関数）を直接テストする。dist 非依存なので Workers Builds のテスト段でも通る。
+  2. **E2E（`npm run e2e`）**: 実際に `wrangler dev` がビルド済み SPA + Worker を配信した状態で `/manifest.webmanifest` の実レスポンスを検証する（`e2e/pwa.spec.ts`）。ビルド後に走るのでエンドポイント結合を実挙動で担保できる。
+
+> ⚠️ **`wrangler.jsonc` の `assets.directory`（`./dist/client`）は削除しない**。miniflare のテスト環境が `ASSETS` バインディングを解決するために必要で、これを消すと逆にローカル unit テストが壊れる（過去に「Workers Builds 対策」として誤って削除し、manifest テストを 500/404 にした回帰あり）。Workers Builds 対策は「dist 依存テストを unit に置かない」であって「`assets.directory` を消す」ではない。
+
+### 判定チェックリスト（新規 Worker テスト追加時）
+
+- [ ] そのテストは `dist/client` の実ファイル（`ASSETS.fetch` / `SELF.fetch` で静的アセットを引く）に依存していないか？
+- [ ] 依存しているなら unit ではなく E2E（ビルド後実行）へ回したか？
+- [ ] ロジック部分は dist 非依存の純関数に切り出して unit テスト化したか？
+
 ## 参照
 
 - `tools/smoke_prod.sh` / `.github/workflows/smoke.yml` / `worker/index.ts` の `/api/ready`
 - `playwright.config.ts` / `e2e/login.spec.ts` / `e2e/mock-github.mjs`
+- `e2e/repos-shortcuts-swr-cache.spec.ts`（#101 SWR・afterEach クリーンアップの模範）・`e2e/pwa.spec.ts`（#107 manifest 実挙動）
 - `docs/requirements/00-requirements.md` NFR-15・§4.2
-- Issue #52・#14
+- Issue #52・#14・#106・#107

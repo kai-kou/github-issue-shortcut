@@ -7,6 +7,8 @@ import { ShortcutList } from "./shortcuts/ShortcutList";
 import { LanguageProvider, useLanguage } from "./i18n/LanguageContext";
 import { SUPPORTED_LOCALES } from "./i18n/translations";
 import { RepoPicker } from "./repos/RepoPicker";
+import { clearReposCache } from "./repos/reposCache";
+import { clearShortcutsCache } from "./shortcuts/shortcutsCache";
 import { clearAllCachedLabels } from "./issues/repoLabelsCache";
 import {
   consumePendingRedirect,
@@ -131,9 +133,17 @@ function AuthPanel({ prefill, pendingRedirectTarget }: AuthPanelProps) {
         return { status: "authenticated", me };
       })
       .then((next) => {
-        // Cookie の自然失効等、明示ログアウトを経ずに未ログイン状態へ戻った場合も、
-        // 共有端末で次のユーザーに前ユーザーのラベル一覧が見えないようキャッシュを消す。
-        if (next.status === "anonymous") clearAllCachedLabels();
+        // セッション切れ・未ログイン検知時は、別ユーザーの一覧（リポジトリ/ショートカット/ラベル）が
+        // SWR キャッシュに残らないようクリアする（#101/#102・明示ログアウトを経ない自然な Cookie
+        // 失効経路の防御網。共有端末で次のユーザーに前ユーザーの一覧が見えないようにする）。
+        // このクリアは `active`（mount 状態）でガードしない: /api/me 解決前に AuthPanel が
+        // アンマウントされても、プライバシーガードとしてキャッシュ消去は必ず実行する必要がある
+        // （active ガードは UI 更新の setAuth のみに掛ける）。
+        if (next.status === "anonymous") {
+          clearReposCache();
+          clearShortcutsCache();
+          clearAllCachedLabels();
+        }
         if (active) setAuth(next);
       })
       .catch(() => {
@@ -164,6 +174,9 @@ function AuthPanel({ prefill, pendingRedirectTarget }: AuthPanelProps) {
   }, [auth.status]);
 
   async function logout() {
+    // 別ユーザーのリポジトリ/ショートカット一覧が次回起動時の SWR キャッシュに残らないようにする（#101）。
+    clearReposCache();
+    clearShortcutsCache();
     await fetch("/auth/logout", { method: "POST", credentials: "same-origin" });
     clearAllCachedLabels();
     window.location.assign("/");
@@ -186,9 +199,16 @@ function AuthPanel({ prefill, pendingRedirectTarget }: AuthPanelProps) {
           </button>
         </p>
         {installed === false ? <InstallGuidance /> : null}
-        {installed === true ? <ShortcutList /> : null}
-        {installed === true ? <RepoPicker prefill={prefill} /> : null}
-        <AccountDeletion onDeleted={() => setAccountDeleted(true)} />
+        {installed === true ? <ShortcutList userId={auth.me.githubUserId} /> : null}
+        {installed === true ? <RepoPicker prefill={prefill} userId={auth.me.githubUserId} /> : null}
+        <AccountDeletion
+          onDeleted={() => {
+            // 同一端末で別ユーザーが再ログインした際に古い一覧が残らないようにする（#101）。
+            clearReposCache();
+            clearShortcutsCache();
+            setAccountDeleted(true);
+          }}
+        />
       </>
     );
   }
