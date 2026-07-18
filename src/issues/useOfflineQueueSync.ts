@@ -29,6 +29,40 @@ function clearDraftIfMatching(entry: { repo: string; title: string; body: string
   }
 }
 
+type PostOutcome =
+  | { outcome: "success" }
+  | { outcome: "duplicate" }
+  | { outcome: "network-error" }
+  | { outcome: "failed"; code: string };
+
+/** キュー1件分の送信を試みる（自動再送・手動再送の両方から呼ぶ共通経路）。*/
+async function postQueuedEntry(entry: QueuedIssue): Promise<PostOutcome> {
+  let res: Response;
+  try {
+    res = await fetch("/api/issues", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        repo: entry.repo,
+        title: entry.title,
+        body: entry.body,
+        labels: entry.labels,
+        clientRequestId: entry.id,
+      }),
+    });
+  } catch {
+    // ネットワーク到達不能（まだオフライン）。
+    return { outcome: "network-error" };
+  }
+  if (res.ok) return { outcome: "success" };
+  const code = await submitErrorCode(res);
+  // duplicate_submission（409）は直前の同一内容が既に成功済みであることを意味する
+  // （B4-3・issue_log 照合）ため、実質的に成功とみなす。
+  if (code === "duplicate_submission") return { outcome: "duplicate" };
+  return { outcome: "failed", code };
+}
+
 /** オフライン時にキューされた起票（B4-2・FR-22・FR-23）を、オンライン復帰後に直列・間隔を空けて
  * 再送する。Service Worker 側の Workbox Background Sync（ページを閉じていても再送・vite.config.ts）
  * と並行して動作する経路で、ページがフォアグラウンドにある間の確実なキュー表示・UI 更新を担う
@@ -48,42 +82,20 @@ export function useOfflineQueueSync() {
       try {
         for (const entry of loadOfflineQueue().filter((q) => q.status === "pending")) {
           if (cancelled || !navigator.onLine) break;
-          let res: Response;
-          try {
-            res = await fetch("/api/issues", {
-              method: "POST",
-              credentials: "same-origin",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                repo: entry.repo,
-                title: entry.title,
-                body: entry.body,
-                labels: entry.labels,
-                clientRequestId: entry.id,
-              }),
-            });
-          } catch {
-            // ネットワーク到達不能（まだオフライン）。キューに残し、次の online イベントで再試行する。
+          const result = await postQueuedEntry(entry);
+          if (cancelled) break;
+          if (result.outcome === "network-error") {
+            // まだオフライン。キューに残し、次の online イベントで再試行する。
             break;
           }
-          if (cancelled) break;
-          if (res.ok) {
+          if (result.outcome === "success" || result.outcome === "duplicate") {
             startTransition(() => applyAction({ type: "settle", id: entry.id, status: "removed" }));
             setQueue(removeFromOfflineQueue(entry.id));
             clearDraftIfMatching(entry);
           } else {
-            const code = await submitErrorCode(res);
-            // duplicate_submission（409）は直前の同一内容が既に成功済みであることを意味する
-            // （B4-3・issue_log 照合）ため、実質的に成功とみなしキューから除去する。
-            if (code === "duplicate_submission") {
-              startTransition(() => applyAction({ type: "settle", id: entry.id, status: "removed" }));
-              setQueue(removeFromOfflineQueue(entry.id));
-              clearDraftIfMatching(entry);
-            } else {
-              // 4xx/5xx は自動再送の対象外とし failed のままキューに残す（#22 の手動再送・破棄を待つ）。
-              startTransition(() => applyAction({ type: "settle", id: entry.id, status: "failed", errorCode: code }));
-              setQueue(markOfflineQueueFailed(entry.id, code));
-            }
+            // 4xx/5xx は自動再送の対象外とし failed のままキューに残す（#22 の手動再送・破棄を待つ）。
+            startTransition(() => applyAction({ type: "settle", id: entry.id, status: "failed", errorCode: result.code }));
+            setQueue(markOfflineQueueFailed(entry.id, result.code));
           }
           await new Promise((resolve) => setTimeout(resolve, RETRY_INTERVAL_MS));
         }
@@ -106,8 +118,31 @@ export function useOfflineQueueSync() {
     setQueue(enqueueOfflineIssue(entry));
   }
 
+  /** failed のキュー項目を手動で再送する（D2-1・#22。4xx/5xx は自動再送の対象外のためユーザー操作が起点）。 */
+  async function resend(id: string) {
+    const entry = loadOfflineQueue().find((q) => q.id === id);
+    if (!entry) return;
+    const result = await postQueuedEntry(entry);
+    if (result.outcome === "success" || result.outcome === "duplicate") {
+      startTransition(() => applyAction({ type: "settle", id, status: "removed" }));
+      setQueue(removeFromOfflineQueue(id));
+      clearDraftIfMatching(entry);
+    } else if (result.outcome === "failed") {
+      startTransition(() => applyAction({ type: "settle", id, status: "failed", errorCode: result.code }));
+      setQueue(markOfflineQueueFailed(id, result.code));
+    }
+    // network-error（まだオフライン）は状態を変えず failed のまま残す。
+  }
+
+  /** failed のキュー項目を破棄する（D2-1・#22）。呼び出し側で確認 UI を挟む想定。 */
+  function discard(id: string) {
+    startTransition(() => applyAction({ type: "settle", id, status: "removed" }));
+    setQueue(removeFromOfflineQueue(id));
+  }
+
   const pendingCount = optimisticQueue.filter((q) => q.status === "pending").length;
   const failedCount = optimisticQueue.filter((q) => q.status === "failed").length;
+  const failedItems = optimisticQueue.filter((q) => q.status === "failed");
 
-  return { queue: optimisticQueue, pendingCount, failedCount, enqueue };
+  return { queue: optimisticQueue, pendingCount, failedCount, failedItems, enqueue, resend, discard };
 }
