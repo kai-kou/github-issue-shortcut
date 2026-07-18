@@ -12,4 +12,6 @@ export interface Env {
   GITHUB_OAUTH_BASE?: string;
   /** GitHub REST API の base URL。未設定なら実 GitHub。E2E でモックを指すため。 */
   GITHUB_API_BASE?: string;
+  /** ビルド済み静的アセット（manifest.webmanifest 等）を取得するバインディング（wrangler.jsonc の assets.binding）。 */
+  ASSETS: Fetcher;
 }

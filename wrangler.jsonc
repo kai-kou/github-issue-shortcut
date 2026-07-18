@@ -9,8 +9,10 @@
     "GITHUB_CLIENT_ID": "Iv23livFCo9vcWDm0zyg"
   },
   "assets": {
+    "binding": "ASSETS",
+    "directory": "./dist/client",
     "not_found_handling": "single-page-application",
-    "run_worker_first": ["/api/*", "/auth/*", "/setup"]
+    "run_worker_first": ["/api/*", "/auth/*", "/setup", "/manifest.webmanifest"]
   },
   "d1_databases": [
     {

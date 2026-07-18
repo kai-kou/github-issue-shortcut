@@ -3,6 +3,7 @@ import "./App.css";
 import TermsOfService from "./pages/TermsOfService";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
 import { ShortcutHelperPage } from "./shortcuts/ShortcutHelperPage";
+import { ShortcutList } from "./shortcuts/ShortcutList";
 import { LanguageProvider, useLanguage } from "./i18n/LanguageContext";
 import { SUPPORTED_LOCALES } from "./i18n/translations";
 import { RepoPicker } from "./repos/RepoPicker";
@@ -178,6 +179,7 @@ function AuthPanel({ prefill, pendingRedirectTarget }: AuthPanelProps) {
           </button>
         </p>
         {installed === false ? <InstallGuidance /> : null}
+        {installed === true ? <ShortcutList /> : null}
         {installed === true ? <RepoPicker prefill={prefill} /> : null}
         <AccountDeletion onDeleted={() => setAccountDeleted(true)} />
       </>

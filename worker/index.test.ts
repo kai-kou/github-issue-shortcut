@@ -1,5 +1,6 @@
 import { SELF } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
+import { buildDynamicManifest } from "./index";
 
 describe("/api/health", () => {
   it("responds with status ok", async () => {
@@ -165,5 +166,54 @@ describe("DELETE /api/account", () => {
     expect(res.status).toBe(401);
     const body = (await res.json()) as { error: { code: string } };
     expect(body.error.code).toBe("unauthenticated");
+  });
+});
+
+describe("buildDynamicManifest (#98)", () => {
+  const base = { name: "GitHub Issue Shortcut", shortcuts: [{ name: "static", short_name: "s", url: "/new", icons: [{ src: "/icons/icon-192.png" }] }] };
+
+  it("returns base unchanged when there are no shortcuts", () => {
+    expect(buildDynamicManifest(base, [])).toBe(base);
+  });
+
+  it("caps at 3 entries, keeping the given order, and falls back name -> title -> repo", () => {
+    const result = buildDynamicManifest(base, [
+      { repo: "kai-kou/alpha", labels: ["bug"], title: "", name: "バグ" },
+      { repo: "kai-kou/beta", labels: [], title: "改善案", name: "" },
+      { repo: "kai-kou/gamma", labels: [], title: "", name: "" },
+      { repo: "kai-kou/delta", labels: [], title: "", name: "" },
+    ]);
+    const shortcuts = result.shortcuts as Array<{ name: string; short_name: string; url: string; icons: unknown }>;
+    expect(shortcuts).toHaveLength(3);
+    expect(shortcuts.map((s) => s.name)).toEqual(["バグ", "改善案", "kai-kou/gamma"]);
+    expect(shortcuts[0].url).toBe("/new?repo=kai-kou%2Falpha&labels=bug");
+    // 静的 manifest 側の shortcuts アイコンを流用する。
+    expect(shortcuts[0].icons).toEqual(base.shortcuts[0].icons);
+  });
+
+  it("truncates short_name to the display-name limit (12 chars) but keeps name untruncated", () => {
+    const longRepo = "kai-kou/a-very-long-repository-name";
+    const result = buildDynamicManifest(base, [{ repo: longRepo, labels: [], title: "", name: "" }]);
+    const [shortcut] = result.shortcuts as Array<{ name: string; short_name: string }>;
+    expect(shortcut.name).toBe(longRepo);
+    expect(shortcut.short_name).toBe(longRepo.slice(0, 12));
+  });
+
+  it("falls back to a generic label when repo, title, and name are all empty", () => {
+    const result = buildDynamicManifest(base, [{ repo: "", labels: [], title: "", name: "" }]);
+    const [shortcut] = result.shortcuts as Array<{ name: string }>;
+    expect(shortcut.name).toBe("ショートカット");
+  });
+});
+
+describe("GET /manifest.webmanifest", () => {
+  it("returns the static manifest (200, application/manifest+json) when unauthenticated", async () => {
+    const res = await SELF.fetch("https://example.com/manifest.webmanifest");
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Content-Type")).toContain("application/manifest+json");
+    const body = (await res.json()) as { shortcuts: unknown[] };
+    // 静的ビルド成果物（vite.config.ts の VitePWA manifest）の汎用プリセット3件がそのまま返る
+    // （ログインユーザーのプリセットで差し替えられるのは認証済みかつプリセット1件以上の場合のみ）。
+    expect(body.shortcuts).toHaveLength(3);
   });
 });
