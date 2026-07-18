@@ -64,9 +64,21 @@ const CLIENT_REQUEST_ID_MAX_LENGTH = 100;
  * アプリ側レート制限（不正利用対策・PR-4・OQ-6・2026-07-16 決定）: ユーザーあたり 1 分間に
  * 起票できる回数の上限。GitHub の二次制限（コンテンツ生成系 80 req/min）の 1/8 に抑え、
  * 本アプリ経由の連続起票が GitHub 側の制裁対象になる前にアプリ側で止める。
+ *
+ * E2E では単一のモックユーザーを ~40 個の spec が使い回すため、この本番向けの上限だと
+ * スイート後半のテストが本物の不正利用と誤判定され 429 で落ちる（テスト分離の問題であり
+ * アプリのバグではない）。`ISSUE_RATE_LIMIT_PER_WINDOW_OVERRIDE`（E2E の wrangler dev
+ * 起動時のみ設定・playwright.config.ts 参照）で上限を引き上げられるようにし、本番の
+ * デフォルト値はこの定数のまま変更しない。
  */
 const ISSUE_RATE_LIMIT_WINDOW_SECONDS = 60;
 const ISSUE_RATE_LIMIT_PER_WINDOW = 10;
+
+/** override が正の整数として解釈できればそれを使い、それ以外（未設定・不正値）は本番既定値のまま。 */
+function resolveIssueRateLimitPerWindow(override: string | undefined): number {
+  const parsed = override ? Number(override) : NaN;
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : ISSUE_RATE_LIMIT_PER_WINDOW;
+}
 
 const PREAUTH_COOKIE = "__Host-preauth";
 const SESSION_COOKIE = "__Host-session";
@@ -322,7 +334,8 @@ app.post("/api/issues", async (c) => {
   const user = await resolveSessionUser(c);
   if (user instanceof Response) return user;
 
-  const rateLimit = await checkRateLimit(c.env.DB, user.id, ISSUE_RATE_LIMIT_WINDOW_SECONDS, ISSUE_RATE_LIMIT_PER_WINDOW);
+  const rateLimitPerWindow = resolveIssueRateLimitPerWindow(c.env.ISSUE_RATE_LIMIT_PER_WINDOW_OVERRIDE);
+  const rateLimit = await checkRateLimit(c.env.DB, user.id, ISSUE_RATE_LIMIT_WINDOW_SECONDS, rateLimitPerWindow);
   if (!rateLimit.allowed) {
     c.header("Retry-After", String(rateLimit.retryAfterSeconds));
     return c.json(jsonError("rate_limited", "too many issues submitted; please wait before retrying"), 429);
@@ -409,6 +422,7 @@ interface ShortcutInput {
   repo: string;
   labels: string[];
   title: string;
+  name: string;
 }
 
 // GitHub 側の実制約に合わせた上限（GitHub label 名は 50 文字まで）。プリセットは
@@ -417,9 +431,13 @@ const SHORTCUT_REPO_MAX_LENGTH = 140;
 const SHORTCUT_TITLE_MAX_LENGTH = 500;
 const SHORTCUT_LABEL_MAX_LENGTH = 50;
 const SHORTCUT_LABELS_MAX_COUNT = 20;
+/** 表示名の上限（#98）。Android app shortcut の short_name は長いと「…」で truncate されるため、
+ * ホーム画面一覧・manifest.shortcuts の short_name にそのまま使える実務値に抑える。 */
+const SHORTCUT_NAME_MAX_LENGTH = 12;
 
-/** リクエスト JSON を `{ repo, labels, title }` へ正規化する。少なくとも 1 フィールドが非空でなければ null。
- * 長さ上限を超える場合も null にする（C1-1・FR-16）。 */
+/** リクエスト JSON を `{ repo, labels, title, name }` へ正規化する。repo/labels/title は少なくとも
+ * 1 フィールドが非空でなければ null（name のみでは保存不可・付加情報の扱い）。長さ上限を超える場合も
+ * null にする（C1-1・FR-16・#98）。name は任意（空文字可）。 */
 async function parseShortcutInput(c: Context<{ Bindings: Env }>): Promise<ShortcutInput | null> {
   let payload: unknown;
   try {
@@ -428,22 +446,24 @@ async function parseShortcutInput(c: Context<{ Bindings: Env }>): Promise<Shortc
     return null;
   }
   if (typeof payload !== "object" || payload === null) return null;
-  const { repo: repoValue, labels: labelsValue, title: titleValue } = payload as Record<string, unknown>;
+  const { repo: repoValue, labels: labelsValue, title: titleValue, name: nameValue } = payload as Record<string, unknown>;
   const repo = typeof repoValue === "string" ? repoValue.trim() : "";
   const labels = Array.isArray(labelsValue)
     ? labelsValue.filter((l): l is string => typeof l === "string" && l.trim().length > 0).map((l) => l.trim())
     : [];
   const title = typeof titleValue === "string" ? titleValue.trim() : "";
+  const name = typeof nameValue === "string" ? nameValue.trim() : "";
   if (!repo && labels.length === 0 && !title) return null;
   if (repo.length > SHORTCUT_REPO_MAX_LENGTH) return null;
   if (title.length > SHORTCUT_TITLE_MAX_LENGTH) return null;
   if (labels.length > SHORTCUT_LABELS_MAX_COUNT) return null;
   if (labels.some((l) => l.length > SHORTCUT_LABEL_MAX_LENGTH)) return null;
-  return { repo, labels, title };
+  if (name.length > SHORTCUT_NAME_MAX_LENGTH) return null;
+  return { repo, labels, title, name };
 }
 
-function shortcutJson(shortcut: { id: string; repo: string; labels: string[]; title: string }) {
-  return { id: shortcut.id, repo: shortcut.repo, labels: shortcut.labels, title: shortcut.title };
+function shortcutJson(shortcut: { id: string; repo: string; labels: string[]; title: string; name: string }) {
+  return { id: shortcut.id, repo: shortcut.repo, labels: shortcut.labels, title: shortcut.title, name: shortcut.name };
 }
 
 /** CSRF（同一 Origin）検証 + セッション認証をまとめて行う。/api/shortcuts の POST/PUT/DELETE
@@ -502,6 +522,76 @@ app.delete("/api/shortcuts/:id", async (c) => {
     return c.json(jsonError("not_found", "shortcut not found"), 404);
   }
   return c.body(null, 204);
+});
+
+const MANIFEST_ASSET_PATH = "/manifest.webmanifest";
+/** manifest.shortcuts に反映するユーザープリセットの件数上限（Android Chrome の実効上限・
+ * vite.config.ts の静的プリセット数と同数）。 */
+const MANIFEST_SHORTCUT_MAX_COUNT = 3;
+
+/** プリセットから manifest.shortcuts の相対起動 URL（`/new?repo=&labels=&title=`）を組み立てる。
+ * `src/shortcuts/launchUrl.ts` の buildLaunchUrl と同じ組み立てロジック（worker は src/ を
+ * import できないため複製。両者を変更する場合は対称性を保つこと）。 */
+function shortcutManifestUrl(shortcut: { repo: string; labels: string[]; title: string }): string {
+  const params = new URLSearchParams();
+  if (shortcut.repo) params.set("repo", shortcut.repo);
+  if (shortcut.labels.length > 0) params.set("labels", shortcut.labels.join(","));
+  if (shortcut.title) params.set("title", shortcut.title);
+  const query = params.toString();
+  return `/new${query ? `?${query}` : ""}`;
+}
+
+/**
+ * 静的 manifest（ビルド成果物の /manifest.webmanifest）の `shortcuts` をログインユーザーの
+ * プリセット上位 {@link MANIFEST_SHORTCUT_MAX_COUNT} 件で差し替える純関数（#98）。
+ * ASSETS 取得（I/O）から分離してあり、ユニットテストで ASSETS バインディングなしに検証できる。
+ * プリセットが 0 件なら base をそのまま返す（呼び出し側で先にガードしていても防御的に保持する）。
+ */
+export function buildDynamicManifest(
+  base: Record<string, unknown>,
+  shortcuts: { repo: string; labels: string[]; title: string; name: string }[],
+): Record<string, unknown> {
+  if (shortcuts.length === 0) return base;
+  const staticShortcuts = Array.isArray(base.shortcuts) ? (base.shortcuts as Array<Record<string, unknown>>) : [];
+  // 静的 manifest 側の shortcuts アイコンを流用する（無ければ manifest 全体の icons にフォールバック）。
+  const fallbackIcons = staticShortcuts[0]?.icons ?? base.icons;
+  const dynamicShortcuts = shortcuts.slice(0, MANIFEST_SHORTCUT_MAX_COUNT).map((shortcut) => {
+    const label = shortcut.name || shortcut.title || shortcut.repo || "ショートカット";
+    return {
+      name: label,
+      short_name: label.slice(0, SHORTCUT_NAME_MAX_LENGTH),
+      url: shortcutManifestUrl(shortcut),
+      icons: fallbackIcons,
+    };
+  });
+  return { ...base, shortcuts: dynamicShortcuts };
+}
+
+// GET /manifest.webmanifest: PWA manifest を動的化する（C1-1 拡張・#98）。ログインユーザーの
+// ショートカットプリセットが1件以上あれば、静的ビルド成果物（vite.config.ts の VitePWA manifest・
+// 汎用プリセット3件）の shortcuts をユーザープリセット上位3件へ差し替える。未ログイン・
+// プリセット0件・静的アセット取得やパースの失敗時は静的 manifest をそのまま返す（壊さない）。
+// state を変更しない GET のため CSRF（同一 Origin）ガードは不要。
+app.get("/manifest.webmanifest", async (c) => {
+  const staticRes = await c.env.ASSETS.fetch(new URL(MANIFEST_ASSET_PATH, c.req.url));
+  if (!staticRes.ok) return staticRes;
+
+  try {
+    const user = await resolveSessionUser(c);
+    if (user instanceof Response) return staticRes;
+
+    const base = (await staticRes.clone().json()) as Record<string, unknown>;
+    const shortcuts = await listShortcuts(c.env.DB, user.id);
+    if (shortcuts.length === 0) return staticRes;
+
+    return c.json(buildDynamicManifest(base, shortcuts), 200, {
+      "Content-Type": "application/manifest+json",
+    });
+  } catch {
+    // セッション照会・D1 クエリ・JSON パースのいずれが失敗しても、PWA インストール性を
+    // D1 の可用性に依存させないため静的 manifest をそのまま返す（壊さない・#98 セルフレビュー）。
+    return staticRes.clone();
+  }
 });
 
 // POST /auth/logout: サーバー側セッションを無効化（CSRF: 同一 Origin を要求）。

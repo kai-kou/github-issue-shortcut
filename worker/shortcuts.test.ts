@@ -97,14 +97,41 @@ describe("POST /api/shortcuts", () => {
       body: JSON.stringify({ repo: "kai-kou/alpha", labels: ["bug", "P1"], title: "バグ報告" }),
     });
     expect(createRes.status).toBe(201);
-    const created = (await createRes.json()) as { id: string; repo: string; labels: string[]; title: string };
+    const created = (await createRes.json()) as { id: string; repo: string; labels: string[]; title: string; name: string };
     expect(created.repo).toBe("kai-kou/alpha");
     expect(created.labels).toEqual(["bug", "P1"]);
     expect(created.title).toBe("バグ報告");
+    // name を送らなかった場合は空文字がデフォルト（#98・任意フィールド）。
+    expect(created.name).toBe("");
 
     const listRes = await SELF.fetch("https://example.com/api/shortcuts", { headers: { Cookie: cookie } });
     const body = (await listRes.json()) as { shortcuts: unknown[] };
     expect(body.shortcuts).toEqual([created]);
+  });
+
+  it("accepts an optional display name up to the length limit and persists it", async () => {
+    const cookie = await loginSession();
+    const nameAtLimit = "あ".repeat(12);
+    const createRes = await SELF.fetch("https://example.com/api/shortcuts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify({ repo: "kai-kou/alpha", labels: [], title: "", name: nameAtLimit }),
+    });
+    expect(createRes.status).toBe(201);
+    const created = (await createRes.json()) as { name: string };
+    expect(created.name).toBe(nameAtLimit);
+  });
+
+  it("rejects a name exceeding the 12-character limit", async () => {
+    const cookie = await loginSession();
+    const res = await SELF.fetch("https://example.com/api/shortcuts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify({ repo: "kai-kou/alpha", labels: [], title: "", name: "x".repeat(13) }),
+    });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: { code: string } };
+    expect(body.error.code).toBe("invalid_request");
   });
 });
 
@@ -142,7 +169,13 @@ describe("PUT /api/shortcuts/:id", () => {
       body: JSON.stringify({ repo: "kai-kou/beta", labels: ["enhancement"], title: "改善案" }),
     });
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ id: created.id, repo: "kai-kou/beta", labels: ["enhancement"], title: "改善案" });
+    expect(await res.json()).toEqual({
+      id: created.id,
+      repo: "kai-kou/beta",
+      labels: ["enhancement"],
+      title: "改善案",
+      name: "",
+    });
   });
 });
 
@@ -178,3 +211,8 @@ describe("DELETE /api/shortcuts/:id", () => {
     expect(ok.status).toBe(204);
   });
 });
+
+// 注: `GET /manifest.webmanifest` エンドポイントの統合テスト（ASSETS 経由で dist/client の
+// ビルド成果物を要求）は、Workers Builds が build より前に test を実行し dist/client が未生成の
+// ため 404 になる（#98）。shortcuts 差し替えロジックは worker/index.test.ts の buildDynamicManifest
+// 純関数テスト、エンドポイントの実動作は E2E（e2e/pwa.spec.ts）が担う。
