@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { hasPrefillParams, parsePrefillParams } from "./prefillParams";
+import { hasPrefillParams, parseLaunchTargetUrl, parsePrefillParams } from "./prefillParams";
 
 describe("parsePrefillParams", () => {
   it("reads repo, labels, and title from the query string", () => {
@@ -78,5 +78,30 @@ describe("hasPrefillParams", () => {
     expect(hasPrefillParams({ repo: null, labels: ["bug"], title: null, body: null })).toBe(true);
     expect(hasPrefillParams({ repo: null, labels: [], title: "雛形", body: null })).toBe(true);
     expect(hasPrefillParams({ repo: null, labels: [], title: null, body: "メモ" })).toBe(true);
+  });
+});
+
+// #98: WebAPK が既存アプリを start_url で再利用起動する際、Launch Handler API
+// （window.launchQueue）から渡される起動 URL からパス・クエリを復元する。
+describe("parseLaunchTargetUrl", () => {
+  const origin = "https://issue-shortcut.example.com";
+
+  it("splits a same-origin target URL into path and search", () => {
+    expect(parseLaunchTargetUrl(`${origin}/new?repo=kai-kou%2Falpha&title=%E9%9B%9B%E5%BD%A2`, origin)).toEqual({
+      path: "/new",
+      search: "?repo=kai-kou%2Falpha&title=%E9%9B%9B%E5%BD%A2",
+    });
+  });
+
+  it("resolves a relative target URL against the origin", () => {
+    expect(parseLaunchTargetUrl("/new?labels=bug", origin)).toEqual({ path: "/new", search: "?labels=bug" });
+  });
+
+  it("returns null for a cross-origin target URL", () => {
+    expect(parseLaunchTargetUrl("https://evil.example.com/new?repo=x", origin)).toBeNull();
+  });
+
+  it("returns null for an unparsable target URL", () => {
+    expect(parseLaunchTargetUrl("http://[::1", origin)).toBeNull();
   });
 });

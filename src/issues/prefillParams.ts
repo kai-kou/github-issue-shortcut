@@ -40,6 +40,19 @@ export function hasPrefillParams(params: PrefillParams): boolean {
   return Boolean(params.repo || params.labels.length > 0 || params.title || params.body);
 }
 
+/** Launch Handler API（`window.launchQueue`）から渡された起動 URL をパス・クエリへ分解する（#98）。
+ * WebAPK が既存アプリを `start_url` で再利用起動しクエリを失うケースで、`launchParams.targetURL` から
+ * 実際の起動先を復元するために使う。同一オリジンでない値・不正な URL は null（適用しない）。 */
+export function parseLaunchTargetUrl(targetURL: string, origin: string): { path: string; search: string } | null {
+  try {
+    const url = new URL(targetURL, origin);
+    if (url.origin !== origin) return null;
+    return { path: url.pathname, search: url.search };
+  } catch {
+    return null;
+  }
+}
+
 type PendingRedirect = { target: string; savedAt: number };
 
 /** 未ログイン状態で `/new` からログインへ遷移する直前に、復元用の遷移先を保存する（FR-15）。 */

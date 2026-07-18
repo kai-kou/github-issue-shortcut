@@ -9,6 +9,7 @@ import { RepoPicker } from "./repos/RepoPicker";
 import {
   consumePendingRedirect,
   hasPrefillParams,
+  parseLaunchTargetUrl,
   parsePrefillParams,
   savePendingRedirect,
   type PrefillParams,
@@ -270,6 +271,24 @@ function AppContent() {
     const restored = new URL(pending, window.location.origin);
     setPath(restored.pathname);
     setSearch(restored.search);
+  }, []);
+
+  // WebAPK が既存アプリを再利用起動すると location は start_url（"/"）のままになり、ホーム画面に
+  // 手動追加した `/new?...` ショートカットのクエリが失われる（#98）。Launch Handler API
+  // （navigate-existing・vite.config.ts）経由で実際の起動 URL を受け取り復元する。ログイン状態を
+  // 問わず動作するため、上記の匿名限定 pendingRedirect 復元とは独立した経路として扱う。
+  useEffect(() => {
+    const launchQueue = window.launchQueue;
+    if (!launchQueue) return;
+    launchQueue.setConsumer((launchParams) => {
+      if (!launchParams.targetURL) return;
+      const target = parseLaunchTargetUrl(launchParams.targetURL, window.location.origin);
+      if (!target) return;
+      if (target.path === window.location.pathname && target.search === window.location.search) return;
+      window.history.replaceState(null, "", `${target.path}${target.search}`);
+      setPath(target.path);
+      setSearch(target.search);
+    });
   }, []);
 
   const prefill = useMemo(() => (path === "/new" ? parsePrefillParams(search) : null), [path, search]);
