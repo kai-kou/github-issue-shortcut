@@ -131,6 +131,9 @@ function AuthPanel({ prefill, pendingRedirectTarget }: AuthPanelProps) {
         return { status: "authenticated", me };
       })
       .then((next) => {
+        // Cookie の自然失効等、明示ログアウトを経ずに未ログイン状態へ戻った場合も、
+        // 共有端末で次のユーザーに前ユーザーのラベル一覧が見えないようキャッシュを消す。
+        if (next.status === "anonymous") clearAllCachedLabels();
         if (active) setAuth(next);
       })
       .catch(() => {
