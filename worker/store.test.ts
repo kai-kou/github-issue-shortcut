@@ -4,6 +4,7 @@ import type { Env } from "./types";
 import {
   applySchema,
   checkRateLimit,
+  cleanupStaleIssueLog,
   createSession,
   createShortcut,
   deleteAccount,
@@ -107,6 +108,33 @@ describe("issue_log (reserveIssueLog / releaseIssueLogReservation)", () => {
       reserveIssueLog(db, userId, "kai-kou/alpha", "hash-f", 30),
     ]);
     expect([a, b].filter(Boolean)).toHaveLength(1);
+  });
+});
+
+describe("cleanupStaleIssueLog (issue_log 保持期間ポリシー・#71)", () => {
+  it("deletes only rows older than the retention window, keeping fresh ones", async () => {
+    const userId = await upsertUser(db, { id: 2007, login: "loguser7", avatar_url: "" });
+    await reserveIssueLog(db, userId, "kai-kou/alpha", "hash-old", 30);
+    await reserveIssueLog(db, userId, "kai-kou/alpha", "hash-fresh", 30);
+    await db
+      .prepare("UPDATE issue_log SET created_at = ? WHERE user_id = ? AND repo = ? AND content_hash = ?")
+      .bind(nowSeconds() - 8 * 24 * 60 * 60, userId, "kai-kou/alpha", "hash-old")
+      .run();
+
+    const deleted = await cleanupStaleIssueLog(db, 7 * 24 * 60 * 60);
+
+    expect(deleted).toBe(1);
+    // 保持期間内の行は再予約がブロックされたまま（削除されていない証拠）。
+    expect(await reserveIssueLog(db, userId, "kai-kou/alpha", "hash-fresh", 30)).toBe(false);
+    // 保持期間外だった行は削除済みのため、再予約が新規に成功する。
+    expect(await reserveIssueLog(db, userId, "kai-kou/alpha", "hash-old", 30)).toBe(true);
+  });
+
+  it("returns 0 when there is nothing stale to delete", async () => {
+    const userId = await upsertUser(db, { id: 2008, login: "loguser8", avatar_url: "" });
+    await reserveIssueLog(db, userId, "kai-kou/alpha", "hash-nostale", 30);
+
+    expect(await cleanupStaleIssueLog(db, 7 * 24 * 60 * 60)).toBe(0);
   });
 });
 

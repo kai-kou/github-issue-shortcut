@@ -43,6 +43,8 @@ export const SCHEMA_STATEMENTS: string[] = [
     created_at INTEGER NOT NULL,
     PRIMARY KEY (user_id, repo, content_hash)
   )`,
+  // created_at でのフィルタ（cleanupStaleIssueLog の DELETE・#71）が全件スキャンにならないようにする。
+  `CREATE INDEX IF NOT EXISTS idx_issue_log_created_at ON issue_log(created_at)`,
   `CREATE TABLE IF NOT EXISTS rate_limits (
     user_id TEXT NOT NULL REFERENCES users(id),
     window_start INTEGER NOT NULL,
@@ -284,6 +286,17 @@ export async function releaseIssueLogReservation(
     .prepare(`DELETE FROM issue_log WHERE user_id = ? AND repo = ? AND content_hash = ?`)
     .bind(userId, repo, contentHash)
     .run();
+}
+
+/**
+ * `issue_log` の保持期間ポリシー（#71）: 二重送信防止の照合ウィンドウ（`DUPLICATE_SUBMISSION_WINDOW` =
+ * 30 秒）を過ぎた行は判定に使われないため、安全マージンを取った `olderThanSeconds` より古い行を削除して
+ * D1 の行数増加（NFR-14・無料枠）を抑える。Cron Trigger（`scheduled` ハンドラ）から定期呼び出しする。
+ */
+export async function cleanupStaleIssueLog(db: D1Database, olderThanSeconds: number): Promise<number> {
+  const staleBefore = nowSeconds() - olderThanSeconds;
+  const result = await db.prepare(`DELETE FROM issue_log WHERE created_at < ?`).bind(staleBefore).run();
+  return result.meta.changes ?? 0;
 }
 
 /**

@@ -1,6 +1,10 @@
-import { SELF } from "cloudflare:test";
+import { createExecutionContext, createScheduledController, env, SELF, waitOnExecutionContext } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
-import { buildDynamicManifest } from "./index";
+import worker, { buildDynamicManifest } from "./index";
+import { applySchema, nowSeconds, reserveIssueLog, upsertUser } from "./store";
+import type { Env } from "./types";
+
+const db = (env as unknown as Env).DB;
 
 describe("/api/health", () => {
   it("responds with status ok", async () => {
@@ -166,6 +170,25 @@ describe("DELETE /api/account", () => {
     expect(res.status).toBe(401);
     const body = (await res.json()) as { error: { code: string } };
     expect(body.error.code).toBe("unauthenticated");
+  });
+});
+
+describe("scheduled handler (issue_log 保持期間クリーンアップ・#71)", () => {
+  it("deletes issue_log rows older than the retention window via the Cron Trigger wiring", async () => {
+    await applySchema(db);
+    const userId = await upsertUser(db, { id: 3001, login: "cronuser", avatar_url: "" });
+    await reserveIssueLog(db, userId, "kai-kou/alpha", "hash-cron", 30);
+    await db
+      .prepare("UPDATE issue_log SET created_at = ? WHERE user_id = ? AND repo = ? AND content_hash = ?")
+      .bind(nowSeconds() - 8 * 24 * 60 * 60, userId, "kai-kou/alpha", "hash-cron")
+      .run();
+
+    const ctx = createExecutionContext();
+    await worker.scheduled(createScheduledController(), env as unknown as Env, ctx);
+    await waitOnExecutionContext(ctx);
+
+    const remaining = await db.prepare("SELECT COUNT(*) as count FROM issue_log").first<{ count: number }>();
+    expect(remaining?.count).toBe(0);
   });
 });
 
