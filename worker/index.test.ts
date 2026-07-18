@@ -72,6 +72,14 @@ describe("GET /auth/callback", () => {
     expect(res.status).toBe(302);
     expect(res.headers.get("Location")).toBe("/?setup=complete");
   });
+
+  it("redirects to home on install return with setup_action only", async () => {
+    const res = await SELF.fetch("https://example.com/auth/callback?setup_action=install", {
+      redirect: "manual",
+    });
+    expect(res.status).toBe(302);
+    expect(res.headers.get("Location")).toBe("/?setup=complete");
+  });
 });
 
 describe("GET /api/me", () => {
