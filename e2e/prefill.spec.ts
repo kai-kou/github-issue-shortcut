@@ -181,4 +181,42 @@ test.describe("URL パラメータ起動（モック GitHub・モバイルエミ
     const bugCheckbox = page.getByRole("checkbox", { name: "bug" });
     await expect(bugCheckbox).toBeChecked();
   });
+
+  // #98 セルフレビュー指摘: `navigate-existing` は同一インスタンスを繰り返し再利用するため、
+  // 既に別リポジトリを選択済みの状態から更に別のショートカットで再起動されても、新しい
+  // prefill.repo に切り替わる必要がある（「未選択のときだけ適用」だと2回目以降を無視してしまう）。
+  test("launchQueue 経由の再利用起動が2回続くと、選択済みリポジトリがあっても新しい起動の repo に切り替わる", async ({
+    page,
+  }) => {
+    await page.addInitScript(() => {
+      Object.defineProperty(window, "launchQueue", {
+        configurable: true,
+        value: {
+          setConsumer(consumer: (launchParams: { targetURL: string }) => void) {
+            (window as unknown as { __launchConsumer: typeof consumer }).__launchConsumer = consumer;
+          },
+        },
+      });
+    });
+
+    await page.goto("/");
+    await page.getByRole("link", { name: /GitHub でログイン|Sign in with GitHub/ }).click();
+    await expect(page.getByText(/e2e-user/)).toBeVisible();
+
+    await page.evaluate(() => {
+      const w = window as unknown as { __launchConsumer: (p: { targetURL: string }) => void };
+      w.__launchConsumer({ targetURL: `${window.location.origin}/new?repo=kai-kou%2Falpha&title=1%E5%9B%9E%E7%9B%AE` });
+    });
+    await expect(page.getByRole("button", { name: "kai-kou/alpha" })).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByRole("textbox", { name: /タイトル|^Title$/ })).toHaveValue("1回目");
+
+    // アプリを閉じずに（同一インスタンスのまま）別のショートカットから再度起動される。
+    await page.evaluate(() => {
+      const w = window as unknown as { __launchConsumer: (p: { targetURL: string }) => void };
+      w.__launchConsumer({ targetURL: `${window.location.origin}/new?repo=kai-kou%2Fbeta&title=2%E5%9B%9E%E7%9B%AE` });
+    });
+    await expect(page.getByRole("button", { name: "kai-kou/beta" })).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByRole("button", { name: "kai-kou/alpha" })).toHaveAttribute("aria-pressed", "false");
+    await expect(page.getByRole("textbox", { name: /タイトル|^Title$/ })).toHaveValue("2回目");
+  });
 });

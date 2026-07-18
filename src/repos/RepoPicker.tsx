@@ -50,11 +50,16 @@ export function RepoPicker({ prefill = null }: RepoPickerProps) {
 
   // `selected` の初期値（上記 useState）は RepoPicker の初回マウント時点の prefill しか見ないため、
   // 認証/インストール確認（App.tsx）が終わって RepoPicker が先にマウントされた後に launchQueue
-  // 経由で prefill が届くケース（WebAPK 再利用起動・#98）を取りこぼす。下書き・ユーザー操作で
-  // 既に選択済みでない場合に限り、後から届いた prefill.repo を反映する。
+  // 経由で prefill が届くケース（WebAPK 再利用起動・#98）を取りこぼす。`navigate-existing` は同一
+  // アプリインスタンスを繰り返し再利用するため、既に一度別の起動で選択済みの状態から更に別の
+  // ショートカットで再起動された場合も新しい prefill.repo に切り替える必要がある。そのため
+  // 「未選択のときだけ適用」ではなく「直近に適用済みの repo と異なる新しい起動か」で判定する
+  // （ユーザーが手動で別リポジトリへ切り替えた場合は prefill.repo 自体が変わらないため上書きしない）。
+  const appliedPrefillRepoRef = useRef<string | null>(null);
   useEffect(() => {
-    if (selected || !prefill?.repo) return;
-    setSelected(prefill.repo);
+    if (!prefill?.repo || prefill.repo === appliedPrefillRepoRef.current) return;
+    appliedPrefillRepoRef.current = prefill.repo;
+    if (selected !== prefill.repo) setSelected(prefill.repo);
   }, [prefill?.repo, selected]);
 
   // 下書き（B5-1）/ URL パラメータ起動（B1-2）でリポジトリが初期選択済みの場合も、
