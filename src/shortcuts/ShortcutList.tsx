@@ -1,9 +1,15 @@
 import { useEffect, useState } from "react";
 import { useLanguage } from "../i18n/LanguageContext";
-import { buildLaunchUrl, type ShortcutPreset } from "./launchUrl";
+import { buildLaunchUrl } from "./launchUrl";
+import { loadShortcutsCache, saveShortcutsCache, type Shortcut } from "./shortcutsCache";
 
-type Shortcut = ShortcutPreset & { id: string };
 type ShortcutsState = { status: "loading" } | { status: "error" } | { status: "ready"; shortcuts: Shortcut[] };
+
+/** ローカルキャッシュ（#101・SWR）があれば起動直後から ready で表示し、fetch 完了を待たせない。 */
+function initialShortcutsState(): ShortcutsState {
+  const cached = loadShortcutsCache();
+  return cached ? { status: "ready", shortcuts: cached } : { status: "loading" };
+}
 
 /**
  * ホーム画面のリポジトリ選択エリアの上に表示する、保存済みショートカットのクイック一覧（#98）。
@@ -15,7 +21,7 @@ type ShortcutsState = { status: "loading" } | { status: "error" } | { status: "r
  */
 export function ShortcutList() {
   const { t } = useLanguage();
-  const [state, setState] = useState<ShortcutsState>({ status: "loading" });
+  const [state, setState] = useState<ShortcutsState>(initialShortcutsState);
 
   useEffect(() => {
     let active = true;
@@ -25,10 +31,14 @@ export function ShortcutList() {
         return (await res.json()) as { shortcuts: Shortcut[] };
       })
       .then((data) => {
-        if (active) setState({ status: "ready", shortcuts: data.shortcuts });
+        if (!active) return;
+        saveShortcutsCache(data.shortcuts);
+        setState({ status: "ready", shortcuts: data.shortcuts });
       })
       .catch(() => {
-        if (active) setState({ status: "error" });
+        // キャッシュ由来で既に ready なら、fetch 失敗（オフライン等）で表示を壊さず維持する
+        // （SWR: revalidate 失敗時は stale データを見せ続ける・#101）。
+        if (active) setState((prev) => (prev.status === "ready" ? prev : { status: "error" }));
       });
     return () => {
       active = false;

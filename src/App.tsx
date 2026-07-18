@@ -7,6 +7,8 @@ import { ShortcutList } from "./shortcuts/ShortcutList";
 import { LanguageProvider, useLanguage } from "./i18n/LanguageContext";
 import { SUPPORTED_LOCALES } from "./i18n/translations";
 import { RepoPicker } from "./repos/RepoPicker";
+import { clearReposCache } from "./repos/reposCache";
+import { clearShortcutsCache } from "./shortcuts/shortcutsCache";
 import {
   consumePendingRedirect,
   hasPrefillParams,
@@ -158,6 +160,9 @@ function AuthPanel({ prefill, pendingRedirectTarget }: AuthPanelProps) {
   }, [auth.status]);
 
   async function logout() {
+    // 別ユーザーのリポジトリ/ショートカット一覧が次回起動時の SWR キャッシュに残らないようにする（#101）。
+    clearReposCache();
+    clearShortcutsCache();
     await fetch("/auth/logout", { method: "POST", credentials: "same-origin" });
     window.location.assign("/");
   }
@@ -181,7 +186,14 @@ function AuthPanel({ prefill, pendingRedirectTarget }: AuthPanelProps) {
         {installed === false ? <InstallGuidance /> : null}
         {installed === true ? <ShortcutList /> : null}
         {installed === true ? <RepoPicker prefill={prefill} /> : null}
-        <AccountDeletion onDeleted={() => setAccountDeleted(true)} />
+        <AccountDeletion
+          onDeleted={() => {
+            // 同一端末で別ユーザーが再ログインした際に古い一覧が残らないようにする（#101）。
+            clearReposCache();
+            clearShortcutsCache();
+            setAccountDeleted(true);
+          }}
+        />
       </>
     );
   }

@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useLanguage } from "../i18n/LanguageContext";
 import { loadRecentRepos, recordRecentRepo } from "./recentRepos";
+import { loadReposCache, saveReposCache, type Repo } from "./reposCache";
 import { buildRepoIndex } from "./repoIndex";
 import { IssueForm, type IssueInput } from "../issues/IssueForm";
 import { loadDraft, clearDraft } from "../issues/draft";
@@ -10,8 +11,13 @@ import type { PrefillParams } from "../issues/prefillParams";
 import { submitErrorCode, submitErrorMessage } from "../issues/submitError";
 import { useOfflineQueueSync } from "../issues/useOfflineQueueSync";
 
-type Repo = { id: number; fullName: string; private: boolean; pushAccess: boolean };
 type ReposState = { status: "loading" } | { status: "error" } | { status: "ready"; repos: Repo[] };
+
+/** ローカルキャッシュ（#101・SWR）があれば起動直後から ready で表示し、fetch 完了を待たせない。 */
+function initialReposState(): ReposState {
+  const cached = loadReposCache();
+  return cached ? { status: "ready", repos: cached } : { status: "loading" };
+}
 type SubmitState =
   | { status: "idle" }
   | { status: "submitting" }
@@ -27,7 +33,7 @@ interface RepoPickerProps {
 /** 起票先リポジトリの検索/選択 UI（B2-1/B2-2）。最近使用したリポジトリを先頭に表示する。 */
 export function RepoPicker({ prefill = null }: RepoPickerProps) {
   const { t } = useLanguage();
-  const [state, setState] = useState<ReposState>({ status: "loading" });
+  const [state, setState] = useState<ReposState>(initialReposState);
   const [query, setQuery] = useState("");
   const [recent, setRecent] = useState<string[]>(() => loadRecentRepos());
   // 送信失敗・中断時の下書き（B5-1）があれば、そのリポジトリを再訪時に自動選択して復元する。
@@ -65,10 +71,14 @@ export function RepoPicker({ prefill = null }: RepoPickerProps) {
         return data.repos;
       })
       .then((repos) => {
-        if (active) setState({ status: "ready", repos });
+        if (!active) return;
+        saveReposCache(repos);
+        setState({ status: "ready", repos });
       })
       .catch(() => {
-        if (active) setState({ status: "error" });
+        // キャッシュ由来で既に ready なら、fetch 失敗（オフライン等）で表示を壊さず維持する
+        // （SWR: revalidate 失敗時は stale データを見せ続ける・#101）。
+        if (active) setState((prev) => (prev.status === "ready" ? prev : { status: "error" }));
       });
     return () => {
       active = false;
