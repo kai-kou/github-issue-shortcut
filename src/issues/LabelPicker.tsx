@@ -22,9 +22,11 @@ export function LabelPicker({ pushAccess, selected, onChange, initiallyOpen = fa
 
   // URL パラメータ起動（B1-2）の labels は実在確認前の生の文字列のため、取得完了後に
   // 実際にこのリポジトリへ存在するラベル名だけへ絞り込む（存在しない名前を誤って
-  // GitHub への Issue 作成リクエストへ持ち込ませない）。
+  // GitHub への Issue 作成リクエストへ持ち込ませない）。`stale`（キャッシュ由来でまだ最新取得が
+  // 完了していない）状態では絞り込まない: 古いキャッシュに無いだけの新しいラベルを誤って
+  // 除去すると、最新取得後もこの one-way フィルタでは復元できないため（#102 回帰防止）。
   useEffect(() => {
-    if (state.status !== "ready") return;
+    if (state.status !== "ready" || state.stale) return;
     const valid = new Set(state.labels.map((l) => l.name));
     const filtered = selected.filter((name) => valid.has(name));
     if (filtered.length !== selected.length) onChange(filtered);
