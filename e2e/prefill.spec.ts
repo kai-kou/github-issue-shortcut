@@ -142,4 +142,81 @@ test.describe("URL パラメータ起動（モック GitHub・モバイルエミ
     expect(lastIssue.title).toBe("シェアした記事");
     expect(lastIssue.body).toBe("見て： https://example.com/post");
   });
+
+  // #98: WebAPK が既存アプリを start_url（"/"）で再利用起動すると、ホーム画面に手動追加した
+  // `/new?...` ショートカットのクエリが location から失われる（実機の WebAPK 起動自体は Playwright
+  // から再現できないため、Launch Handler API の window.launchQueue.setConsumer に実際の起動 URL が
+  // 渡されるのと同じ形で consumer を直接呼び出し、ログイン済みでも prefill が復元されることを検証する）。
+  // Chromium は window.launchQueue をネイティブ実装済みの読み取り専用プロパティとして提供するため、
+  // 単純な代入では上書きできず Object.defineProperty で強制的に差し替える。
+  test("ログイン済みで launchQueue 経由の起動 URL（WebAPK 再利用起動を模擬）でも prefill が復元される", async ({
+    page,
+  }) => {
+    await page.addInitScript(() => {
+      Object.defineProperty(window, "launchQueue", {
+        configurable: true,
+        value: {
+          setConsumer(consumer: (launchParams: { targetURL: string }) => void) {
+            (window as unknown as { __launchConsumer: typeof consumer }).__launchConsumer = consumer;
+          },
+        },
+      });
+    });
+
+    await page.goto("/");
+    await page.getByRole("link", { name: /GitHub でログイン|Sign in with GitHub/ }).click();
+    await expect(page.getByText(/e2e-user/)).toBeVisible();
+
+    // WebAPK 再利用起動で location は "/" のまま、実際の起動 URL は launchParams.targetURL でのみ届く。
+    await page.evaluate(() => {
+      const w = window as unknown as { __launchConsumer: (p: { targetURL: string }) => void };
+      w.__launchConsumer({
+        targetURL: `${window.location.origin}/new?repo=kai-kou%2Falpha&labels=bug&title=%E5%86%8D%E5%88%A9%E7%94%A8%E8%B5%B7%E7%A5%A8`,
+      });
+    });
+
+    await expect(page).toHaveURL(/\/new\?/);
+    await expect(page.getByRole("button", { name: "kai-kou/alpha" })).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByRole("textbox", { name: /タイトル|^Title$/ })).toHaveValue("再利用起票");
+    const bugCheckbox = page.getByRole("checkbox", { name: "bug" });
+    await expect(bugCheckbox).toBeChecked();
+  });
+
+  // #98 セルフレビュー指摘: `navigate-existing` は同一インスタンスを繰り返し再利用するため、
+  // 既に別リポジトリを選択済みの状態から更に別のショートカットで再起動されても、新しい
+  // prefill.repo に切り替わる必要がある（「未選択のときだけ適用」だと2回目以降を無視してしまう）。
+  test("launchQueue 経由の再利用起動が2回続くと、選択済みリポジトリがあっても新しい起動の repo に切り替わる", async ({
+    page,
+  }) => {
+    await page.addInitScript(() => {
+      Object.defineProperty(window, "launchQueue", {
+        configurable: true,
+        value: {
+          setConsumer(consumer: (launchParams: { targetURL: string }) => void) {
+            (window as unknown as { __launchConsumer: typeof consumer }).__launchConsumer = consumer;
+          },
+        },
+      });
+    });
+
+    await page.goto("/");
+    await page.getByRole("link", { name: /GitHub でログイン|Sign in with GitHub/ }).click();
+    await expect(page.getByText(/e2e-user/)).toBeVisible();
+
+    await page.evaluate(() => {
+      const w = window as unknown as { __launchConsumer: (p: { targetURL: string }) => void };
+      w.__launchConsumer({ targetURL: `${window.location.origin}/new?repo=kai-kou%2Falpha&title=1%E5%9B%9E%E7%9B%AE` });
+    });
+    await expect(page.getByRole("button", { name: "kai-kou/alpha" })).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByRole("textbox", { name: /タイトル|^Title$/ })).toHaveValue("1回目");
+
+    // アプリを閉じずに（同一インスタンスのまま）別のショートカットから再度起動される。
+    await page.evaluate(() => {
+      const w = window as unknown as { __launchConsumer: (p: { targetURL: string }) => void };
+      w.__launchConsumer({ targetURL: `${window.location.origin}/new?repo=kai-kou%2Fbeta&title=2%E5%9B%9E%E7%9B%AE` });
+    });
+    await expect(page.getByRole("button", { name: "kai-kou/beta" })).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByRole("button", { name: "kai-kou/alpha" })).toHaveAttribute("aria-pressed", "false");
+    await expect(page.getByRole("textbox", { name: /タイトル|^Title$/ })).toHaveValue("2回目");
+  });
 });
