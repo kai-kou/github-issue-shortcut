@@ -10,8 +10,9 @@
   },
   "assets": {
     // ASSETS binding は Worker から静的アセット（/manifest.webmanifest 等）を取得するために宣言する（#98）。
-    // directory は @cloudflare/vite-plugin が自動管理するため手動指定しない（二重定義で Workers Builds が失敗する）。
+    // directory は miniflare のテスト環境（vitest-pool-workers）が ASSETS を解決するために必要。
     "binding": "ASSETS",
+    "directory": "./dist/client",
     "not_found_handling": "single-page-application",
     "run_worker_first": ["/api/*", "/auth/*", "/setup", "/manifest.webmanifest"]
   },
