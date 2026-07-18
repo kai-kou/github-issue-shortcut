@@ -23,5 +23,9 @@
       "database_id": "8c403d10-29b8-4a51-9f63-9e79b19aed46",
       "migrations_dir": "migrations"
     }
-  ]
+  ],
+  "triggers": {
+    // issue_log の保持期間クリーンアップ（#71）。毎日 03:00 UTC（12:00 JST・オフピーク）に実行。
+    "crons": ["0 3 * * *"]
+  }
 }
