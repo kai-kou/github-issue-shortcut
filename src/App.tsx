@@ -133,16 +133,18 @@ function AuthPanel({ prefill, pendingRedirectTarget }: AuthPanelProps) {
         return { status: "authenticated", me };
       })
       .then((next) => {
-        if (!active) return;
         // セッション切れ・未ログイン検知時は、別ユーザーの一覧（リポジトリ/ショートカット/ラベル）が
         // SWR キャッシュに残らないようクリアする（#101/#102・明示ログアウトを経ない自然な Cookie
         // 失効経路の防御網。共有端末で次のユーザーに前ユーザーの一覧が見えないようにする）。
+        // このクリアは `active`（mount 状態）でガードしない: /api/me 解決前に AuthPanel が
+        // アンマウントされても、プライバシーガードとしてキャッシュ消去は必ず実行する必要がある
+        // （active ガードは UI 更新の setAuth のみに掛ける）。
         if (next.status === "anonymous") {
           clearReposCache();
           clearShortcutsCache();
           clearAllCachedLabels();
         }
-        setAuth(next);
+        if (active) setAuth(next);
       })
       .catch(() => {
         if (active) setAuth({ status: "error" });
