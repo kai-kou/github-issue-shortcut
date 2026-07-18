@@ -113,6 +113,8 @@ interface Translations {
     loginRequired: string;
     loadError: string;
     formTitle: string;
+    nameLabel: string;
+    namePlaceholder: string;
     repoLabel: string;
     repoNoneOption: string;
     labelsLabel: string;
@@ -136,6 +138,8 @@ interface Translations {
     openButton: string;
     placementGuideTitle: string;
     placementGuideBody: string;
+    homeListTitle: string;
+    homeListLoadError: string;
   };
 }
 
@@ -237,6 +241,8 @@ export const translations = {
       loginRequired: "ショートカットを作成するには GitHub でログインしてください。",
       loadError: "読み込めませんでした",
       formTitle: "新しいショートカットを作成",
+      nameLabel: "表示名（任意・12文字まで）",
+      namePlaceholder: "日報",
       repoLabel: "リポジトリ（任意）",
       repoNoneOption: "（指定しない）",
       labelsLabel: "ラベル（任意・カンマ区切り）",
@@ -261,6 +267,8 @@ export const translations = {
       placementGuideTitle: "ホーム画面に追加する",
       placementGuideBody:
         "生成した URL を Chrome で開き、メニュー（︙）から「ホーム画面に追加」または「ショートカットを作成」を選ぶと、このショートカットをアイコンとしてホーム画面に置けます。",
+      homeListTitle: "保存済みショートカット",
+      homeListLoadError: "ショートカットを読み込めませんでした",
     },
     terms: {
       title: "利用規約",
@@ -452,6 +460,8 @@ export const translations = {
       loginRequired: "Sign in with GitHub to create shortcuts.",
       loadError: "Could not load",
       formTitle: "Create a new shortcut",
+      nameLabel: "Display name (optional, up to 12 characters)",
+      namePlaceholder: "Daily note",
       repoLabel: "Repository (optional)",
       repoNoneOption: "(none)",
       labelsLabel: "Labels (optional, comma-separated)",
@@ -476,6 +486,8 @@ export const translations = {
       placementGuideTitle: "Add to your home screen",
       placementGuideBody:
         "Open the generated URL in Chrome, then use the menu (⋮) and choose \"Add to Home screen\" or \"Create shortcut\" to place it as an icon on your home screen.",
+      homeListTitle: "Saved shortcuts",
+      homeListLoadError: "Could not load shortcuts",
     },
     terms: {
       title: "Terms of Service",

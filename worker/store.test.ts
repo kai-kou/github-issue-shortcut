@@ -177,7 +177,7 @@ describe("deleteAccount", () => {
     await reserveIssueLog(db, userId, "kai-kou/alpha", "hash-delme", 30);
     await reserveRequestId(db, userId, "req-delme", 26 * 60 * 60);
     await checkRateLimit(db, userId, 60, 10);
-    await createShortcut(db, userId, { repo: "kai-kou/alpha", labels: ["bug"], title: "" });
+    await createShortcut(db, userId, { repo: "kai-kou/alpha", labels: ["bug"], title: "", name: "" });
 
     await deleteAccount(db, userId);
 
@@ -201,9 +201,11 @@ describe("shortcuts (C1-1・FR-16)", () => {
       repo: "kai-kou/alpha",
       labels: ["bug", "P1"],
       title: "バグ報告",
+      name: "バグ報告",
     });
     expect(created.repo).toBe("kai-kou/alpha");
     expect(created.labels).toEqual(["bug", "P1"]);
+    expect(created.name).toBe("バグ報告");
 
     expect(await listShortcuts(db, userId)).toEqual([created]);
     expect(await listShortcuts(db, otherUserId)).toEqual([]);
@@ -212,12 +214,15 @@ describe("shortcuts (C1-1・FR-16)", () => {
       repo: "kai-kou/beta",
       labels: [],
       title: "改善案",
+      name: "",
     });
     expect(updated).toBe(true);
-    expect(await listShortcuts(db, userId)).toEqual([{ id: created.id, repo: "kai-kou/beta", labels: [], title: "改善案" }]);
+    expect(await listShortcuts(db, userId)).toEqual([
+      { id: created.id, repo: "kai-kou/beta", labels: [], title: "改善案", name: "" },
+    ]);
 
     // 所有者が一致しない更新・削除は 0 行で失敗する。
-    expect(await updateShortcut(db, otherUserId, created.id, { repo: "x", labels: [], title: "" })).toBe(false);
+    expect(await updateShortcut(db, otherUserId, created.id, { repo: "x", labels: [], title: "", name: "" })).toBe(false);
     expect(await deleteShortcut(db, otherUserId, created.id)).toBe(false);
 
     expect(await deleteShortcut(db, userId, created.id)).toBe(true);
@@ -226,7 +231,7 @@ describe("shortcuts (C1-1・FR-16)", () => {
 
   it("round-trips a label containing a comma without splitting it (JSON serialization, not comma-join)", async () => {
     const userId = await upsertUser(db, { id: 7003, login: "commalabeluser", avatar_url: "" });
-    const created = await createShortcut(db, userId, { repo: "kai-kou/alpha", labels: ["a,b", "c"], title: "" });
+    const created = await createShortcut(db, userId, { repo: "kai-kou/alpha", labels: ["a,b", "c"], title: "", name: "" });
     expect(created.labels).toEqual(["a,b", "c"]);
     expect(await listShortcuts(db, userId)).toEqual([created]);
   });

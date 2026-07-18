@@ -23,11 +23,15 @@ interface ShortcutFormProps {
   repos: Repo[];
 }
 
+/** 表示名の上限（worker/index.ts の SHORTCUT_NAME_MAX_LENGTH と同値・#98）。 */
+const SHORTCUT_NAME_MAX_LENGTH = 12;
+
 function ShortcutForm({ editing, onSaved, onCancel, repos }: ShortcutFormProps) {
   const { t } = useLanguage();
   const [repo, setRepo] = useState(editing?.repo ?? "");
   const [labelsText, setLabelsText] = useState(editing?.labels.join(",") ?? "");
   const [title, setTitle] = useState(editing?.title ?? "");
+  const [name, setName] = useState(editing?.name ?? "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<"validation" | "save" | null>(null);
 
@@ -47,7 +51,7 @@ function ShortcutForm({ editing, onSaved, onCancel, repos }: ShortcutFormProps) 
         method: editing ? "PUT" : "POST",
         credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ repo, labels, title: trimmedTitle }),
+        body: JSON.stringify({ repo, labels, title: trimmedTitle, name: name.trim() }),
       });
       if (!res.ok) throw new Error(`unexpected status: ${res.status}`);
       onSaved((await res.json()) as Shortcut);
@@ -63,6 +67,16 @@ function ShortcutForm({ editing, onSaved, onCancel, repos }: ShortcutFormProps) 
       <p>
         <strong>{t.shortcuts.formTitle}</strong>
       </p>
+      <label>
+        <span className="field-label">{t.shortcuts.nameLabel}</span>
+        <input
+          type="text"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder={t.shortcuts.namePlaceholder}
+          maxLength={SHORTCUT_NAME_MAX_LENGTH}
+        />
+      </label>
       <label>
         <span className="field-label">{t.shortcuts.repoLabel}</span>
         <select value={repo} onChange={(e) => setRepo(e.target.value)}>
@@ -147,6 +161,7 @@ function ShortcutRow({
 
   return (
     <li className="shortcut-row">
+      {shortcut.name ? <p className="shortcut-name">{shortcut.name}</p> : null}
       <p className="shortcut-summary">{summary}</p>
       <input
         type="text"

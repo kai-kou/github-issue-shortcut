@@ -12,4 +12,12 @@ export interface Env {
   GITHUB_OAUTH_BASE?: string;
   /** GitHub REST API の base URL。未設定なら実 GitHub。E2E でモックを指すため。 */
   GITHUB_API_BASE?: string;
+  /** ビルド済み静的アセット（manifest.webmanifest 等）を取得するバインディング（wrangler.jsonc の assets.binding）。 */
+  ASSETS: Fetcher;
+  /**
+   * 起票のアプリ側レート制限（1分あたりの上限）を上書きする（E2E 専用・PR-4/OQ-6）。
+   * 未設定なら本番既定値（10）のまま。E2E は単一モックユーザーを全 spec が使い回すため、
+   * playwright.config.ts の wrangler dev 起動時のみ大きな値を設定する。
+   */
+  ISSUE_RATE_LIMIT_PER_WINDOW_OVERRIDE?: string;
 }

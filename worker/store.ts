@@ -55,7 +55,8 @@ export const SCHEMA_STATEMENTS: string[] = [
     repo TEXT NOT NULL,
     labels TEXT NOT NULL,
     title TEXT NOT NULL,
-    created_at INTEGER NOT NULL
+    created_at INTEGER NOT NULL,
+    name TEXT NOT NULL DEFAULT ''
   )`,
   `CREATE INDEX IF NOT EXISTS idx_shortcuts_user_id ON shortcuts(user_id)`,
   `CREATE TABLE IF NOT EXISTS request_ids (
@@ -344,6 +345,7 @@ export interface ShortcutRow {
   repo: string;
   labels: string[];
   title: string;
+  name: string;
 }
 
 /** labels は JSON 配列としてシリアライズする（カンマ区切り文字列だと、ラベル名自体にカンマを
@@ -361,36 +363,38 @@ function deserializeLabels(raw: string): string[] {
   }
 }
 
-function toShortcutRow(row: { id: string; repo: string; labels: string; title: string }): ShortcutRow {
+function toShortcutRow(row: { id: string; repo: string; labels: string; title: string; name: string }): ShortcutRow {
   return {
     id: row.id,
     repo: row.repo,
     labels: deserializeLabels(row.labels),
     title: row.title,
+    name: row.name,
   };
 }
 
 /** ユーザーのショートカットプリセット一覧を作成日時の昇順で返す（C1-1・FR-16）。 */
 export async function listShortcuts(db: D1Database, userId: string): Promise<ShortcutRow[]> {
   const result = await db
-    .prepare(`SELECT id, repo, labels, title FROM shortcuts WHERE user_id = ? ORDER BY created_at ASC`)
+    .prepare(`SELECT id, repo, labels, title, name FROM shortcuts WHERE user_id = ? ORDER BY created_at ASC`)
     .bind(userId)
-    .all<{ id: string; repo: string; labels: string; title: string }>();
+    .all<{ id: string; repo: string; labels: string; title: string; name: string }>();
   return (result.results ?? []).map(toShortcutRow);
 }
 
-/** ショートカットプリセットを作成する（repo/labels/title は呼び出し側で少なくとも1つ非空であることを検証済みとする）。 */
+/** ショートカットプリセットを作成する（repo/labels/title は呼び出し側で少なくとも1つ非空であることを検証済みとする。
+ * name は表示名で任意・空文字可）。 */
 export async function createShortcut(
   db: D1Database,
   userId: string,
-  input: { repo: string; labels: string[]; title: string },
+  input: { repo: string; labels: string[]; title: string; name: string },
 ): Promise<ShortcutRow> {
   const id = crypto.randomUUID();
   await db
-    .prepare(`INSERT INTO shortcuts (id, user_id, repo, labels, title, created_at) VALUES (?, ?, ?, ?, ?, ?)`)
-    .bind(id, userId, input.repo, serializeLabels(input.labels), input.title, nowSeconds())
+    .prepare(`INSERT INTO shortcuts (id, user_id, repo, labels, title, name, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`)
+    .bind(id, userId, input.repo, serializeLabels(input.labels), input.title, input.name, nowSeconds())
     .run();
-  return { id, repo: input.repo, labels: input.labels, title: input.title };
+  return { id, repo: input.repo, labels: input.labels, title: input.title, name: input.name };
 }
 
 /** ショートカットプリセットを更新する（所有者一致が条件。0 行更新なら false を返す）。 */
@@ -398,11 +402,11 @@ export async function updateShortcut(
   db: D1Database,
   userId: string,
   id: string,
-  input: { repo: string; labels: string[]; title: string },
+  input: { repo: string; labels: string[]; title: string; name: string },
 ): Promise<boolean> {
   const result = await db
-    .prepare(`UPDATE shortcuts SET repo = ?, labels = ?, title = ? WHERE id = ? AND user_id = ?`)
-    .bind(input.repo, serializeLabels(input.labels), input.title, id, userId)
+    .prepare(`UPDATE shortcuts SET repo = ?, labels = ?, title = ?, name = ? WHERE id = ? AND user_id = ?`)
+    .bind(input.repo, serializeLabels(input.labels), input.title, input.name, id, userId)
     .run();
   return result.meta.changes === 1;
 }

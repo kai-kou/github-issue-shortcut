@@ -1,5 +1,6 @@
 import { SELF } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
+import { buildDynamicManifest } from "./index";
 
 describe("/api/health", () => {
   it("responds with status ok", async () => {
@@ -167,3 +168,45 @@ describe("DELETE /api/account", () => {
     expect(body.error.code).toBe("unauthenticated");
   });
 });
+
+describe("buildDynamicManifest (#98)", () => {
+  const base = { name: "GitHub Issue Shortcut", shortcuts: [{ name: "static", short_name: "s", url: "/new", icons: [{ src: "/icons/icon-192.png" }] }] };
+
+  it("returns base unchanged when there are no shortcuts", () => {
+    expect(buildDynamicManifest(base, [])).toBe(base);
+  });
+
+  it("caps at 3 entries, keeping the given order, and falls back name -> title -> repo", () => {
+    const result = buildDynamicManifest(base, [
+      { repo: "kai-kou/alpha", labels: ["bug"], title: "", name: "バグ" },
+      { repo: "kai-kou/beta", labels: [], title: "改善案", name: "" },
+      { repo: "kai-kou/gamma", labels: [], title: "", name: "" },
+      { repo: "kai-kou/delta", labels: [], title: "", name: "" },
+    ]);
+    const shortcuts = result.shortcuts as Array<{ name: string; short_name: string; url: string; icons: unknown }>;
+    expect(shortcuts).toHaveLength(3);
+    expect(shortcuts.map((s) => s.name)).toEqual(["バグ", "改善案", "kai-kou/gamma"]);
+    expect(shortcuts[0].url).toBe("/new?repo=kai-kou%2Falpha&labels=bug");
+    // 静的 manifest 側の shortcuts アイコンを流用する。
+    expect(shortcuts[0].icons).toEqual(base.shortcuts[0].icons);
+  });
+
+  it("truncates short_name to the display-name limit (12 chars) but keeps name untruncated", () => {
+    const longRepo = "kai-kou/a-very-long-repository-name";
+    const result = buildDynamicManifest(base, [{ repo: longRepo, labels: [], title: "", name: "" }]);
+    const [shortcut] = result.shortcuts as Array<{ name: string; short_name: string }>;
+    expect(shortcut.name).toBe(longRepo);
+    expect(shortcut.short_name).toBe(longRepo.slice(0, 12));
+  });
+
+  it("falls back to a generic label when repo, title, and name are all empty", () => {
+    const result = buildDynamicManifest(base, [{ repo: "", labels: [], title: "", name: "" }]);
+    const [shortcut] = result.shortcuts as Array<{ name: string }>;
+    expect(shortcut.name).toBe("ショートカット");
+  });
+});
+
+// 注: `GET /manifest.webmanifest` エンドポイント自体の統合テストは、ASSETS バインディング経由で
+// ビルド成果物（dist/client/manifest.webmanifest）を要求する。Workers Builds は build より前に
+// test を実行するため dist/client が未生成で 404 になる（#98）。エンドポイントの実動作は E2E
+// （e2e/pwa.spec.ts）が、shortcuts 差し替えロジックは上記 buildDynamicManifest 純関数テストが担う。
