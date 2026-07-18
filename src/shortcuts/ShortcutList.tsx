@@ -5,10 +5,16 @@ import { loadShortcutsCache, saveShortcutsCache, type Shortcut } from "./shortcu
 
 type ShortcutsState = { status: "loading" } | { status: "error" } | { status: "ready"; shortcuts: Shortcut[] };
 
-/** ローカルキャッシュ（#101・SWR）があれば起動直後から ready で表示し、fetch 完了を待たせない。 */
-function initialShortcutsState(): ShortcutsState {
-  const cached = loadShortcutsCache();
+/** ローカルキャッシュ（#101・SWR）が現在ユーザーのものであれば起動直後から ready で表示し、
+ * fetch 完了を待たせない（別ユーザーのキャッシュは userId 不一致で無視され loading 初期化になる）。 */
+function initialShortcutsState(userId: number): ShortcutsState {
+  const cached = loadShortcutsCache(userId);
   return cached ? { status: "ready", shortcuts: cached } : { status: "loading" };
+}
+
+interface ShortcutListProps {
+  /** ログイン中ユーザーの GitHub ユーザー ID。SWR キャッシュの所有者照合に使う（#101・別アカウント混入防止）。 */
+  userId: number;
 }
 
 /**
@@ -19,9 +25,9 @@ function initialShortcutsState(): ShortcutsState {
  * ログイン済み（`AuthPanel` が `installed === true` のときのみ描画）が前提のため、
  * 未ログイン時のガードはこのコンポーネントでは行わない。
  */
-export function ShortcutList() {
+export function ShortcutList({ userId }: ShortcutListProps) {
   const { t } = useLanguage();
-  const [state, setState] = useState<ShortcutsState>(initialShortcutsState);
+  const [state, setState] = useState<ShortcutsState>(() => initialShortcutsState(userId));
 
   useEffect(() => {
     let active = true;
@@ -32,7 +38,7 @@ export function ShortcutList() {
       })
       .then((data) => {
         if (!active) return;
-        saveShortcutsCache(data.shortcuts);
+        saveShortcutsCache(userId, data.shortcuts);
         setState({ status: "ready", shortcuts: data.shortcuts });
       })
       .catch(() => {
@@ -43,7 +49,7 @@ export function ShortcutList() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [userId]);
 
   if (state.status === "loading") return null;
   if (state.status === "error") return <p className="status-note">{t.shortcuts.homeListLoadError}</p>;

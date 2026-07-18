@@ -197,8 +197,8 @@ function AuthPanel({ prefill, pendingRedirectTarget }: AuthPanelProps) {
           </button>
         </p>
         {installed === false ? <InstallGuidance /> : null}
-        {installed === true ? <ShortcutList /> : null}
-        {installed === true ? <RepoPicker prefill={prefill} /> : null}
+        {installed === true ? <ShortcutList userId={auth.me.githubUserId} /> : null}
+        {installed === true ? <RepoPicker prefill={prefill} userId={auth.me.githubUserId} /> : null}
         <AccountDeletion
           onDeleted={() => {
             // 同一端末で別ユーザーが再ログインした際に古い一覧が残らないようにする（#101）。

@@ -14,9 +14,10 @@ import { OfflineQueueList } from "../issues/OfflineQueueList";
 
 type ReposState = { status: "loading" } | { status: "error" } | { status: "ready"; repos: Repo[] };
 
-/** ローカルキャッシュ（#101・SWR）があれば起動直後から ready で表示し、fetch 完了を待たせない。 */
-function initialReposState(): ReposState {
-  const cached = loadReposCache();
+/** ローカルキャッシュ（#101・SWR）が現在ユーザーのものであれば起動直後から ready で表示し、
+ * fetch 完了を待たせない（別ユーザーのキャッシュは userId 不一致で無視され loading 初期化になる）。 */
+function initialReposState(userId: number): ReposState {
+  const cached = loadReposCache(userId);
   return cached ? { status: "ready", repos: cached } : { status: "loading" };
 }
 type SubmitState =
@@ -29,12 +30,14 @@ type SubmitState =
 interface RepoPickerProps {
   /** URL パラメータ起動（B1-2・FR-15）の初期値。下書き（B5-1）が存在する場合はそちらを優先する。 */
   prefill?: PrefillParams | null;
+  /** ログイン中ユーザーの GitHub ユーザー ID。SWR キャッシュの所有者照合に使う（#101・別アカウント混入防止）。 */
+  userId: number;
 }
 
 /** 起票先リポジトリの検索/選択 UI（B2-1/B2-2）。最近使用したリポジトリを先頭に表示する。 */
-export function RepoPicker({ prefill = null }: RepoPickerProps) {
+export function RepoPicker({ prefill = null, userId }: RepoPickerProps) {
   const { t } = useLanguage();
-  const [state, setState] = useState<ReposState>(initialReposState);
+  const [state, setState] = useState<ReposState>(() => initialReposState(userId));
   const [query, setQuery] = useState("");
   const [recent, setRecent] = useState<string[]>(() => loadRecentRepos());
   // 送信失敗・中断時の下書き（B5-1）があれば、そのリポジトリを再訪時に自動選択して復元する。
@@ -94,7 +97,7 @@ export function RepoPicker({ prefill = null }: RepoPickerProps) {
       })
       .then((repos) => {
         if (!active) return;
-        saveReposCache(repos);
+        saveReposCache(userId, repos);
         setState({ status: "ready", repos });
       })
       .catch(() => {
@@ -105,7 +108,7 @@ export function RepoPicker({ prefill = null }: RepoPickerProps) {
     return () => {
       active = false;
     };
-  }, []);
+  }, [userId]);
 
   // スマート入力（B3-3・FR-20）: 検索欄に混ざった自由文の中から `#repo` トークンをインライン認識する。
   // 複数トークンは非対応（最初の1件のみ使う・YAGNI）。
