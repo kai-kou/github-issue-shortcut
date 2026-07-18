@@ -10,6 +10,7 @@ import { findTokens, isTokenMatched, stripTokens } from "../issues/smartInput";
 import type { PrefillParams } from "../issues/prefillParams";
 import { submitErrorCode, submitErrorMessage } from "../issues/submitError";
 import { useOfflineQueueSync } from "../issues/useOfflineQueueSync";
+import { OfflineQueueList } from "../issues/OfflineQueueList";
 
 type ReposState = { status: "loading" } | { status: "error" } | { status: "ready"; repos: Repo[] };
 
@@ -46,13 +47,34 @@ export function RepoPicker({ prefill = null }: RepoPickerProps) {
   const [quickAddTitle, setQuickAddTitle] = useState<string | null>(null);
   const dialogRef = useRef<HTMLDialogElement>(null);
   // オフラインキュー（B4-2・FR-22）: ネットワーク到達不能時の起票を保持し、オンライン復帰後に自動再送する。
-  const { pendingCount, failedCount, enqueue: enqueueOffline } = useOfflineQueueSync();
+  const {
+    pendingCount,
+    failedCount,
+    failedItems,
+    enqueue: enqueueOffline,
+    resend: resendOffline,
+    discard: discardOffline,
+  } = useOfflineQueueSync();
 
   /** dialog がまだ開いていなければ開く（二重 showModal() は例外になるためガードする）。 */
   function openDialog() {
     const dialog = dialogRef.current;
     if (dialog && !dialog.open) dialog.showModal();
   }
+
+  // `selected` の初期値（上記 useState）は RepoPicker の初回マウント時点の prefill しか見ないため、
+  // 認証/インストール確認（App.tsx）が終わって RepoPicker が先にマウントされた後に launchQueue
+  // 経由で prefill が届くケース（WebAPK 再利用起動・#98）を取りこぼす。`navigate-existing` は同一
+  // アプリインスタンスを繰り返し再利用するため、既に一度別の起動で選択済みの状態から更に別の
+  // ショートカットで再起動された場合も新しい prefill.repo に切り替える必要がある。そのため
+  // 「未選択のときだけ適用」ではなく「直近に適用済みの repo と異なる新しい起動か」で判定する
+  // （ユーザーが手動で別リポジトリへ切り替えた場合は prefill.repo 自体が変わらないため上書きしない）。
+  const appliedPrefillRepoRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!prefill?.repo || prefill.repo === appliedPrefillRepoRef.current) return;
+    appliedPrefillRepoRef.current = prefill.repo;
+    if (selected !== prefill.repo) setSelected(prefill.repo);
+  }, [prefill?.repo, selected]);
 
   // 下書き（B5-1）/ URL パラメータ起動（B1-2）でリポジトリが初期選択済みの場合も、
   // ユーザー操作を待たずボトムシートを自動的に開く（B1-3）。state.status も依存に含めるのは、
@@ -198,9 +220,12 @@ export function RepoPicker({ prefill = null }: RepoPickerProps) {
         </p>
       ) : null}
       {failedCount > 0 ? (
-        <p className="status-note offline-queue-status offline-queue-status-failed">
-          {t.repoPicker.offlineQueueFailed} {failedCount}
-        </p>
+        <>
+          <p className="status-note offline-queue-status offline-queue-status-failed">
+            {t.repoPicker.offlineQueueFailed} {failedCount}
+          </p>
+          <OfflineQueueList items={failedItems} onResend={resendOffline} onDiscard={discardOffline} />
+        </>
       ) : null}
       <label className="repo-search">
         <span className="field-label">{t.repoPicker.searchLabel}</span>

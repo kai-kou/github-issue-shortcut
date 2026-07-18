@@ -65,6 +65,12 @@ interface Translations {
     removeSmartTokenLabel: string;
     offlineQueuePending: string;
     offlineQueueFailed: string;
+    offlineQueueResendButton: string;
+    offlineQueueResendingLabel: string;
+    offlineQueueDiscardButton: string;
+    offlineQueueDiscardConfirmMessage: string;
+    offlineQueueDiscardConfirmButton: string;
+    offlineQueueDiscardCancelButton: string;
   };
   issueForm: {
     closeButton: string;
@@ -188,6 +194,12 @@ export const translations = {
       removeSmartTokenLabel: "指定を解除",
       offlineQueuePending: "送信待ちのオフラインキュー:",
       offlineQueueFailed: "送信に失敗した起票（手動対応が必要）:",
+      offlineQueueResendButton: "再送",
+      offlineQueueResendingLabel: "再送中...",
+      offlineQueueDiscardButton: "破棄",
+      offlineQueueDiscardConfirmMessage: "この起票を破棄しますか？（元に戻せません）",
+      offlineQueueDiscardConfirmButton: "破棄する",
+      offlineQueueDiscardCancelButton: "キャンセル",
     },
     issueForm: {
       closeButton: "閉じる",
@@ -401,6 +413,12 @@ export const translations = {
       removeSmartTokenLabel: "Remove",
       offlineQueuePending: "Pending offline queue:",
       offlineQueueFailed: "Failed to send (needs manual action):",
+      offlineQueueResendButton: "Resend",
+      offlineQueueResendingLabel: "Resending...",
+      offlineQueueDiscardButton: "Discard",
+      offlineQueueDiscardConfirmMessage: "Discard this issue? This can't be undone.",
+      offlineQueueDiscardConfirmButton: "Yes, discard",
+      offlineQueueDiscardCancelButton: "Cancel",
     },
     issueForm: {
       closeButton: "Close",

@@ -9,9 +9,11 @@ import { SUPPORTED_LOCALES } from "./i18n/translations";
 import { RepoPicker } from "./repos/RepoPicker";
 import { clearReposCache } from "./repos/reposCache";
 import { clearShortcutsCache } from "./shortcuts/shortcutsCache";
+import { clearAllCachedLabels } from "./issues/repoLabelsCache";
 import {
   consumePendingRedirect,
   hasPrefillParams,
+  parseLaunchTargetUrl,
   parsePrefillParams,
   savePendingRedirect,
   type PrefillParams,
@@ -78,6 +80,7 @@ function AccountDeletion({ onDeleted }: { onDeleted: () => void }) {
     try {
       const res = await fetch("/api/account", { method: "DELETE", credentials: "same-origin" });
       if (!res.ok) throw new Error(`unexpected status: ${res.status}`);
+      clearAllCachedLabels();
       onDeleted();
     } catch {
       setState("error");
@@ -131,11 +134,13 @@ function AuthPanel({ prefill, pendingRedirectTarget }: AuthPanelProps) {
       })
       .then((next) => {
         if (!active) return;
-        // セッション切れ・未ログイン検知時は、別ユーザーの一覧が SWR キャッシュに残らないよう
-        // クリアする（#101・セルフレビュー: logout ボタン経由以外の自然な Cookie 失効経路の防御網）。
+        // セッション切れ・未ログイン検知時は、別ユーザーの一覧（リポジトリ/ショートカット/ラベル）が
+        // SWR キャッシュに残らないようクリアする（#101/#102・明示ログアウトを経ない自然な Cookie
+        // 失効経路の防御網。共有端末で次のユーザーに前ユーザーの一覧が見えないようにする）。
         if (next.status === "anonymous") {
           clearReposCache();
           clearShortcutsCache();
+          clearAllCachedLabels();
         }
         setAuth(next);
       })
@@ -171,6 +176,7 @@ function AuthPanel({ prefill, pendingRedirectTarget }: AuthPanelProps) {
     clearReposCache();
     clearShortcutsCache();
     await fetch("/auth/logout", { method: "POST", credentials: "same-origin" });
+    clearAllCachedLabels();
     window.location.assign("/");
   }
 
@@ -291,6 +297,24 @@ function AppContent() {
     const restored = new URL(pending, window.location.origin);
     setPath(restored.pathname);
     setSearch(restored.search);
+  }, []);
+
+  // WebAPK が既存アプリを再利用起動すると location は start_url（"/"）のままになり、ホーム画面に
+  // 手動追加した `/new?...` ショートカットのクエリが失われる（#98）。Launch Handler API
+  // （navigate-existing・vite.config.ts）経由で実際の起動 URL を受け取り復元する。ログイン状態を
+  // 問わず動作するため、上記の匿名限定 pendingRedirect 復元とは独立した経路として扱う。
+  useEffect(() => {
+    const launchQueue = window.launchQueue;
+    if (!launchQueue) return;
+    launchQueue.setConsumer((launchParams) => {
+      if (!launchParams.targetURL) return;
+      const target = parseLaunchTargetUrl(launchParams.targetURL, window.location.origin);
+      if (!target) return;
+      if (target.path === window.location.pathname && target.search === window.location.search) return;
+      window.history.replaceState(null, "", `${target.path}${target.search}`);
+      setPath(target.path);
+      setSearch(target.search);
+    });
   }, []);
 
   const prefill = useMemo(() => (path === "/new" ? parsePrefillParams(search) : null), [path, search]);
