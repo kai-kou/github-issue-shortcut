@@ -53,6 +53,24 @@ describe("GET /auth/callback", () => {
     const body = (await res.json()) as { error: { code: string } };
     expect(body.error.code).toBe("invalid_request");
   });
+
+  it("redirects to top instead of 400 on GitHub App install-completion return (no pre-auth cookie)", async () => {
+    const res = await SELF.fetch(
+      "https://example.com/auth/callback?installation_id=123&setup_action=install",
+      { redirect: "manual" },
+    );
+    expect(res.status).toBe(302);
+    expect(res.headers.get("Location")).toBe("https://example.com/?setup=complete");
+  });
+
+  it("still 400s a bare direct access with neither pre-auth cookie nor setup params", async () => {
+    const res = await SELF.fetch("https://example.com/auth/callback?code=x&state=y", {
+      redirect: "manual",
+    });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: { code: string } };
+    expect(body.error.code).toBe("invalid_request");
+  });
 });
 
 describe("GET /api/me", () => {
