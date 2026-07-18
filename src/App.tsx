@@ -130,7 +130,14 @@ function AuthPanel({ prefill, pendingRedirectTarget }: AuthPanelProps) {
         return { status: "authenticated", me };
       })
       .then((next) => {
-        if (active) setAuth(next);
+        if (!active) return;
+        // セッション切れ・未ログイン検知時は、別ユーザーの一覧が SWR キャッシュに残らないよう
+        // クリアする（#101・セルフレビュー: logout ボタン経由以外の自然な Cookie 失効経路の防御網）。
+        if (next.status === "anonymous") {
+          clearReposCache();
+          clearShortcutsCache();
+        }
+        setAuth(next);
       })
       .catch(() => {
         if (active) setAuth({ status: "error" });
