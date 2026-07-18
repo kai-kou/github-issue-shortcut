@@ -17,6 +17,10 @@ export default defineConfig({
         lang: "ja",
         start_url: "/",
         display: "standalone",
+        // WebAPK が既存アプリを再利用起動する際にクエリ付き URL（例: ホーム画面に手動追加した
+        // `/new?repo=...` ショートカット）を落とさず window.launchQueue 経由で受け取れるようにする
+        // （#98・モバイルは実質 navigate-existing 挙動・docs/research/2026-07-10-mobile-ux-pwa.md §3）。
+        launch_handler: { client_mode: "navigate-existing" },
         background_color: "#0d1117",
         theme_color: "#0d1117",
         icons: [

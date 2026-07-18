@@ -48,6 +48,15 @@ export function RepoPicker({ prefill = null }: RepoPickerProps) {
     if (dialog && !dialog.open) dialog.showModal();
   }
 
+  // `selected` の初期値（上記 useState）は RepoPicker の初回マウント時点の prefill しか見ないため、
+  // 認証/インストール確認（App.tsx）が終わって RepoPicker が先にマウントされた後に launchQueue
+  // 経由で prefill が届くケース（WebAPK 再利用起動・#98）を取りこぼす。下書き・ユーザー操作で
+  // 既に選択済みでない場合に限り、後から届いた prefill.repo を反映する。
+  useEffect(() => {
+    if (selected || !prefill?.repo) return;
+    setSelected(prefill.repo);
+  }, [prefill?.repo, selected]);
+
   // 下書き（B5-1）/ URL パラメータ起動（B1-2）でリポジトリが初期選択済みの場合も、
   // ユーザー操作を待たずボトムシートを自動的に開く（B1-3）。state.status も依存に含めるのは、
   // API 取得中（loading）は dialog 自体が早期 return で未レンダリングなため、
