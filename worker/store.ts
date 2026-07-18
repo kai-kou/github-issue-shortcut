@@ -43,6 +43,8 @@ export const SCHEMA_STATEMENTS: string[] = [
     created_at INTEGER NOT NULL,
     PRIMARY KEY (user_id, repo, content_hash)
   )`,
+  // created_at でのフィルタ（cleanupStaleIssueLog の DELETE・#71）が全件スキャンにならないようにする。
+  `CREATE INDEX IF NOT EXISTS idx_issue_log_created_at ON issue_log(created_at)`,
   `CREATE TABLE IF NOT EXISTS rate_limits (
     user_id TEXT NOT NULL REFERENCES users(id),
     window_start INTEGER NOT NULL,
