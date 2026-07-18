@@ -7,6 +7,7 @@ import { ShortcutList } from "./shortcuts/ShortcutList";
 import { LanguageProvider, useLanguage } from "./i18n/LanguageContext";
 import { SUPPORTED_LOCALES } from "./i18n/translations";
 import { RepoPicker } from "./repos/RepoPicker";
+import { clearAllCachedLabels } from "./issues/repoLabelsCache";
 import {
   consumePendingRedirect,
   hasPrefillParams,
@@ -77,6 +78,7 @@ function AccountDeletion({ onDeleted }: { onDeleted: () => void }) {
     try {
       const res = await fetch("/api/account", { method: "DELETE", credentials: "same-origin" });
       if (!res.ok) throw new Error(`unexpected status: ${res.status}`);
+      clearAllCachedLabels();
       onDeleted();
     } catch {
       setState("error");
@@ -160,6 +162,7 @@ function AuthPanel({ prefill, pendingRedirectTarget }: AuthPanelProps) {
 
   async function logout() {
     await fetch("/auth/logout", { method: "POST", credentials: "same-origin" });
+    clearAllCachedLabels();
     window.location.assign("/");
   }
 
