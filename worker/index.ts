@@ -563,21 +563,22 @@ app.get("/manifest.webmanifest", async (c) => {
   const staticRes = await c.env.ASSETS.fetch(new URL(MANIFEST_ASSET_PATH, c.req.url));
   if (!staticRes.ok) return staticRes;
 
-  const user = await resolveSessionUser(c);
-  if (user instanceof Response) return staticRes;
-
-  let base: Record<string, unknown>;
   try {
-    base = (await staticRes.clone().json()) as Record<string, unknown>;
+    const user = await resolveSessionUser(c);
+    if (user instanceof Response) return staticRes;
+
+    const base = (await staticRes.clone().json()) as Record<string, unknown>;
+    const shortcuts = await listShortcuts(c.env.DB, user.id);
+    if (shortcuts.length === 0) return staticRes;
+
+    return c.json(buildDynamicManifest(base, shortcuts), 200, {
+      "Content-Type": "application/manifest+json",
+    });
   } catch {
-    return staticRes;
+    // セッション照会・D1 クエリ・JSON パースのいずれが失敗しても、PWA インストール性を
+    // D1 の可用性に依存させないため静的 manifest をそのまま返す（壊さない・#98 セルフレビュー）。
+    return staticRes.clone();
   }
-
-  const shortcuts = await listShortcuts(c.env.DB, user.id);
-  if (shortcuts.length === 0) return staticRes;
-
-  const manifest = buildDynamicManifest(base, shortcuts);
-  return c.json(manifest, 200, { "Content-Type": "application/manifest+json" });
 });
 
 // POST /auth/logout: サーバー側セッションを無効化（CSRF: 同一 Origin を要求）。
