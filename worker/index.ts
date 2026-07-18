@@ -26,6 +26,7 @@ import {
 } from "./github";
 import {
   checkRateLimit,
+  cleanupStaleIssueLog,
   createSession,
   createShortcut,
   deleteAccount,
@@ -58,6 +59,11 @@ const DUPLICATE_SUBMISSION_WINDOW = 30;
  * 独立に、client_request_id が同じリクエストを日をまたいでも重複と判定する。
  */
 const OFFLINE_QUEUE_DEDUPE_WINDOW = 26 * 60 * 60;
+/**
+ * `issue_log` の保持期間（#71）: 二重送信防止の照合ウィンドウ（`DUPLICATE_SUBMISSION_WINDOW` = 30 秒）
+ * に対して十分な安全マージンを取った上で、Cron Trigger（`scheduled` ハンドラ）が古い行を削除する。
+ */
+const ISSUE_LOG_RETENTION_SECONDS = 7 * 24 * 60 * 60;
 /** client_request_id の長さ上限（crypto.randomUUID() は36文字・将来の形式変更を見込んだ余裕）。 */
 const CLIENT_REQUEST_ID_MAX_LENGTH = 100;
 /**
@@ -620,4 +626,10 @@ app.delete("/api/account", async (c) => {
 // GET /setup: GitHub App の Setup URL 着地点（インストール/承認完了後の復帰・最小版）。
 app.get("/setup", (c) => c.redirect("/?setup=complete", 302));
 
-export default app;
+export default {
+  fetch: app.fetch,
+  // Cron Trigger（wrangler.jsonc の triggers.crons）: issue_log の保持期間ポリシー（#71）を実行する。
+  async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+    ctx.waitUntil(cleanupStaleIssueLog(env.DB, ISSUE_LOG_RETENTION_SECONDS));
+  },
+};

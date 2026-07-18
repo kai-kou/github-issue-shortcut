@@ -287,6 +287,17 @@ export async function releaseIssueLogReservation(
 }
 
 /**
+ * `issue_log` の保持期間ポリシー（#71）: 二重送信防止の照合ウィンドウ（`DUPLICATE_SUBMISSION_WINDOW` =
+ * 30 秒）を過ぎた行は判定に使われないため、安全マージンを取った `olderThanSeconds` より古い行を削除して
+ * D1 の行数増加（NFR-14・無料枠）を抑える。Cron Trigger（`scheduled` ハンドラ）から定期呼び出しする。
+ */
+export async function cleanupStaleIssueLog(db: D1Database, olderThanSeconds: number): Promise<number> {
+  const staleBefore = nowSeconds() - olderThanSeconds;
+  const result = await db.prepare(`DELETE FROM issue_log WHERE created_at < ?`).bind(staleBefore).run();
+  return result.meta.changes ?? 0;
+}
+
+/**
  * オフラインキュー再送の重複防止（B4-4/FR-22×FR-24・OQ-8）: クライアントが起票の最初の送信試行時に
  * 生成する `client_request_id`（キュー管理用の既存ローカル ID を流用）で長時間窓の予約を行う。
  * `reserveIssueLog` の content_hash・短時間窓（再タップ対策）とは独立な仕組みで、Service Worker の
