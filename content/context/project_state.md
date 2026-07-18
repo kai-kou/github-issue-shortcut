@@ -1,24 +1,30 @@
-# プロジェクト状態スナップショット（2026-07-14 14:00 JST 更新）
+# プロジェクト状態スナップショット（2026-07-18 09:34 JST 更新）
 > SessionStart フックが自動注入。最新化は `python3 tools/generate_project_context.py`。
 
 ## 作業中 Issue（status:in-progress）
-⚠ 取得失敗（gh 403/エラー）。0 件と混同しないこと。クラウドでは `mcp__github__list_issues` / `list_pull_requests` で直接確認する（L-114）
+（なし）
 
 ## Claude 対応待ち Issue（status:waiting-claude・上位 15）
-⚠ 取得失敗（gh 403/エラー）。0 件と混同しないこと。クラウドでは `mcp__github__list_issues` / `list_pull_requests` で直接確認する（L-114）
+- #98: fix: ログイン済み + ホーム画面ショートカット起動で /new?repo=&title= の prefill が反映されない
 
 ## ユーザー対応待ち Issue（status:waiting-user）
-⚠ 取得失敗（gh 403/エラー）。0 件と混同しないこと。クラウドでは `mcp__github__list_issues` / `list_pull_requests` で直接確認する（L-114）
+- #35: [M1] E2E 検証・KPI 計測: 実機での起票フロー確認手順の整備 + 手動計測で KPI 検証
+- #20: [M3] B4-4: キュー再送と重複防止の整合（issue_log 照合との統合）
+- #18: [M3] B4-2: オフラインキュー（Background Sync + 楽観的 UI）
+- #16: [M3] B3-3: スマート入力（#repo @label トークンのインライン認識）
+- #15: [M3] B1-3: ボトムシート + 起動即入力（1 タップで同期 focus）
+- #13: [M2] C1-1 / C2-2: ショートカット作成ヘルパー（プリセット URL 生成 + 配置ガイド）
+- #11: [M2] C2-1: manifest shortcuts（長押しメニューの定番プリセット）
 
 ## オープン PR
-⚠ 取得失敗（gh 403/エラー）。0 件と混同しないこと。クラウドでは `mcp__github__list_issues` / `list_pull_requests` で直接確認する（L-114）
+- PR #96: fix: GitHub App インストール完了後の /auth/callback 復帰を 400 させず復帰させる (#94) 
 
 ## 直近のコミット
-- f57aad0 chore: claude-code-base ac5659c を再同期（apply-to-repo + UPDATE NOTES 手動手順 + 議論型レビュー済み） (#47)
-- 76db1d8 feat: 利用規約・プライバシーポリシーページを i18n 対応 (#45)
-- f925428 chore: リポジトリ public 化の前提整備 (#44)
-- b71dab9 feat: i18n 基盤（日英ロケール検出・手動切替）を追加し Home/フッターへ適用 (#42)
-- 6db38a4 feat: 利用規約・プライバシーポリシーページを追加 (#41)
-- 00bb521 feat: Vite + React SPA + Hono API の単一 Worker 構成でリポジトリ雛形を作成 (#38)
-- f0b7a46 docs: キーレス CI 構成（GHA=テスト / Workers Builds=デプロイ）とコネクタ事実確認を要件・リサーチに反映 (#39)
-- 1efed06 feat: スプリント定期実行ルーティンのエントリポイント指示（docs/routines/sprint-session.md）を追加 (#36)
+- f6a39d4 test: /auth/callback インストール復帰の setup_action 単独ケースを追加
+- 9f69def fix: GitHub App インストール完了後の /auth/callback 復帰を 400 させず復帰させる
+- b420a7d feat: B4-4 オフラインキュー再送と重複防止の統合（issue_log × client_request_id） (#92)
+- 9542ba2 feat: B4-2 オフラインキュー（Workbox Background Sync + 楽観的 UI） (#90)
+- 1148b55 feat: B3-3 スマート入力（#repo @label のインライン認識・ハイライト・タップ解除） (#89)
+- 60437ae feat: B1-3 ボトムシート + 起動即入力（ネイティブ dialog） (#88)
+- c81e304 feat: C1-1/C2-2 ショートカット作成ヘルパー（プリセット URL 生成 CRUD + 配置ガイド） (#86)
+- c4eab01 feat: MVP に仮デザインテーマを適用（ライト/ダーク対応・CSS のみ） (#85)
