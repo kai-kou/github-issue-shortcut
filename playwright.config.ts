@@ -39,7 +39,12 @@ export default defineConfig({
         "--var GITHUB_CLIENT_SECRET:e2e-client-secret " +
         `--var TOKEN_ENCRYPTION_KEY:${TOKEN_KEY} ` +
         "--var GITHUB_OAUTH_BASE:http://localhost:8788 " +
-        "--var GITHUB_API_BASE:http://localhost:8788",
+        "--var GITHUB_API_BASE:http://localhost:8788 " +
+        // E2E は単一のモックユーザー（e2e-user）を全 spec（~40件）が使い回すため、本番の
+        // 起票レート制限（10件/分・worker/index.ts ISSUE_RATE_LIMIT_PER_WINDOW）のままだと
+        // スイート後半のテストが不正利用と誤判定され 429 で落ちる（テスト分離の問題）。
+        // E2E 実行時だけ上限を引き上げる（本番既定値は変更しない）。
+        "--var ISSUE_RATE_LIMIT_PER_WINDOW_OVERRIDE:1000",
       url: "http://localhost:8789/api/health",
       reuseExistingServer: !process.env.CI,
       timeout: 90_000,

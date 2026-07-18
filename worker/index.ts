@@ -64,9 +64,21 @@ const CLIENT_REQUEST_ID_MAX_LENGTH = 100;
  * アプリ側レート制限（不正利用対策・PR-4・OQ-6・2026-07-16 決定）: ユーザーあたり 1 分間に
  * 起票できる回数の上限。GitHub の二次制限（コンテンツ生成系 80 req/min）の 1/8 に抑え、
  * 本アプリ経由の連続起票が GitHub 側の制裁対象になる前にアプリ側で止める。
+ *
+ * E2E では単一のモックユーザーを ~40 個の spec が使い回すため、この本番向けの上限だと
+ * スイート後半のテストが本物の不正利用と誤判定され 429 で落ちる（テスト分離の問題であり
+ * アプリのバグではない）。`ISSUE_RATE_LIMIT_PER_WINDOW_OVERRIDE`（E2E の wrangler dev
+ * 起動時のみ設定・playwright.config.ts 参照）で上限を引き上げられるようにし、本番の
+ * デフォルト値はこの定数のまま変更しない。
  */
 const ISSUE_RATE_LIMIT_WINDOW_SECONDS = 60;
 const ISSUE_RATE_LIMIT_PER_WINDOW = 10;
+
+/** override が正の整数として解釈できればそれを使い、それ以外（未設定・不正値）は本番既定値のまま。 */
+function resolveIssueRateLimitPerWindow(override: string | undefined): number {
+  const parsed = override ? Number(override) : NaN;
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : ISSUE_RATE_LIMIT_PER_WINDOW;
+}
 
 const PREAUTH_COOKIE = "__Host-preauth";
 const SESSION_COOKIE = "__Host-session";
@@ -322,7 +334,8 @@ app.post("/api/issues", async (c) => {
   const user = await resolveSessionUser(c);
   if (user instanceof Response) return user;
 
-  const rateLimit = await checkRateLimit(c.env.DB, user.id, ISSUE_RATE_LIMIT_WINDOW_SECONDS, ISSUE_RATE_LIMIT_PER_WINDOW);
+  const rateLimitPerWindow = resolveIssueRateLimitPerWindow(c.env.ISSUE_RATE_LIMIT_PER_WINDOW_OVERRIDE);
+  const rateLimit = await checkRateLimit(c.env.DB, user.id, ISSUE_RATE_LIMIT_WINDOW_SECONDS, rateLimitPerWindow);
   if (!rateLimit.allowed) {
     c.header("Retry-After", String(rateLimit.retryAfterSeconds));
     return c.json(jsonError("rate_limited", "too many issues submitted; please wait before retrying"), 429);
