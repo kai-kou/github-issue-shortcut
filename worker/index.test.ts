@@ -53,6 +53,25 @@ describe("GET /auth/callback", () => {
     const body = (await res.json()) as { error: { code: string } };
     expect(body.error.code).toBe("invalid_request");
   });
+
+  // GitHub App のインストール完了後の復帰（OAuth during installation ON のため /setup でなく本
+  // コールバックへ戻る）は、pre-auth Cookie を持たなくてもエラーにせずトップへ復帰させる（#19・実機バグ）。
+  it("redirects to home on GitHub App install return (setup_action) without a pre-auth cookie", async () => {
+    const res = await SELF.fetch(
+      "https://example.com/auth/callback?installation_id=123&setup_action=install",
+      { redirect: "manual" },
+    );
+    expect(res.status).toBe(302);
+    expect(res.headers.get("Location")).toBe("/?setup=complete");
+  });
+
+  it("redirects to home on install return with installation_id only", async () => {
+    const res = await SELF.fetch("https://example.com/auth/callback?installation_id=456", {
+      redirect: "manual",
+    });
+    expect(res.status).toBe(302);
+    expect(res.headers.get("Location")).toBe("/?setup=complete");
+  });
 });
 
 describe("GET /api/me", () => {

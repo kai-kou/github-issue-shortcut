@@ -194,6 +194,15 @@ app.get("/auth/callback", async (c) => {
   const preauth = getCookie(c, PREAUTH_COOKIE);
   deleteCookie(c, PREAUTH_COOKIE, { path: "/", secure: true });
 
+  // GitHub App のインストール/承認完了後の復帰（installation_id / setup_action 付き）。
+  // 本 App は「OAuth during installation」ON で登録されているため、GitHub はインストール完了後に
+  // Setup URL（/setup）ではなく本コールバックへ戻す。この経路は /auth/login を経ないため pre-auth
+  // Cookie を持たず、ログイン用の state/PKCE 検証には乗らない。エラーにせずトップへ復帰させ、フロントに
+  // 認証状態の再判定とリポジトリ一覧の再取得を行わせる（00-requirements.md §6 MUST・A2-1・#19）。
+  if (!preauth && (c.req.query("setup_action") || c.req.query("installation_id"))) {
+    return c.redirect("/?setup=complete", 302);
+  }
+
   if (!code || !stateParam || !preauth) {
     return c.json(jsonError("invalid_request", "missing code, state, or pre-auth cookie"), 400);
   }
