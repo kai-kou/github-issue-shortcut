@@ -20,9 +20,10 @@ const MOCK_USER = { id: 424242, login: "e2e-user", avatar_url: "http://localhost
  * @type {{
  *   installations: Array<{ id: number, repos: Array<{ id: number, full_name: string, private: boolean, permissions?: { push?: boolean } }> }>,
  *   labels: Array<{ name: string, color: string }>,
+ *   labelsByRepo: Record<string, Array<{ name: string, color: string }>>,
  * }}
  */
-let mockConfig = { installations: [], labels: [] };
+let mockConfig = { installations: [], labels: [], labelsByRepo: {} };
 let nextIssueNumber = 1;
 let lastIssueRequestBody = null;
 
@@ -103,6 +104,10 @@ const server = createServer(async (req, res) => {
       mockConfig = {
         installations: Array.isArray(body.installations) ? body.installations : [],
         labels: Array.isArray(body.labels) ? body.labels : [],
+        // repo 別ラベル（任意）。未指定 repo は既存の `labels`（グローバル）へフォールバックする
+        // ため、labelsByRepo を使わない既存テストは無改修のまま動く（後方互換）。
+        labelsByRepo:
+          body.labelsByRepo && typeof body.labelsByRepo === "object" ? body.labelsByRepo : {},
       };
       return json(200, { ok: true });
     } catch {
@@ -131,7 +136,9 @@ const server = createServer(async (req, res) => {
 
   const labelsMatch = url.pathname.match(/^\/repos\/([^/]+\/[^/]+)\/labels$/);
   if (req.method === "GET" && labelsMatch) {
-    return json(200, mockConfig.labels);
+    const repoFullName = labelsMatch[1];
+    const perRepo = mockConfig.labelsByRepo[repoFullName];
+    return json(200, perRepo ?? mockConfig.labels);
   }
 
   const issueMatch = url.pathname.match(/^\/repos\/([^/]+\/[^/]+)\/issues$/);
