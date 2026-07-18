@@ -212,51 +212,7 @@ describe("DELETE /api/shortcuts/:id", () => {
   });
 });
 
-// PWA manifest の動的化（#98）: ログインユーザーのショートカットプリセットで manifest.shortcuts を
-// 差し替える。schema 適用済みの本ファイル（beforeAll）に置く（worker/index.test.ts は
-// GET /api/ready の「schema 未適用」テストのため applySchema を呼べない。未ログイン時に静的
-// manifest が返ることの検証は worker/index.test.ts の GET /manifest.webmanifest 側が担う）。
-describe("GET /manifest.webmanifest", () => {
-  it("returns the static manifest for a logged-in user with no saved shortcuts", async () => {
-    const cookie = await loginSession();
-    const res = await SELF.fetch("https://example.com/manifest.webmanifest", { headers: { Cookie: cookie } });
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as { shortcuts: Array<{ name: string }> };
-    expect(body.shortcuts).toHaveLength(3);
-    // 静的プリセット（vite.config.ts の VitePWA manifest）のまま。
-    expect(body.shortcuts[0].name).toBe("新しい Issue を作成");
-  });
-
-  it("replaces manifest.shortcuts with the caller's saved presets (oldest-first, capped at 3)", async () => {
-    const cookie = await loginSession();
-    async function save(preset: { repo: string; labels: string[]; title: string; name: string }) {
-      const res = await SELF.fetch("https://example.com/api/shortcuts", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Cookie: cookie },
-        body: JSON.stringify(preset),
-      });
-      expect(res.status).toBe(201);
-    }
-    // name あり → name をそのまま使う。name なし → title へフォールバック。name も title もなし → repo へフォールバック。
-    await save({ repo: "kai-kou/alpha", labels: ["bug"], title: "", name: "バグ" });
-    await save({ repo: "kai-kou/beta", labels: [], title: "改善案", name: "" });
-    await save({ repo: "kai-kou/gamma", labels: [], title: "", name: "" });
-    // 4件目は上限（3件）を超えるため manifest には反映されない。
-    await save({ repo: "kai-kou/delta", labels: [], title: "", name: "" });
-
-    const res = await SELF.fetch("https://example.com/manifest.webmanifest", { headers: { Cookie: cookie } });
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as {
-      shortcuts: Array<{ name: string; short_name: string; url: string; icons?: unknown }>;
-    };
-    expect(body.shortcuts).toHaveLength(3);
-    expect(body.shortcuts.map((s) => s.name)).toEqual(["バグ", "改善案", "kai-kou/gamma"]);
-    // short_name は表示名の上限（12文字）で切り詰める。"kai-kou/gamma" は 13 文字なので切り詰められる。
-    expect(body.shortcuts.map((s) => s.short_name)).toEqual(["バグ", "改善案", "kai-kou/gamm"]);
-    expect(body.shortcuts[0].url).toBe("/new?repo=kai-kou%2Falpha&labels=bug");
-    expect(body.shortcuts[1].url).toBe("/new?repo=kai-kou%2Fbeta&title=%E6%94%B9%E5%96%84%E6%A1%88");
-    expect(body.shortcuts.some((s) => s.name === "kai-kou/delta")).toBe(false);
-    // アイコンは静的 manifest の shortcuts 定義を流用する（空配列で欠落させない）。
-    expect(body.shortcuts[0].icons).toBeTruthy();
-  });
-});
+// 注: `GET /manifest.webmanifest` エンドポイントの統合テスト（ASSETS 経由で dist/client の
+// ビルド成果物を要求）は、Workers Builds が build より前に test を実行し dist/client が未生成の
+// ため 404 になる（#98）。shortcuts 差し替えロジックは worker/index.test.ts の buildDynamicManifest
+// 純関数テスト、エンドポイントの実動作は E2E（e2e/pwa.spec.ts）が担う。

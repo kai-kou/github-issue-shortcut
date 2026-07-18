@@ -206,14 +206,7 @@ describe("buildDynamicManifest (#98)", () => {
   });
 });
 
-describe("GET /manifest.webmanifest", () => {
-  it("returns the static manifest (200, application/manifest+json) when unauthenticated", async () => {
-    const res = await SELF.fetch("https://example.com/manifest.webmanifest");
-    expect(res.status).toBe(200);
-    expect(res.headers.get("Content-Type")).toContain("application/manifest+json");
-    const body = (await res.json()) as { shortcuts: unknown[] };
-    // 静的ビルド成果物（vite.config.ts の VitePWA manifest）の汎用プリセット3件がそのまま返る
-    // （ログインユーザーのプリセットで差し替えられるのは認証済みかつプリセット1件以上の場合のみ）。
-    expect(body.shortcuts).toHaveLength(3);
-  });
-});
+// 注: `GET /manifest.webmanifest` エンドポイント自体の統合テストは、ASSETS バインディング経由で
+// ビルド成果物（dist/client/manifest.webmanifest）を要求する。Workers Builds は build より前に
+// test を実行するため dist/client が未生成で 404 になる（#98）。エンドポイントの実動作は E2E
+// （e2e/pwa.spec.ts）が、shortcuts 差し替えロジックは上記 buildDynamicManifest 純関数テストが担う。
