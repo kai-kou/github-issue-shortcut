@@ -579,6 +579,49 @@ a.btn-primary {
   color: var(--color-danger);
 }
 
+/* ---- オフラインキュー: 手動再送・破棄（D2-1） ---- */
+
+.offline-queue-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.offline-queue-item {
+  border: 1px solid var(--color-danger);
+  background: var(--color-danger-bg);
+  border-radius: var(--radius-m);
+  padding: 12px;
+}
+
+.offline-queue-item-title {
+  margin: 0;
+  font-weight: 600;
+  word-break: break-word;
+}
+
+.offline-queue-item-error {
+  margin: 4px 0 0;
+  color: var(--color-text-muted);
+  font-size: 14px;
+}
+
+.offline-queue-item-actions,
+.offline-queue-item-confirm {
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.offline-queue-item-actions button {
+  min-height: 44px;
+}
+
 /* ---- ショートカット作成ヘルパー（C1-1/C2-2） ---- */
 
 .shortcut-form {
