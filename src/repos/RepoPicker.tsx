@@ -9,6 +9,7 @@ import { findTokens, isTokenMatched, stripTokens } from "../issues/smartInput";
 import type { PrefillParams } from "../issues/prefillParams";
 import { submitErrorCode, submitErrorMessage } from "../issues/submitError";
 import { useOfflineQueueSync } from "../issues/useOfflineQueueSync";
+import { OfflineQueueList } from "../issues/OfflineQueueList";
 
 type Repo = { id: number; fullName: string; private: boolean; pushAccess: boolean };
 type ReposState = { status: "loading" } | { status: "error" } | { status: "ready"; repos: Repo[] };
@@ -40,7 +41,14 @@ export function RepoPicker({ prefill = null }: RepoPickerProps) {
   const [quickAddTitle, setQuickAddTitle] = useState<string | null>(null);
   const dialogRef = useRef<HTMLDialogElement>(null);
   // オフラインキュー（B4-2・FR-22）: ネットワーク到達不能時の起票を保持し、オンライン復帰後に自動再送する。
-  const { pendingCount, failedCount, enqueue: enqueueOffline } = useOfflineQueueSync();
+  const {
+    pendingCount,
+    failedCount,
+    failedItems,
+    enqueue: enqueueOffline,
+    resend: resendOffline,
+    discard: discardOffline,
+  } = useOfflineQueueSync();
 
   /** dialog がまだ開いていなければ開く（二重 showModal() は例外になるためガードする）。 */
   function openDialog() {
@@ -202,9 +210,12 @@ export function RepoPicker({ prefill = null }: RepoPickerProps) {
         </p>
       ) : null}
       {failedCount > 0 ? (
-        <p className="status-note offline-queue-status offline-queue-status-failed">
-          {t.repoPicker.offlineQueueFailed} {failedCount}
-        </p>
+        <>
+          <p className="status-note offline-queue-status offline-queue-status-failed">
+            {t.repoPicker.offlineQueueFailed} {failedCount}
+          </p>
+          <OfflineQueueList items={failedItems} onResend={resendOffline} onDiscard={discardOffline} />
+        </>
       ) : null}
       <label className="repo-search">
         <span className="field-label">{t.repoPicker.searchLabel}</span>
