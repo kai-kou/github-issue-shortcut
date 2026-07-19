@@ -717,3 +717,163 @@ a.btn-primary {
 .text-page {
   line-height: 1.7;
 }
+
+/* ---- ホームのトップアプリバー（ハンバーガー + ブランド + アカウントチップ） ---- */
+
+.app-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: calc(8px + env(safe-area-inset-top)) 16px 8px;
+}
+
+.menu-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  border: none;
+  background: none;
+  color: var(--color-text);
+  font-size: 20px;
+  line-height: 1;
+  padding: 0;
+  cursor: pointer;
+}
+
+.app-bar-spacer {
+  flex: 1;
+}
+
+.account-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 45vw;
+  min-height: 44px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  padding: 0 12px 0 6px;
+  cursor: pointer;
+}
+
+.account-chip-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1px solid var(--color-border);
+}
+
+.account-chip-login {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+/* ---- サイドパネル（左スライドのナビゲーションドロワー） ---- */
+/* ブラウザ標準の <dialog>（showModal）のみで実装（追加ライブラリなし・.issue-sheet と同じ作法）。 */
+
+.side-drawer {
+  position: fixed;
+  inset: 0 auto 0 0;
+  margin: 0;
+  height: 100dvh;
+  max-height: 100dvh;
+  width: min(84vw, 320px);
+  border: none;
+  border-radius: 0 var(--radius-l) var(--radius-l) 0;
+  background: var(--color-surface);
+  color: var(--color-text);
+  padding: 0;
+  box-shadow: var(--shadow-card);
+  overflow-y: auto;
+}
+
+.side-drawer::backdrop {
+  background: rgb(0 0 0 / 0.4);
+}
+
+.side-drawer[open] {
+  animation: side-drawer-slide-in 0.2s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .side-drawer[open] {
+    animation: none;
+  }
+}
+
+@keyframes side-drawer-slide-in {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+.side-drawer-body {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  padding: calc(8px + env(safe-area-inset-top)) 16px calc(16px + env(safe-area-inset-bottom))
+    calc(16px + env(safe-area-inset-left));
+}
+
+.side-drawer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.side-drawer-title {
+  font-size: 16px;
+}
+
+.side-drawer-close {
+  border: none;
+  background: none;
+  color: var(--color-text);
+  font-size: 22px;
+  line-height: 1;
+  min-width: 44px;
+  min-height: 44px;
+  cursor: pointer;
+}
+
+.drawer-section {
+  padding: 12px 0;
+  border-top: 1px solid var(--color-border);
+}
+
+.drawer-section-title {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-muted);
+}
+
+.drawer-nav-link {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  color: var(--color-text);
+  text-decoration: none;
+}
+
+.drawer-section .user-row {
+  margin-bottom: 8px;
+}
+
+.drawer-section .language-switcher {
+  min-height: 44px;
+}
