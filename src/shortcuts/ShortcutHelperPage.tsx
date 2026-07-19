@@ -297,6 +297,7 @@ function ShortcutHelper() {
           <strong>{t.shortcuts.placementGuideTitle}</strong>
         </p>
         <p>{t.shortcuts.placementGuideBody}</p>
+        <p className="status-note">{t.shortcuts.placementGuideNote}</p>
       </div>
     </>
   );
