@@ -102,11 +102,13 @@ function HomeView({ prefill, pendingRedirectTarget }: HomeViewProps) {
           <span className="app-brand-mark" aria-hidden="true">
             ⚡
           </span>
-          {t.home.title}
+          <span className="app-brand-text">{t.home.title}</span>
         </a>
         <span className="app-bar-spacer" />
         {showAccountChip ? (
-          <button type="button" className="account-chip" onClick={() => setMenuOpen(true)} aria-label={t.nav.openMenu}>
+          // アクセシブル名はチップ内のユーザー名（アバターは装飾）。ハンバーガー（メニューを開く）と
+          // 名前が重複せず、ログイン中のユーザー名を SR にも伝えられる。
+          <button type="button" className="account-chip" onClick={() => setMenuOpen(true)}>
             {auth.me.avatarUrl ? <img className="account-chip-avatar" src={auth.me.avatarUrl} alt="" /> : null}
             <span className="account-chip-login">{auth.me.login}</span>
           </button>

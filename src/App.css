@@ -742,6 +742,17 @@ a.btn-primary {
   cursor: pointer;
 }
 
+.app-bar .app-brand {
+  min-width: 0;
+  flex-shrink: 1;
+}
+
+.app-brand-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .app-bar-spacer {
   flex: 1;
 }
