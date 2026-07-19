@@ -59,6 +59,19 @@ a {
   color: var(--color-accent);
 }
 
+/* スクリーンリーダー専用（視覚的に隠すが AT からは読める）。見出しジャンプ用の h1 等に使う。 */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 /* ---- アプリシェル ---- */
 
 .app-header {
@@ -879,6 +892,15 @@ a.btn-primary {
   min-height: 44px;
   color: var(--color-text);
   text-decoration: none;
+}
+
+/* 別画面へ遷移するリンクであることを示す軽量なアフォーダンス（その場で完結するボタン群と区別）。 */
+.drawer-nav-link::after {
+  content: "›";
+  margin-left: auto;
+  color: var(--color-text-muted);
+  font-size: 18px;
+  line-height: 1;
 }
 
 .drawer-section .user-row {

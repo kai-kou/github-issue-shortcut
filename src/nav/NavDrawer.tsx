@@ -32,8 +32,11 @@ export function NavDrawer({ open, onClose, auth, onLogout, onAccountDeleted, pen
   }, [open]);
 
   // backdrop クリックで閉じる（native <dialog> は既定で backdrop クリックを閉じないため target 判定で補う）。
+  // 閉じ操作は必ず dialog.close() を同期的に呼ぶ（Escape と同一経路）。close イベント経由で onClose(state 更新)
+  // が走るため、React の再レンダー（children アンマウント）は dialog が閉じた後に起き、フォーカス復帰の
+  // 取りこぼし・閉じる瞬間の空フレームを避けられる（RepoPicker の .issue-sheet と同型・#113 レビュー）。
   function handleBackdropClick(e: MouseEvent<HTMLDialogElement>) {
-    if (e.target === dialogRef.current) onClose();
+    if (e.target === dialogRef.current) dialogRef.current?.close();
   }
 
   return (
@@ -48,7 +51,12 @@ export function NavDrawer({ open, onClose, auth, onLogout, onAccountDeleted, pen
         <div className="side-drawer-body">
           <div className="side-drawer-header">
             <strong className="side-drawer-title">{t.nav.title}</strong>
-            <button type="button" className="side-drawer-close" onClick={onClose} aria-label={t.nav.closeMenu}>
+            <button
+              type="button"
+              className="side-drawer-close"
+              onClick={() => dialogRef.current?.close()}
+              aria-label={t.nav.closeMenu}
+            >
               ×
             </button>
           </div>
