@@ -1,14 +1,14 @@
 {
   "month": "2026-07",
   "totals": {
-    "sessions": 30,
-    "input_tokens": 49400,
-    "output_tokens": 2048921,
-    "cache_write_tokens": 12381707,
-    "cache_read_tokens": 390663103,
-    "cost_usd": 206.034957
+    "sessions": 31,
+    "input_tokens": 50222,
+    "output_tokens": 2743980,
+    "cache_write_tokens": 16907442,
+    "cache_read_tokens": 559234063,
+    "cost_usd": 349.042671
   },
-  "cost_jpy_approx": 30905,
+  "cost_jpy_approx": 52356,
   "daily": {
     "2026-07-17": {
       "sessions": 5,
@@ -28,11 +28,19 @@
     },
     "2026-07-19": {
       "sessions": 9,
-      "input_tokens": 533,
-      "output_tokens": 280746,
+      "input_tokens": 619,
+      "output_tokens": 437853,
       "cache_write_tokens": 3183356,
-      "cache_read_tokens": 28506430,
-      "cost_usd": 27.937387
+      "cache_read_tokens": 85024505,
+      "cost_usd": 73.180335
+    },
+    "2026-07-20": {
+      "sessions": 1,
+      "input_tokens": 736,
+      "output_tokens": 537952,
+      "cache_write_tokens": 4525735,
+      "cache_read_tokens": 112052885,
+      "cost_usd": 97.764766
     }
   },
   "sessions": {
@@ -45,12 +53,12 @@
       "cost_usd": 2.218656
     },
     "1852da0e-60cf-5c54-b5a6-116d679ab022": {
-      "date": "2026-07-19",
-      "input_tokens": 51,
-      "output_tokens": 42121,
-      "cache_write_tokens": 287688,
-      "cache_read_tokens": 2788780,
-      "cost_usd": 4.24572
+      "date": "2026-07-20",
+      "input_tokens": 736,
+      "output_tokens": 537952,
+      "cache_write_tokens": 4525735,
+      "cache_read_tokens": 112052885,
+      "cost_usd": 97.764766
     },
     "1a4b1563-64be-5e86-b890-71e2b69dc3e0": {
       "date": "2026-07-18",
@@ -277,5 +285,5 @@
       "cost_usd": 3.525402
     }
   },
-  "last_updated": "2026-07-19T10:22:38+09:00"
+  "last_updated": "2026-07-20T08:04:20+09:00"
 }
