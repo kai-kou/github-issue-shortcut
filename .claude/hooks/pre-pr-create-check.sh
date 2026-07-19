@@ -185,6 +185,28 @@ if printf '%s' "$check_output" | grep -q 'Warning'; then
 セルフレビュー Warning（非ブロック・対応要否を判断すること）:
 ${check_output}"
 fi
+
+# 7. 大規模改善の監査ゲート（docs/rules/large-change-audit-rules.md・非ブロッキング）
+# プロダクトコードの大きめの変更では、議論型レビュー(A)+実機検証(B)+新規挙動テスト(C)+記録(D)を
+# 必須にする。差分から機械判定し、該当時にチェックリストと観測した不足を additionalContext へ注入する。
+if command -v python3 >/dev/null 2>&1 && [ -f "$repo_root/tools/large_change_audit.py" ]; then
+  base_ref="origin/main"
+  git rev-parse --verify -q "$base_ref" >/dev/null 2>&1 || base_ref="main"
+  if git rev-parse --verify -q "$base_ref" >/dev/null 2>&1; then
+    _dl=$(git diff --numstat "$base_ref...HEAD" 2>/dev/null | awk '{a+=$1; d+=$2} END{print a+d+0}')
+    _cf=$(git diff --name-only "$base_ref...HEAD" 2>/dev/null | paste -sd, -)
+    if command -v timeout >/dev/null 2>&1; then
+      _audit=$(timeout 30 python3 "$repo_root/tools/large_change_audit.py" check --diff-lines "${_dl:-0}" --changed-files "$_cf" --format hook 2>/dev/null || true)
+    else
+      _audit=$(python3 "$repo_root/tools/large_change_audit.py" check --diff-lines "${_dl:-0}" --changed-files "$_cf" --format hook 2>/dev/null || true)
+    fi
+    if [ -n "$_audit" ]; then
+      _ctx="${_ctx}
+
+${_audit}"
+    fi
+  fi
+fi
 jq -n --arg ctx "$_ctx" '{
   "systemMessage": "[pre-pr-create-check] Layer 0 機械ゲート通過（Layer 1 リマインダーと Warning は Claude のコンテキストに注入済み）。",
   "hookSpecificOutput": {"hookEventName": "PreToolUse", "additionalContext": $ctx}

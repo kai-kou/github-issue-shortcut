@@ -79,6 +79,12 @@ PR 作成後に **`/code-review --comment` を必ず実行** する（Layer 1・
 diff ≥300行 / `type:security` / `type:breaking-change` の PR は Layer 2（`discussion_review_trigger.py`）も起動する。
 critical 指摘は修正必須（自動ゲート扱い）。**外部 AI レビュアー（Copilot / Gemini）への依頼はしない。**
 
+**大規模改善の監査ゲート（PR 作成前チェック・SSOT `docs/rules/large-change-audit-rules.md`）**:
+`python3 tools/large_change_audit.py check --diff-lines {N} --changed-files "{...}" --labels "{...}"` を実行し、
+大規模改善と判定されたら **A. 議論型レビュー / B. 実機検証 / C. 新規挙動の専用テスト / D. 記録** をマージ前に
+満たす計画を立てる。特に **C（新規挙動テスト）が差分に無ければ警告** し、PR 前に追加する（"既存グリーン" で
+完了にしない）。免除（docs/ルール/ハーネスのみ・機械的変更）は理由 1 行を記録する。
+
 ## 出力
 
 ```

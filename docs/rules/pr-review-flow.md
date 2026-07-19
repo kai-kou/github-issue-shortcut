@@ -146,11 +146,17 @@ PR 作成時に **Claude 自身が `/code-review` スキルで必ずセルフレ
 | レビュー | 方法 | 性質 |
 |---------|------|------|
 | **Layer 1 `/code-review` セルフレビュー（主軸）** | Claude Code チャットで `/code-review --comment`（`--fix` で作業ツリー反映も可） | 同期・対話セッション内で完結。差分を「第三者の PR」として読み直し自己修正盲点を回避（CCR）。外部往復ゼロ |
-| Layer 2 敵対的議論（条件付き） | `tools/discussion_review_trigger.py --pr {N}`（diff ≥300行 / `type:security` / `type:breaking-change`） | 同セッション内・追加課金なし |
+| Layer 2 敵対的議論（**大規模改善は必須** / それ以外は条件付き） | `tools/discussion_review_trigger.py --pr {N}`（diff ≥300行 / `type:security` / `type:breaking-change`） | 同セッション内・追加課金なし |
 | Layer 3（任意・高リスクのみ） | `anthropics/claude-code-security-review` Action / `/ultrareview` | 非ブロッキング。Copilot/Gemini は使わない |
 
 - `/code-review` で検出した指摘は、修正コミット or スキップ理由の記録で解消してから自動マージする。
 - 外部レビュアーの応答待ちが存在しないため、Layer 0+1 通過後は即マージしてよい（25 分タイムアウト待機は廃止）。
+
+> **🔴 大規模改善の監査ゲート（SSOT: `docs/rules/large-change-audit-rules.md`）**: プロダクトコードの大きめの変更
+> （差分 ≥300 行 / `sp:5`+ / 新規 UI・機能・認証/データフロー / `type:security`・`breaking-change`・`tools/large_change_audit.py` で判定）
+> は、Layer 2 を **必須** とし、加えて **実機検証（B・実結果でのみ断定・L-113）・新規挙動の専用テスト（C）・議論記録の要約（D）**
+> をマージ前に通す。「既存グリーン + セルフレビュー」だけで完了にしない。PR 作成時に `pre-pr-create-check.sh` が
+> 該当チェックリストを注入する。免除（docs/ルール/ハーネスのみ等）は理由 1 行を記録。
 
 > **トラブルシューティング**: `/code-review` がチャットで使えない等の場合は `.claude/skills/self-reviewer/SKILL.md`（Step 0 機械チェック + Agent Teams 多角レビュー）でセルフレビューを代替する。
 
