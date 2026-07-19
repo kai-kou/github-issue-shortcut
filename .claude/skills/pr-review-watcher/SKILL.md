@@ -18,11 +18,20 @@ PR 作成後に **Claude 自身が `/code-review` スキルで必ずセルフレ
 - PR 作成後に AI レビューの到着を待つ時（PR 作成フローの一部として自動開始）
 - **セッション復帰時**: `tools/check_pending_pr_reviews.py` がレビュー待ち PR を検出した時
 
-## Layer 2 レビュー自動起動（Issue #97・ネイティブ化 #193）
+## Layer 2 レビュー自動起動 + 大規模改善の監査ゲート（Issue #97・ネイティブ化 #193・大規模監査 2026-07-19）
 
 PR 作成・AI レビュー依頼の直後に `discussion_review_trigger.py`（要否判定器）を呼び出す。
 差分 ≥300行 または `type:security`/`type:breaking-change` ラベル付きの PR には
 自動的に Layer 2 議論型レビューを追加実行する。
+
+> **🔴 大規模改善（大きめの改善）は Layer 2 が「条件付き」ではなく「必須」**（SSOT: `docs/rules/large-change-audit-rules.md`）。
+> `tools/large_change_audit.py check --diff-lines {N} --changed-files "{...}" --labels "{...}"` で大規模判定し、
+> 該当時は **マージ前に A〜D をすべて満たす**:
+> - **A. 議論型レビュー**（`discussion-review`・敵対的相互検証・複数レンズ）を実行し `content/discussions/` に記録
+> - **B. 挙動の実機検証**（`/verify` 相当・実結果でのみ断定・UI はスクショ/E2E・L-113）
+> - **C. 新規挙動の専用テスト追加**（"既存グリーン" では不十分。議論で見つけたバグに再発防止テストを添える）
+> - **D. 記録の要約** を PR 説明・完了報告に反映
+> A〜D の未充足のまま自動マージしない。免除（docs/ルール/ハーネスのみ等）は理由 1 行を残す。
 
 クラウド環境（gh CLI 不可）では `mcp__github__pull_request_read` で取得した値を渡す:
 
@@ -53,9 +62,11 @@ PR 作成後、指示を待たずにセルフレビュー → マージまで進
 1. PR 作成（本文に Session-Id: $CLAUDE_CODE_SESSION_ID を必ず記載・#47 所有判定の前提）
 2. Layer 1 セルフレビューを必ず実行: /code-review --comment
    ❌ Copilot 依頼（request_copilot_review / --add-reviewer @copilot）・Gemini 依頼（/gemini review）はしない
-3. 指摘対応（修正コミット or スキップ + 返信 + Resolve）→ Layer 0+1 通過で自動マージ
-4. （任意）subscribe_pr_activity で CI / 人手コメントを監視
-5. セッションが切れたら → 次セッションで check_pending_pr_reviews.py --mine が自 PR を識別 → 復帰
+3. 【大規模改善のみ】監査ゲート A〜D（議論型レビュー + 実機検証 + 新規挙動テスト + 記録）を実行
+   （`tools/large_change_audit.py` で判定。免除なら理由 1 行）
+4. 指摘対応（修正コミット + 再発防止テスト or スキップ + 返信 + Resolve）→ 全ゲート通過で自動マージ
+5. （任意）subscribe_pr_activity で CI / 人手コメントを監視
+6. セッションが切れたら → 次セッションで check_pending_pr_reviews.py --mine が自 PR を識別 → 復帰
 ```
 
 > **自セッション作成 PR の回収（#47）**: 復帰時はまず `check_pending_pr_reviews.py --mine --actionable-only --json` で

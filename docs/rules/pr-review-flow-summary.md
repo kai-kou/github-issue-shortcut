@@ -6,9 +6,16 @@
 
 ```
 実装 → セルフレビュー（self-reviewer スキル）→ PR 作成 → Slack 通知
-  → Layer 0 機械ゲート + Layer 1 /code-review セルフレビュー（主軸・全PR必須・自己実行）→ （条件付き Layer 2 敵対的議論）
-  → 指摘対応（修正コミット or スキップ + 返信 + Resolve）→ Layer 0+1 通過で自動マージ（squash）→ Slack 完了通知
+  → Layer 0 機械ゲート + Layer 1 /code-review セルフレビュー（主軸・全PR必須・自己実行）
+  → 【大規模改善なら監査ゲート必須】Layer 2 議論型レビュー + 実機検証 + 新規挙動テスト + 記録
+  → 指摘対応（修正コミット + 再発防止テスト or スキップ + 返信 + Resolve）→ 全ゲート通過で自動マージ（squash）→ Slack 完了通知
 ```
+
+> **🔴 大規模改善の監査ゲート（SSOT: `docs/rules/large-change-audit-rules.md`）**: プロダクトコードの大きめの変更
+> （差分 ≥300 行 / `sp:5`+ / 新規 UI・機能・認証/データフロー / `type:security`・`breaking-change`）は、
+> 「既存グリーン + セルフレビュー」で完了にせず、**A. 議論型レビュー（客観・敵対的） / B. 実機検証（実結果でのみ断定・L-113） /
+> C. 新規挙動の専用テスト / D. 議論記録の要約** をマージ前に必須で通す。判定は `tools/large_change_audit.py`、
+> PR 作成時に `pre-pr-create-check.sh` が該当チェックリストを注入する。免除（docs/ルール/ハーネスのみ等）は理由 1 行。
 
 > **🔴 外部 AI レビュアー依頼は廃止（飼い主決定）**: **Copilot へのレビュー依頼（`request_copilot_review` / `--add-reviewer @copilot`）は行わない。** Gemini も 2026-07-17 廃止済み。レビューは Claude 自身が **`/code-review` スキルで必ず実行するセルフレビュー** で完結させ、外部レビュアーの応答を待たない（25 分待ちは発生しない）。SSOT: `ai-reviewer-strategy.md`。
 

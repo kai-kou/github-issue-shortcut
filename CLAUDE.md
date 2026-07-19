@@ -102,6 +102,7 @@ GitHub Issue Shortcut
 `session-safety-rules-detail.md`（タイムアウト・確認ケース詳細・Warm 降格・#91）/
 `session-sprint-rules-detail.md`（PO 権限・メトリクス実装・較正手順・Warm 降格・#90）/
 `intent-gate-rules.md`（挙動変更前の spec/test/code 権威解決・fable-method 反映）/
+`large-change-audit-rules.md`（**大きめの改善は Layer 2 議論型レビュー + 実機検証 + 新規挙動テスト + 記録を必須にする監査ゲート**。判定は `tools/large_change_audit.py`）/
 `problem-investigation-protocol.md` / `harness-escalation.md` / `lessons-management.md` /
 `pr-review-flow.md` / `claude-code-optimization.md` / `token-optimization-rules.md` /
 `github-mcp-fallback-patterns.md` / `native-fallback-rules.md`（Web 未提供機能の claude -p フォールバック標準形）/ `slack-notification-rules.md` /
@@ -210,7 +211,7 @@ frontmatter は公式仕様（`name` / `description` 必須・`model` / `tools` 
 | `orchestrator-directive.sh` | 高コストモデル（Opus/Fable 系）検出時に「オーケストレーターとして専門チームを組成せよ」を自動注入（非ブロッキング）。トグル `CLAUDE_ORCHESTRATOR_DIRECTIVE=auto\|off\|always`（既定 auto）・判定正規表現 `CLAUDE_HIGH_COST_MODEL_RE`（既定 `opus\|fable`）。注入本文は `.claude/orchestrator-directive.txt` で全文差し替え可（4KB 上限） |
 | `permission-request-auto-allow.sh` | `.claude/` 配下ファイルの Read/Write/Edit/NotebookEdit を自動許可（PermissionRequest フック） |
 | `pre-tool-use-router.sh` | main 直 push ブロック・PR 作成前チェック・.env アクセスブロック |
-| `pre-git-push-check.sh` / `pre-pr-create-check.sh` | Lv3 ハードコンストレイント（`pre-tool-use-router.sh` 経由でディスパッチ） |
+| `pre-git-push-check.sh` / `pre-pr-create-check.sh` | Lv3 ハードコンストレイント（`pre-tool-use-router.sh` 経由でディスパッチ）。`pre-pr-create-check.sh` は PR 作成時に大規模改善を機械判定（`tools/large_change_audit.py`）し、該当時は監査ゲート（議論型レビュー + 実機検証 + 新規挙動テスト + 記録）のチェックリストを注入する |
 | `post-tool-use-validate.sh` | 成果物バリデーションの拡張ポイント（既定 no-op） |
 | `post-tool-use-failure.sh` | gh プロキシ起因エラーの検知・修正案内 |
 | `pre-compact.sh` | 圧縮開始前の未コミット自動保存（L-100 一次防御） |
