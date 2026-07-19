@@ -5,11 +5,10 @@ import PrivacyPolicy from "./pages/PrivacyPolicy";
 import { ShortcutHelperPage } from "./shortcuts/ShortcutHelperPage";
 import { ShortcutList } from "./shortcuts/ShortcutList";
 import { LanguageProvider, useLanguage } from "./i18n/LanguageContext";
-import { SUPPORTED_LOCALES } from "./i18n/translations";
+import { LanguageSwitcher } from "./i18n/LanguageSwitcher";
 import { RepoPicker } from "./repos/RepoPicker";
-import { clearReposCache } from "./repos/reposCache";
-import { clearShortcutsCache } from "./shortcuts/shortcutsCache";
-import { clearAllCachedLabels } from "./issues/repoLabelsCache";
+import { useAuthState } from "./auth/useAuthState";
+import { NavDrawer } from "./nav/NavDrawer";
 import {
   consumePendingRedirect,
   hasPrefillParams,
@@ -25,16 +24,6 @@ type ApiStatus = "checking" | "unreachable" | string;
 const APP_INSTALL_URL = "https://github.com/apps/issue-shortcut/installations/new";
 /** GitHub 側で App インストール/連携を管理する画面（アカウント削除後の連携解除案内・A4-3・FR-12）。 */
 const GITHUB_INSTALLATIONS_URL = "https://github.com/settings/installations";
-
-type Me = { login: string; avatarUrl: string | null; githubUserId: number };
-type AuthState =
-  | { status: "checking" }
-  | { status: "anonymous" }
-  | { status: "authenticated"; me: Me }
-  | { status: "error" };
-
-/** ログイン済みユーザーが GitHub App を 1 件以上インストール済みか（A2-1・FR-4）。未確定は null。 */
-type InstallState = boolean | null;
 
 function InstallGuidance() {
   const { t } = useLanguage();
@@ -54,8 +43,6 @@ function InstallGuidance() {
   );
 }
 
-type DeleteState = "idle" | "confirming" | "deleting" | "error";
-
 function AccountDeletionGuidance() {
   const { t } = useLanguage();
   return (
@@ -71,169 +58,19 @@ function AccountDeletionGuidance() {
   );
 }
 
-function AccountDeletion({ onDeleted }: { onDeleted: () => void }) {
-  const { t } = useLanguage();
-  const [state, setState] = useState<DeleteState>("idle");
-
-  async function handleDelete() {
-    setState("deleting");
-    try {
-      const res = await fetch("/api/account", { method: "DELETE", credentials: "same-origin" });
-      if (!res.ok) throw new Error(`unexpected status: ${res.status}`);
-      clearAllCachedLabels();
-      onDeleted();
-    } catch {
-      setState("error");
-    }
-  }
-
-  if (state === "confirming" || state === "deleting") {
-    return (
-      <p className="status-note">
-        {t.account.confirmMessage}{" "}
-        <button type="button" onClick={handleDelete} disabled={state === "deleting"}>
-          {t.account.confirmButton}
-        </button>{" "}
-        <button type="button" onClick={() => setState("idle")} disabled={state === "deleting"}>
-          {t.account.cancelButton}
-        </button>
-      </p>
-    );
-  }
-
-  return (
-    <p className="status-note">
-      <button type="button" className="btn-link-danger" onClick={() => setState("confirming")}>
-        {t.account.deleteButton}
-      </button>
-      {state === "error" ? <span> {t.account.error}</span> : null}
-    </p>
-  );
-}
-
-interface AuthPanelProps {
+interface HomeViewProps {
   prefill: PrefillParams | null;
   /** ログイン後の復元用に保存する遷移先（`/new?...`）。プレフィルが無ければ null（B1-2・FR-15）。 */
   pendingRedirectTarget: string | null;
 }
 
-function AuthPanel({ prefill, pendingRedirectTarget }: AuthPanelProps) {
+/** ホーム画面。トップバー（ハンバーガー + ブランド + アカウントチップ）・メイン（起票フロー）・
+ * サイドパネル（アカウント/設定を集約）を束ねる。認証状態は useAuthState で 1 度だけ取得し双方で共有する。 */
+function HomeView({ prefill, pendingRedirectTarget }: HomeViewProps) {
   const { t } = useLanguage();
-  const [auth, setAuth] = useState<AuthState>({ status: "checking" });
-  const [installed, setInstalled] = useState<InstallState>(null);
+  const { auth, installed, logout } = useAuthState();
+  const [menuOpen, setMenuOpen] = useState(false);
   const [accountDeleted, setAccountDeleted] = useState(false);
-
-  useEffect(() => {
-    let active = true;
-    fetch("/api/me", { credentials: "same-origin" })
-      .then(async (res): Promise<AuthState> => {
-        if (res.status === 401) return { status: "anonymous" };
-        if (!res.ok) throw new Error(`unexpected status: ${res.status}`);
-        const me = (await res.json()) as Me;
-        return { status: "authenticated", me };
-      })
-      .then((next) => {
-        // セッション切れ・未ログイン検知時は、別ユーザーの一覧（リポジトリ/ショートカット/ラベル）が
-        // SWR キャッシュに残らないようクリアする（#101/#102・明示ログアウトを経ない自然な Cookie
-        // 失効経路の防御網。共有端末で次のユーザーに前ユーザーの一覧が見えないようにする）。
-        // このクリアは `active`（mount 状態）でガードしない: /api/me 解決前に AuthPanel が
-        // アンマウントされても、プライバシーガードとしてキャッシュ消去は必ず実行する必要がある
-        // （active ガードは UI 更新の setAuth のみに掛ける）。
-        if (next.status === "anonymous") {
-          clearReposCache();
-          clearShortcutsCache();
-          clearAllCachedLabels();
-        }
-        if (active) setAuth(next);
-      })
-      .catch(() => {
-        if (active) setAuth({ status: "error" });
-      });
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  useEffect(() => {
-    if (auth.status !== "authenticated") return;
-    let active = true;
-    fetch("/api/installations", { credentials: "same-origin" })
-      .then(async (res) => {
-        if (!res.ok) throw new Error(`unexpected status: ${res.status}`);
-        return (await res.json()) as { installed: boolean };
-      })
-      .then((data) => {
-        if (active) setInstalled(data.installed);
-      })
-      .catch(() => {
-        // 取得失敗時は誘導を出さない（false negative より安全側: 誤って未インストール表示にしない）。
-      });
-    return () => {
-      active = false;
-    };
-  }, [auth.status]);
-
-  async function logout() {
-    // 別ユーザーのリポジトリ/ショートカット一覧が次回起動時の SWR キャッシュに残らないようにする（#101）。
-    clearReposCache();
-    clearShortcutsCache();
-    await fetch("/auth/logout", { method: "POST", credentials: "same-origin" });
-    clearAllCachedLabels();
-    window.location.assign("/");
-  }
-
-  if (accountDeleted) return <AccountDeletionGuidance />;
-  if (auth.status === "checking") return <p className="status-note">{t.auth.checking}</p>;
-  if (auth.status === "error") return <p className="status-note">{t.auth.loginError}</p>;
-  if (auth.status === "authenticated") {
-    return (
-      <>
-        <p className="user-row">
-          {auth.me.avatarUrl ? <img className="user-avatar" src={auth.me.avatarUrl} alt="" /> : null}
-          <span className="user-login">
-            <small>{t.auth.loggedInAs}</small>
-            <strong>{auth.me.login}</strong>
-          </span>
-          <button type="button" onClick={logout}>
-            {t.auth.logoutButton}
-          </button>
-        </p>
-        {installed === false ? <InstallGuidance /> : null}
-        {installed === true ? <ShortcutList userId={auth.me.githubUserId} /> : null}
-        {installed === true ? <RepoPicker prefill={prefill} userId={auth.me.githubUserId} /> : null}
-        <AccountDeletion
-          onDeleted={() => {
-            // 同一端末で別ユーザーが再ログインした際に古い一覧が残らないようにする（#101）。
-            clearReposCache();
-            clearShortcutsCache();
-            setAccountDeleted(true);
-          }}
-        />
-      </>
-    );
-  }
-  return (
-    <p className="hero-cta">
-      <a
-        className="btn-primary"
-        href="/auth/login"
-        onClick={() => {
-          if (pendingRedirectTarget) savePendingRedirect(pendingRedirectTarget);
-        }}
-      >
-        {t.auth.loginButton}
-      </a>
-    </p>
-  );
-}
-
-interface HomeProps {
-  prefill: PrefillParams | null;
-  pendingRedirectTarget: string | null;
-}
-
-function Home({ prefill, pendingRedirectTarget }: HomeProps) {
-  const { t } = useLanguage();
   const [apiStatus, setApiStatus] = useState<ApiStatus>("checking");
 
   useEffect(() => {
@@ -253,34 +90,86 @@ function Home({ prefill, pendingRedirectTarget }: HomeProps) {
         ? t.home.apiStatusUnreachable
         : apiStatus;
 
+  const showAccountChip = auth.status === "authenticated" && !accountDeleted;
+
   return (
     <>
-      <div className="hero">
-        <h1 className="hero-title">{t.home.title}</h1>
-        <p className="hero-tagline">{t.home.tagline}</p>
-      </div>
-      <AuthPanel prefill={prefill} pendingRedirectTarget={pendingRedirectTarget} />
-      <p className="api-status status-note">
-        {t.home.apiStatusLabel}: {apiStatusText}
-      </p>
+      <header className="app-bar">
+        <button type="button" className="menu-trigger" onClick={() => setMenuOpen(true)} aria-label={t.nav.openMenu}>
+          <span aria-hidden="true">☰</span>
+        </button>
+        <a className="app-brand" href="/">
+          <span className="app-brand-mark" aria-hidden="true">
+            ⚡
+          </span>
+          <span className="app-brand-text">{t.home.title}</span>
+        </a>
+        <span className="app-bar-spacer" />
+        {showAccountChip ? (
+          // アクセシブル名はチップ内のユーザー名（アバターは装飾）。ハンバーガー（メニューを開く）と
+          // 名前が重複せず、ログイン中のユーザー名を SR にも伝えられる。
+          <button type="button" className="account-chip" onClick={() => setMenuOpen(true)}>
+            {auth.me.avatarUrl ? <img className="account-chip-avatar" src={auth.me.avatarUrl} alt="" /> : null}
+            <span className="account-chip-login">{auth.me.login}</span>
+          </button>
+        ) : null}
+      </header>
+
+      <main className="app-main">
+        {accountDeleted ? (
+          <AccountDeletionGuidance />
+        ) : (
+          <>
+            {auth.status !== "authenticated" ? (
+              <div className="hero">
+                <h1 className="hero-title">{t.home.title}</h1>
+                <p className="hero-tagline">{t.home.tagline}</p>
+              </div>
+            ) : null}
+
+            {auth.status === "checking" ? <p className="status-note">{t.auth.checking}</p> : null}
+            {auth.status === "error" ? <p className="status-note">{t.auth.loginError}</p> : null}
+            {auth.status === "anonymous" ? (
+              <p className="hero-cta">
+                <a
+                  className="btn-primary"
+                  href="/auth/login"
+                  onClick={() => {
+                    if (pendingRedirectTarget) savePendingRedirect(pendingRedirectTarget);
+                  }}
+                >
+                  {t.auth.loginButton}
+                </a>
+              </p>
+            ) : null}
+            {auth.status === "authenticated" && installed === false ? <InstallGuidance /> : null}
+            {auth.status === "authenticated" && installed === true ? (
+              <>
+                <ShortcutList userId={auth.me.githubUserId} />
+                <RepoPicker prefill={prefill} userId={auth.me.githubUserId} />
+              </>
+            ) : null}
+
+            <p className="api-status status-note">
+              {t.home.apiStatusLabel}: {apiStatusText}
+            </p>
+          </>
+        )}
+      </main>
+
+      <NavDrawer
+        open={menuOpen}
+        onClose={() => setMenuOpen(false)}
+        auth={auth}
+        onLogout={logout}
+        onAccountDeleted={() => {
+          // 同一端末で別ユーザーが再ログインした際に古い一覧が残らないようにする（#101）。
+          setAccountDeleted(true);
+          setMenuOpen(false);
+        }}
+        pendingRedirectTarget={pendingRedirectTarget}
+      />
     </>
-  );
-}
-
-function LanguageSwitcher() {
-  const { locale, setLocale, t } = useLanguage();
-
-  return (
-    <label className="language-switcher">
-      {t.languageSwitcher.label}
-      <select value={locale} onChange={(e) => setLocale(e.target.value as (typeof SUPPORTED_LOCALES)[number])}>
-        {SUPPORTED_LOCALES.map((l) => (
-          <option key={l} value={l}>
-            {l}
-          </option>
-        ))}
-      </select>
-    </label>
   );
 }
 
@@ -324,11 +213,13 @@ function AppContent() {
 
   const isLegalPage = path === "/terms" || path === "/privacy";
   const isShortcutsPage = path === "/shortcuts";
-  const hasChromeHeader = isLegalPage || isShortcutsPage;
+  const isSubPage = isLegalPage || isShortcutsPage;
 
-  return (
-    <>
-      {hasChromeHeader ? (
+  // サブページ（規約 / プライバシー / ショートカット作成ヘルパー）はドキュメント型レイアウト
+  // （戻るヘッダー + フッター）。ホームはアプリシェル型（トップバー + サイドパネル）で描画する。
+  if (isSubPage) {
+    return (
+      <>
         <header className="app-header">
           <a className="app-brand" href="/">
             <span className="app-brand-mark" aria-hidden="true">
@@ -337,27 +228,21 @@ function AppContent() {
             {t.home.title}
           </a>
         </header>
-      ) : null}
-      <main className={hasChromeHeader ? "app-main text-page" : "app-main"}>
-        {path === "/terms" ? (
-          <TermsOfService />
-        ) : path === "/privacy" ? (
-          <PrivacyPolicy />
-        ) : isShortcutsPage ? (
-          <ShortcutHelperPage />
-        ) : (
-          <Home prefill={prefill} pendingRedirectTarget={pendingRedirectTarget} />
-        )}
-      </main>
-      <footer className="app-footer">
-        <a href="/shortcuts">{t.footer.shortcuts}</a>
-        <a href="/terms">{t.footer.terms}</a>
-        <a href="/privacy">{t.footer.privacy}</a>
-        <span className="app-footer-spacer" />
-        <LanguageSwitcher />
-      </footer>
-    </>
-  );
+        <main className="app-main text-page">
+          {isShortcutsPage ? <ShortcutHelperPage /> : path === "/terms" ? <TermsOfService /> : <PrivacyPolicy />}
+        </main>
+        <footer className="app-footer">
+          <a href="/shortcuts">{t.footer.shortcuts}</a>
+          <a href="/terms">{t.footer.terms}</a>
+          <a href="/privacy">{t.footer.privacy}</a>
+          <span className="app-footer-spacer" />
+          <LanguageSwitcher />
+        </footer>
+      </>
+    );
+  }
+
+  return <HomeView prefill={prefill} pendingRedirectTarget={pendingRedirectTarget} />;
 }
 
 function App() {
