@@ -7,7 +7,7 @@ import { ShortcutList } from "./shortcuts/ShortcutList";
 import { LanguageProvider, useLanguage } from "./i18n/LanguageContext";
 import { LanguageSwitcher } from "./i18n/LanguageSwitcher";
 import { RepoPicker } from "./repos/RepoPicker";
-import { useAuthState } from "./auth/useAuthState";
+import { useAuthState, clearAllUserCaches, type AuthState } from "./auth/useAuthState";
 import { NavDrawer } from "./nav/NavDrawer";
 import {
   consumePendingRedirect,
@@ -91,6 +91,9 @@ function HomeView({ prefill, pendingRedirectTarget }: HomeViewProps) {
         : apiStatus;
 
   const showAccountChip = auth.status === "authenticated" && !accountDeleted;
+  // アカウント削除後はローカルの認証状態を匿名扱いにマスクし、ドロワーに stale なアカウント情報
+  // （削除済みユーザー名・再度の削除ボタン）を再表示させない（削除完了の終端は AccountDeletionGuidance）。
+  const effectiveAuth: AuthState = accountDeleted ? { status: "anonymous" } : auth;
 
   return (
     <>
@@ -120,6 +123,9 @@ function HomeView({ prefill, pendingRedirectTarget }: HomeViewProps) {
           <AccountDeletionGuidance />
         ) : (
           <>
+            {/* ページ主題を示す h1 を常に 1 つだけ存在させる（見出しジャンプでの巡回・a11y）。
+                匿名時は可視ヒーロー内、認証済み時は視覚的に隠した h1（起票フローを最上部に保つため）。 */}
+            {auth.status === "authenticated" ? <h1 className="sr-only">{t.home.title}</h1> : null}
             {auth.status !== "authenticated" ? (
               <div className="hero">
                 <h1 className="hero-title">{t.home.title}</h1>
@@ -160,10 +166,12 @@ function HomeView({ prefill, pendingRedirectTarget }: HomeViewProps) {
       <NavDrawer
         open={menuOpen}
         onClose={() => setMenuOpen(false)}
-        auth={auth}
+        auth={effectiveAuth}
         onLogout={logout}
         onAccountDeleted={() => {
-          // 同一端末で別ユーザーが再ログインした際に古い一覧が残らないようにする（#101）。
+          // 別ユーザーが同一端末で再ログインした際に古い一覧が残らないよう SWR キャッシュを全消去する
+          // （#101・リポジトリ/ショートカット/ラベル。旧 AuthPanel からの回帰防止）。
+          clearAllUserCaches();
           setAccountDeleted(true);
           setMenuOpen(false);
         }}
