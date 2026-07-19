@@ -142,14 +142,16 @@ def _cmd_check(args: argparse.Namespace) -> int:
     labels = {x.strip() for x in args.labels.split(",") if x.strip()}
     changed = [x.strip() for x in args.changed_files.split(",") if x.strip()]
     ev = evaluate(args.diff_lines, changed, labels)
-    out = render_directive(ev, args.format)
-    if out:
-        print(out)
-    # 判定のみ・ブロックしない（exit 0）。呼び出し側が is_large を使う場合は --format json。
+    # --format json は機械処理用に JSON のみを出力する（テキストディレクティブと混在させない）。
     if args.format == "json":
         import json
 
         print(json.dumps(ev, ensure_ascii=False))
+        return 0
+    # 判定のみ・ブロックしない（exit 0）。
+    out = render_directive(ev, args.format)
+    if out:
+        print(out)
     return 0
 
 
@@ -179,6 +181,25 @@ def _self_test() -> int:
             if (not ev["has_discussion_record"]) != exp_mr:
                 print(f"❌ case {i}: missing_record 判定不一致（{files}）")
                 ok = False
+
+    # --format json は JSON のみを出力し、パース可能であること（PR #116 レビュー由来の回帰ガード）。
+    import json as _json
+    import subprocess as _sp
+
+    r = _sp.run(
+        [sys.executable, __file__, "check", "--diff-lines", "590",
+         "--changed-files", "src/App.tsx", "--format", "json"],
+        capture_output=True, text=True,
+    )
+    try:
+        parsed = _json.loads(r.stdout)
+        if not parsed.get("is_large_change"):
+            print("❌ --format json: is_large_change が期待と不一致")
+            ok = False
+    except Exception as e:  # noqa: BLE001
+        print(f"❌ --format json が有効な JSON を出力しない: {e!r} / stdout={r.stdout!r}")
+        ok = False
+
     print("✅ self-test PASS" if ok else "❌ self-test FAIL")
     return 0 if ok else 1
 
