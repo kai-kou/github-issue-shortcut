@@ -29,6 +29,17 @@ interface Translations {
     privacy: string;
     shortcuts: string;
   };
+  nav: {
+    openMenu: string;
+    closeMenu: string;
+    title: string;
+    account: string;
+    shortcuts: string;
+    settings: string;
+    about: string;
+    manageShortcuts: string;
+    notSignedIn: string;
+  };
   languageSwitcher: {
     label: string;
   };
@@ -156,6 +167,17 @@ export const translations = {
       terms: "利用規約",
       privacy: "プライバシーポリシー",
       shortcuts: "ショートカット管理",
+    },
+    nav: {
+      openMenu: "メニューを開く",
+      closeMenu: "メニューを閉じる",
+      title: "メニュー",
+      account: "アカウント",
+      shortcuts: "ショートカット",
+      settings: "設定",
+      about: "情報",
+      manageShortcuts: "ショートカットを作成・管理",
+      notSignedIn: "未ログイン",
     },
     languageSwitcher: {
       label: "言語",
@@ -375,6 +397,17 @@ export const translations = {
       terms: "Terms of Service",
       privacy: "Privacy Policy",
       shortcuts: "Manage shortcuts",
+    },
+    nav: {
+      openMenu: "Open menu",
+      closeMenu: "Close menu",
+      title: "Menu",
+      account: "Account",
+      shortcuts: "Shortcuts",
+      settings: "Settings",
+      about: "About",
+      manageShortcuts: "Create & manage shortcuts",
+      notSignedIn: "Not signed in",
     },
     languageSwitcher: {
       label: "Language",
