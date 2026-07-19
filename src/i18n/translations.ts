@@ -523,7 +523,7 @@ export const translations = {
       placementGuideBody:
         "Open a saved shortcut by tapping it in the list at the top of the home screen. Your top 3 shortcuts also appear in the long-press menu on the installed app icon (this can take up to a day to update). \"Copy URL\" is handy for bookmarks or pasting into other apps.",
       placementGuideNote:
-        "Adding this URL to your home screen as a standalone icon won't keep the pre-selected fields—the app always launches on its top screen (an Android limitation). Use the methods above to open it with the preset applied.",
+        "Adding this URL to your home screen as a standalone icon won't keep the pre-selected fields—the app always launches on its main screen (an Android limitation). Use the methods above to open it with the preset applied.",
       homeListTitle: "Saved shortcuts",
       homeListLoadError: "Could not load shortcuts",
     },
