@@ -149,6 +149,7 @@ interface Translations {
     openButton: string;
     placementGuideTitle: string;
     placementGuideBody: string;
+    placementGuideNote: string;
     homeListTitle: string;
     homeListLoadError: string;
   };
@@ -259,7 +260,7 @@ export const translations = {
       backHome: "ホームに戻る",
       pageTitle: "ショートカット作成ヘルパー",
       intro:
-        "リポジトリ・ラベル・タイトル雛形を選ぶだけで、起票画面を初期選択済みで開ける URL を作れます。作成した URL はホーム画面に追加してアイコンとして使えます。",
+        "リポジトリ・ラベル・タイトル雛形を選んで、起票画面を初期選択済みで開けるショートカットを保存できます。保存したショートカットはホーム画面上部の一覧に並び、タップですぐに起票を始められます。",
       loginRequired: "ショートカットを作成するには GitHub でログインしてください。",
       loadError: "読み込めませんでした",
       formTitle: "新しいショートカットを作成",
@@ -286,9 +287,11 @@ export const translations = {
       copyButton: "URL をコピー",
       copied: "コピーしました",
       openButton: "開く",
-      placementGuideTitle: "ホーム画面に追加する",
+      placementGuideTitle: "保存したショートカットの使い方",
       placementGuideBody:
-        "生成した URL を Chrome で開き、メニュー（︙）から「ホーム画面に追加」または「ショートカットを作成」を選ぶと、このショートカットをアイコンとしてホーム画面に置けます。",
+        "保存したショートカットは、ホーム画面上部の一覧からタップして開けます。よく使う上位 3 件は、インストール済みアプリのアイコンを長押ししたときのメニューにも表示されます（反映まで最大 1 日ほどかかることがあります）。「URL をコピー」は、ブラウザのブックマークや他アプリへの貼り付けに使えます。",
+      placementGuideNote:
+        "この URL を単体でホーム画面のアイコンにしても、初期選択（プリセット）は反映されません（アプリはトップ画面で起動します・Android の仕様）。プリセット付きで開くには上記の方法を使ってください。",
       homeListTitle: "保存済みショートカット",
       homeListLoadError: "ショートカットを読み込めませんでした",
     },
@@ -489,7 +492,7 @@ export const translations = {
       backHome: "Back to home",
       pageTitle: "Shortcut helper",
       intro:
-        "Pick a repository, labels, and a title template to build a URL that opens the issue form with those fields pre-selected. Add the generated URL to your home screen to use it as an icon.",
+        "Pick a repository, labels, and a title template to save a shortcut that opens the issue form with those fields pre-selected. Saved shortcuts appear in the list at the top of the home screen—tap one to start filing right away.",
       loginRequired: "Sign in with GitHub to create shortcuts.",
       loadError: "Could not load",
       formTitle: "Create a new shortcut",
@@ -516,9 +519,11 @@ export const translations = {
       copyButton: "Copy URL",
       copied: "Copied",
       openButton: "Open",
-      placementGuideTitle: "Add to your home screen",
+      placementGuideTitle: "Using your saved shortcuts",
       placementGuideBody:
-        "Open the generated URL in Chrome, then use the menu (⋮) and choose \"Add to Home screen\" or \"Create shortcut\" to place it as an icon on your home screen.",
+        "Open a saved shortcut by tapping it in the list at the top of the home screen. Your top 3 shortcuts also appear in the long-press menu on the installed app icon (this can take up to a day to update). \"Copy URL\" is handy for bookmarks or pasting into other apps.",
+      placementGuideNote:
+        "Adding this URL to your home screen as a standalone icon won't keep the pre-selected fields—the app always launches on its main screen (an Android limitation). Use the methods above to open it with the preset applied.",
       homeListTitle: "Saved shortcuts",
       homeListLoadError: "Could not load shortcuts",
     },
