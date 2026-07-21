@@ -6,18 +6,13 @@
 
 ```
 実装 → セルフレビュー（self-reviewer スキル）→ PR 作成 → Slack 通知
-  → Layer 0 機械ゲート + Layer 1 /code-review セルフレビュー（主軸・全PR必須・自己実行）
-  → 【大規模改善なら監査ゲート必須】Layer 2 議論型レビュー + 実機検証 + 新規挙動テスト + 記録
-  → 指摘対応（修正コミット + 再発防止テスト or スキップ + 返信 + Resolve）→ 全ゲート通過で自動マージ（squash）→ Slack 完了通知
+  → Layer 0 機械ゲート + Layer 1 観点別フレッシュ文脈セルフレビュー（主軸・全PR必須・自己実行）→ （条件付き Layer 2 敵対的議論）
+  → 指摘対応（修正コミット or スキップ + 返信 + Resolve）→ Layer 0+1 通過で自動マージ（squash）→ Slack 完了通知
 ```
 
-> **🔴 大規模改善の監査ゲート（SSOT: `docs/rules/large-change-audit-rules.md`）**: プロダクトコードの大きめの変更
-> （差分 ≥300 行 / `sp:5`+ / 新規 UI・機能・認証/データフロー / `type:security`・`breaking-change`）は、
-> 「既存グリーン + セルフレビュー」で完了にせず、**A. 議論型レビュー（客観・敵対的） / B. 実機検証（実結果でのみ断定・L-113） /
-> C. 新規挙動の専用テスト / D. 議論記録の要約** をマージ前に必須で通す。判定は `tools/large_change_audit.py`、
-> PR 作成時に `pre-pr-create-check.sh` が該当チェックリストを注入する。免除（docs/ルール/ハーネスのみ等）は理由 1 行。
-
-> **🔴 外部 AI レビュアー依頼は廃止（飼い主決定）**: **Copilot へのレビュー依頼（`request_copilot_review` / `--add-reviewer @copilot`）は行わない。** Gemini も 2026-07-17 廃止済み。レビューは Claude 自身が **`/code-review` スキルで必ず実行するセルフレビュー** で完結させ、外部レビュアーの応答を待たない（25 分待ちは発生しない）。SSOT: `ai-reviewer-strategy.md`。
+> **🔴 外部 AI レビュアー依頼は廃止（飼い主決定）**: **Copilot へのレビュー依頼（`request_copilot_review` / `--add-reviewer @copilot`）は行わない。** Gemini も 2026-07-17 廃止済み。レビューは Claude 自身が **観点別フレッシュ文脈レビューで必ず実行するセルフレビュー** で完結させ、外部レビュアーの応答を待たない（25 分待ちは発生しない）。SSOT: `ai-reviewer-strategy.md`。
+>
+> **🔴 `/code-review` は自前スキルで置き換え済み（2026-07-21・#275 → #280）**: 組み込み `code-review` は disable-model-invocation により自律起動不可だが、**project スコープの同名スキル `.claude/skills/code-review/`（自前実装）が bundled を置換** し（公式仕様）、対話・自律の両セッションから起動可能。**Layer 1 の標準実行手段は `Skill(code-review)`（自前スキル）** とする。
 
 **CP-6 原則**: PR 作成・マージはユーザー承認不要。「PR 作成してよいですか？」は禁止。
 
@@ -41,9 +36,10 @@ mcp__github__list_pull_requests(owner="kai-kou", repo="github-issue-shortcut", h
 python3 tools/slack_notify.py pr --pr-url "..." --pr-title "[PR作成] ..." --branch "..."
 
 # 4. セルフレビュー（FAIR 恒久構成・詳細は docs/rules/ai-reviewer-strategy.md）
-# Layer 1（主軸・全PR必須）: Claude 自身が /code-review スキルで必ずセルフレビューを実行する
-# /code-review --comment   # Claude Code チャット上のスラッシュコマンド・bash では実行しない
-#   → 指摘を PR にインライン記録。--fix で作業ツリーへ反映も可
+# Layer 1（主軸・全PR必須）: 自前 code-review スキルを Skill(code-review) で必ず実行する
+#   （.claude/skills/code-review/ が組み込みを置換・自律起動可。観点別フレッシュ文脈
+#    ファインダー並列 → 敵対的検証 → 報告。対話セッションの /code-review 手打ちも同スキルに解決）
+#   → 指摘を PR にインライン記録 or スレッド返信
 # ❌ Copilot へのレビュー依頼（request_copilot_review / --add-reviewer @copilot）は行わない
 # ❌ Gemini（/gemini review）も 2026-07-17 廃止済みのため呼び出さない
 
@@ -52,13 +48,13 @@ mcp__github__subscribe_pr_activity(owner="kai-kou", repo="github-issue-shortcut"
 Bash(run_in_background=true): bash tools/pr_review_heartbeat.sh {PR番号} 30
 ```
 
-> 外部レビュアーを待たないため、Layer 0（機械ゲート）+ Layer 1（`/code-review`）通過後は即マージしてよい。`subscribe_pr_activity` / ハートビートは CI 結果や人手コメントを拾うための任意監視。
+> 外部レビュアーを待たないため、Layer 0（機械ゲート）+ Layer 1（観点別フレッシュ文脈セルフレビュー）通過後は即マージしてよい。`subscribe_pr_activity` / ハートビートは CI 結果や人手コメントを拾うための任意監視。
 
 ## レビュー監視タイムライン
 
 | 経過時間 | アクション |
 |---------|-----------|
-| 0分 | `/code-review` セルフレビューを実行 → 指摘対応（修正コミット or スキップ + 返信 + Resolve） |
+| 0分 | 観点別フレッシュ文脈セルフレビューを実行 → 指摘対応（修正コミット or スキップ + 返信 + Resolve） |
 | Layer 0+1 通過後 | 即自動マージ（外部レビュアーの応答待ちは不要） |
 | 任意 | CI 失敗・人手コメントがあれば対応してからマージ |
 
@@ -91,7 +87,7 @@ python3 tools/check_pending_pr_reviews.py --mine --actionable-only --json
 python3 tools/check_pending_pr_reviews.py --actionable-only --json
 ```
 
-`needs_prompt`→`/code-review` セルフレビュー実行 → 指摘解消 → 即マージ / `needs_response`→指摘対応（CI 失敗・人手コメント）/ `awaiting_review`→作成セッションが実行中（待機）。外部レビュアー催促・25 分待ちは廃止。
+`needs_prompt`→観点別フレッシュ文脈セルフレビュー実行 → 指摘解消 → 即マージ / `needs_response`→指摘対応（CI 失敗・人手コメント）/ `awaiting_review`→作成セッションが実行中（待機）。外部レビュアー催促・25 分待ちは廃止。
 
 > **自スコープ優先（#47）**: 復帰時はまず `--mine` で **自セッションが作成した PR** を最優先で責任継続する。自 PR は時間ベースの `active_session` 除外を受けないため、10 分超アイドル・セッション再起動・圧縮後でも確実に回収できる（前提: PR 本文に `Session-Id: $CLAUDE_CODE_SESSION_ID` 記載）。二面モデルの詳細は `session-concurrency-rules.md` レイヤー 6。
 

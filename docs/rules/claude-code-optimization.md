@@ -1085,7 +1085,16 @@ Claude Code で不具合に遭遇
 
 ### 前提: スケジュールタスクは「インタラクティブセッション」
 
-本プロジェクトのスケジュールタスクは Claude Code の Scheduled Tasks（**インタラクティブセッション**）として動作する。そのため `/effort`・`/fast`・`/workflows`・`/code-review` などの **CLI 専用スラッシュコマンドはスケジュールタスク内ではそのまま使える**。`claude -p`（headless）の出番は、**`tools/` の Python スクリプトや CI から Claude を呼ぶ** 場合や、**構造化 JSON 出力でコスト追跡したい** 場合。
+本プロジェクトのスケジュールタスクは Claude Code の Scheduled Tasks（**インタラクティブセッション**）として動作する。そのため `/effort`・`/fast`・`/workflows` などの **CLI 専用スラッシュコマンドはスケジュールタスク内ではそのまま使える**。`claude -p`（headless）の出番は、**`tools/` の Python スクリプトや CI から Claude を呼ぶ** 場合や、**構造化 JSON 出力でコスト追跡したい** 場合。
+
+> **例外（2026-07-21・#275 → #280 で解消）**: 組み込み `code-review` スキルは `disable-model-invocation: true` が付与されており、
+> スケジュールタスク（Claude が Skill ツール経由で自律起動）からは起動できない（`Skill code-review
+> cannot be used with Skill tool due to disable-model-invocation` で失敗・v2.1.216 実機確認。公式 changelog では
+> v2.1.215 に「Claude no longer runs the `/verify` and `/code-review` skills on its own」と明記・以降撤回なし）。同じ frontmatter を
+> 持たない `security-review` 等の組み込みスキルは Skill ツール経由でも起動可（`code-review` 個別の制限）。
+> **対策（#280）**: 同名 project スキル `.claude/skills/code-review/`（自前実装・`disable-model-invocation` なし）が
+> bundled を置換する公式仕様により、`/code-review` は対話・自律の両方から再び起動可能
+> （SSOT: `docs/rules/ai-reviewer-strategy.md`）。
 
 ### このクラウド環境で動作確認済みのフラグ（2026-06-05 検証）
 
@@ -1112,7 +1121,8 @@ Claude Code で不具合に遭遇
 | `/help` | ❌ | `-p` モードで明示的に無効化（`"/help isn't available in this environment."`） |
 | `/next`・`/workflow-health-check`（重量スキル） | ⚠️ タイムアウト | 60〜90秒超でタイムアウト。`--max-turns` や処理分割が必要 |
 | プロンプトベースのタスク | ✅ | `--allowedTools` でツール制限しつつ読み取りタスクを実行 |
-| `/code-review`・`/security-review`・`/fast`・`/workflows` | ❌ | インタラクティブ専用。`-p` では不可（スケジュールタスク内では使える） |
+| `/security-review`・`/fast`・`/workflows` | ❌ | インタラクティブ専用。`-p` では不可（スケジュールタスク内では使える） |
+| `/code-review` | ❌ | `-p` では不可（組み込み・自前とも headless のスラッシュコマンド実行は不可）。**スケジュールタスク・自律セッションでは自前 `code-review` スキル（`.claude/skills/code-review/`・bundled を置換）を `Skill(code-review)` で起動できる**（#275 → #280） |
 
 ### 推奨パターン（クラウド/CI から CLI 機能を呼ぶ）
 
@@ -1158,7 +1168,8 @@ timeout 120 claude -p "List open issues as JSON" \
 | `/effort` | ✅ | ❌（`--effort` フラグで代替） | ❌（ステータスバー or スキル frontmatter） |
 | `/fast` | ✅ | ❌ | ❌ |
 | `/workflows`（ultracode） | ✅ | ❌ | ❌ |
-| `/code-review --fix`・`/security-review` | ✅ | ❌ | ❌ |
+| `/security-review` | ✅ | ❌ | ❌ |
+| `/code-review`（自前スキル置換済み・`Skill(code-review)` で自律起動可・#280。修正適用 = `--fix` 相当はスキル内 Step 3） | ✅ | ✅ | ❌ |
 | カスタムスキル（軽量） | ✅ | ✅（`/status` 等） | ✅ |
 | カスタムスキル（重量） | ✅ | ⚠️ タイムアウト | ✅ |
 | 構造化 JSON 出力 | — | ✅（`--output-format json`） | — |
@@ -1218,6 +1229,18 @@ timeout 120 claude -p "List open issues as JSON" \
 | P-12 | 秘匿情報の印字側マスク監査 | 🔄 方向転換 | ✅ **適用**（2026-06-06・PR #2700 マージ済み）。`tools/mask_secrets.py` 新設・`setup_github_variables.py` 統合・`env-vars.md` 整備。`mask_value(None)→"****"` の設計確定 |
 | P-13 | `requiredMinimumVersion`（2ライセンス版固定） | ⏸️ 見送り | ✅ **検証完了・見送り**（2026-06-06・#2672）。v2.1.163 リリースノート確認: **managed-settings（組織レベル）専用**。プロジェクト `.claude/settings.json` に記載しても無効。Claude.ai スケジュール環境は managed 設定を使えないため本プロジェクトには適用不可。代替: CLAUDE.md + lessons-core で最低バージョン要件を文書化（今後必要になれば） |
 | P-14 | `/goal` 品質ゲート自律継続 | ⏸️ 見送り | headless（`claude -p`）と設計思想が噛み合わない（公式が `-p` 推奨）。既存の Stop hook + パイプラインロジックで品質ゲートは完結済み |
+
+## バージョン差分ログ（claude-code-spec-sync 記録先）
+
+> `claude-code-spec-sync` レーン（SSOT: `docs/rules/claude-code-spec-sync.md`）が Claude Code の
+> バージョンアップへ対応した際の記録先。破壊的変更の即対応・新機能の採用/見送り判定を
+> 1 行ずつ追記する（上の `## vX.Y.Z 変更点` 形式の手動リサーチセクションを本表が引き継ぐ）。
+
+| 日付 | バージョン | 分類 | 対応内容 / 判定 | PR / Issue |
+|------|-----------|------|----------------|-----------|
+| 2026-07-21 | v2.1.216 | 破壊的変更 | 組み込み `code-review` スキルに `disable-model-invocation: true` が付与され Skill ツール経由の自律起動が不可に。自律セッションの Layer 1 実行手段を `self-reviewer` Step 2（サブエージェント観点別フレッシュ文脈レビュー）に変更（`ai-reviewer-strategy.md`/`pr-review-flow*.md`/`self-reviewer`/`pr-review-watcher` を整合修正） | #275 |
+| 2026-07-21 | v2.1.216 | 恒久対策 | 同名 project スキル `.claude/skills/code-review/`（自前実装）で bundled `code-review` を置換（公式オーバーライド仕様）。対話・自律の両セッションから `/code-review` が再び起動可能になり、Layer 1 標準実行手段を自前スキルへ再統一。`modules.yaml` pr-review モジュールに登録し派生リポジトリへも apply-base で伝播 | #280 |
+| （spec-sync レーンが対応時に追記する） | — | — | — | — |
 
 ## 禁止事項
 

@@ -12,7 +12,7 @@ Slack 通知ユーティリティ（汎用ベース）
   SLACK_MENTION_USER_ID      - approval / waiting / publish 通知でメンションするユーザーID (U...)
 
 通知タイプとチャンネルの対応:
-  SLACK_CHANNEL_ID           → session-start / session-stop / pr / pipeline / message / progress
+  SLACK_CHANNEL_ID           → session-start / session-stop / pr / pipeline / message / progress / routine-idle
   SLACK_APPROVAL_CHANNEL_ID  → approval / waiting（ユーザーメンション付き・要アクション）
   SLACK_PUBLISH_CHANNEL_ID   → publish（動画公開・SNS配信・マーケティングレビュー、@mention付き）
 
@@ -36,6 +36,7 @@ publish の --event-type 一覧:
   python3 tools/slack_notify.py approval --summary "台本v1生成完了" --branch content/V007-xxx --issue-url https://github.com/...
   python3 tools/slack_notify.py publish --event-type public --video-id V007 --title "動画タイトル" --url https://youtu.be/xxx
   python3 tools/slack_notify.py daily-progress --summary "進捗サマリー" --action-items "要対応項目"
+  python3 tools/slack_notify.py routine-idle --routine-name "改善Issue消化スプリント"
 """
 
 import argparse
@@ -111,6 +112,27 @@ def post_message(channel: str, text: str, blocks: list = None) -> dict:
 
 def _now() -> str:
     return datetime.now(timezone(timedelta(hours=9))).strftime("%Y-%m-%d %H:%M") + " JST"
+
+
+def _jst_hour() -> int:
+    """現在の JST 時（0〜23）を返す。routine-idle のスロット判定用。"""
+    return datetime.now(timezone(timedelta(hours=9))).hour
+
+
+def in_idle_window(hour: int, window_start: int, window_end: int) -> bool:
+    """hour が [window_start, window_end) の JST スロットに入るか判定する（日跨ぎ対応）。
+
+    routine-idle を「1 日 1 回のナッジ」に抑えるためのゲート。R-1 は 4 時間ごと発火するため、
+    朝枠（既定 08:00〜10:00 JST）にだけ通知することで、fresh session でも状態ファイルなしに
+    実質日次のアイドル通知を実現する（±30 分ジッターがあっても該当スロットは 1 つだけ）。
+    window_start == window_end は「常時許可」とみなす（--force 相当の全時間帯送信）。
+    """
+    if window_start == window_end:
+        return True
+    if window_start < window_end:
+        return window_start <= hour < window_end
+    # 日跨ぎ（例: 22 → 2）
+    return hour >= window_start or hour < window_end
 
 
 def _branch_to_label(branch: str) -> str:
@@ -773,13 +795,65 @@ def build_half_day_summary_blocks(summary: str, action_items: str = "", period_l
     return blocks
 
 
+def build_routine_idle_blocks(routine_name: str = "", detail: str = "") -> list:
+    """ルーティンのアイドル通知（消化対象ゼロ = バックログ空）。
+
+    ルーティン（例: R-1 改善Issue消化スプリント）が「消化すべき Issue がない」状態を検知したときに、
+    メインチャンネル（SLACK_CHANNEL_ID）へ FYI として送る。ユーザーがルーティンを維持するか停止するかを
+    判断するための情報通知であり、A-1〜A-6（不可逆リスク）ではないため @mention しない
+    （user-notification-triage.md）。
+
+    Args:
+        routine_name: ルーティン名（例: "改善Issue消化スプリント"）。表示用。
+        detail: バックログ内訳などの補足テキスト（省略可）。
+    """
+    label = routine_name or "定期ルーティン"
+    blocks = [
+        {
+            "type": "header",
+            "text": {"type": "plain_text", "text": "🌙 ルーティン: 消化対象なし（アイドル）", "emoji": True},
+        },
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": (
+                    f"*{label}* が起動しましたが、消化すべき Issue がありませんでした"
+                    "（バックログが空・オープン PR も対応不要）。\n"
+                    "ルーティンを *このまま維持* するか *停止* するかをご判断くださいにゃ。"
+                ),
+            },
+        },
+    ]
+
+    if detail:
+        detail_text = detail[:2900] + "..." if len(detail) > 2900 else detail
+        blocks.append({
+            "type": "section",
+            "text": {"type": "mrkdwn", "text": f"*バックログ状況:*\n{detail_text}"},
+        })
+
+    blocks.append({
+        "type": "context",
+        "elements": [{
+            "type": "mrkdwn",
+            "text": (
+                "ℹ️ これは要対応（@mention）ではなく判断支援の FYI です。"
+                "維持しても no-op 1 回分のコストのみ。停止・頻度変更は `docs/routines.md` の運用メモを参照。"
+                f" | 実行時刻: {_now()}"
+            ),
+        }],
+    })
+    return blocks
+
+
 # --- CLI ---
 
 def main():
     parser = argparse.ArgumentParser(description="Slack通知ユーティリティ")
     parser.add_argument(
         "type",
-        choices=["session-start", "session-stop", "pr", "waiting", "pipeline", "message", "approval", "progress", "publish", "daily-progress", "half-day-summary", "comment-approval", "chart"],
+        choices=["session-start", "session-stop", "pr", "waiting", "pipeline", "message", "approval", "progress", "publish", "daily-progress", "half-day-summary", "comment-approval", "chart", "routine-idle"],
     )
     parser.add_argument("--channel", default="")
     parser.add_argument("--branch", default="")
@@ -832,6 +906,11 @@ def main():
     # Slack の files:write スコープが無くても chat:write だけで画像を表示できる経路。
     parser.add_argument("--image-url", default="", help="chart タイプ用: 公開画像 URL（R2 公開ドメイン等）")
     parser.add_argument("--alt-text", default="グラフ", help="chart タイプ用: 画像 alt テキスト")
+    # routine-idle タイプ用
+    parser.add_argument("--routine-name", default="", help="routine-idle タイプ用: ルーティン名（表示用）")
+    parser.add_argument("--idle-window-start", type=int, default=8, choices=range(24), help="routine-idle タイプ用: 送信を許可する JST 開始時（0〜23・既定 8 = 08:00）")
+    parser.add_argument("--idle-window-end", type=int, default=10, choices=range(24), help="routine-idle タイプ用: 送信を許可する JST 終了時（0〜23・排他・既定 10 = 10:00 未満）")
+    parser.add_argument("--force", action="store_true", help="routine-idle タイプ用: JST スロット判定を無視して強制送信する")
     args = parser.parse_args()
 
     # publish タイプでは --event-type を必須とする
@@ -1055,6 +1134,21 @@ def main():
                 "type": "mrkdwn", "text": "（グラフ画像なし・テキストサマリーのみ）",
             }]})
         text = title
+
+    elif args.type == "routine-idle":
+        # スロットゲート: fresh session でも状態ファイルなしに「1 日 1 回」に抑えるため、
+        # JST の指定スロット（既定 08:00〜10:00）だけ送信する。スロット外は自己抑制（exit 0）。
+        if not args.force and not in_idle_window(_jst_hour(), args.idle_window_start, args.idle_window_end):
+            print(
+                f"INFO: routine-idle はスロット外（現在 {_jst_hour():02d}:xx JST・許可枠 "
+                f"{args.idle_window_start:02d}:00〜{args.idle_window_end:02d}:00 JST）のため送信を抑制しました。"
+                "（強制送信は --force）",
+                file=sys.stderr,
+            )
+            sys.exit(0)
+        blocks = build_routine_idle_blocks(args.routine_name, args.detail)
+        label = args.routine_name or "定期ルーティン"
+        text = f"🌙 {label}: 消化対象なし（アイドル）"
 
     result = post_message(args.channel, text, blocks)
     if result.get("ok"):

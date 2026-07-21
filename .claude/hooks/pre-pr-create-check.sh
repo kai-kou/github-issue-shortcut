@@ -170,8 +170,8 @@ fi
 
 # 6. Layer 1 セルフレビュー リマインダー（FAIR・全PR必須・非ブロッキング）
 # Layer 1（フレッシュ文脈レビュー）は PR 作成「後」に実行する必要があるためここではブロックしない。
-# クラウドセッションではビルトインの /code-review スラッシュコマンドを headless で起動できないため、
-# フレッシュ文脈サブエージェント（事前文脈なしで PR 差分を敵対的にレビュー）で Layer 1 を代替する。
+# 組み込み /code-review は disable-model-invocation で自律起動不可のため、同名 project スキル
+# .claude/skills/code-review/（自前実装・bundled を置換・自律起動可）を Skill(code-review) で実行する。
 # 詳細は docs/rules/ai-reviewer-strategy.md。
 #
 # 出力チャネル（Issue #211・#202 同型修正）:
@@ -179,33 +179,11 @@ fi
 #   内容（Layer 1 実行指示 + self_review_check の Warning）は PreToolUse が公式サポートする
 #   hookSpecificOutput.additionalContext で注入する（ツール結果の隣に挿入される）。
 #   exit 0（Warning のみ）のとき check_output を破棄していた旧実装の配管バグもここで解消。
-_ctx="[pre-pr-create-check] Layer 0 機械ゲート通過。PR 作成後に Layer 1 セルフレビュー（FAIR・全PR必須）を必ず実行してください。対話セッションでは /code-review --comment、クラウドセッションではフレッシュ文脈サブエージェントで PR 差分をレビュー。これはブロックではありません（docs/rules/ai-reviewer-strategy.md）。"
+_ctx="[pre-pr-create-check] Layer 0 機械ゲート通過。PR 作成後に Layer 1 セルフレビュー（FAIR・全PR必須）を必ず実行してください。自前 code-review スキル（.claude/skills/code-review/・組み込みを置換・自律起動可）を Skill(code-review) で起動して PR 差分をレビュー。これはブロックではありません（docs/rules/ai-reviewer-strategy.md）。"
 if printf '%s' "$check_output" | grep -q 'Warning'; then
   _ctx="${_ctx}
 セルフレビュー Warning（非ブロック・対応要否を判断すること）:
 ${check_output}"
-fi
-
-# 7. 大規模改善の監査ゲート（docs/rules/large-change-audit-rules.md・非ブロッキング）
-# プロダクトコードの大きめの変更では、議論型レビュー(A)+実機検証(B)+新規挙動テスト(C)+記録(D)を
-# 必須にする。差分から機械判定し、該当時にチェックリストと観測した不足を additionalContext へ注入する。
-if command -v python3 >/dev/null 2>&1 && [ -f "$repo_root/tools/large_change_audit.py" ]; then
-  base_ref="origin/main"
-  git rev-parse --verify -q "$base_ref" >/dev/null 2>&1 || base_ref="main"
-  if git rev-parse --verify -q "$base_ref" >/dev/null 2>&1; then
-    _dl=$(git diff --numstat "$base_ref...HEAD" 2>/dev/null | awk '{a+=$1; d+=$2} END{print a+d+0}')
-    _cf=$(git diff --name-only "$base_ref...HEAD" 2>/dev/null | paste -sd, -)
-    if command -v timeout >/dev/null 2>&1; then
-      _audit=$(timeout 30 python3 "$repo_root/tools/large_change_audit.py" check --diff-lines "${_dl:-0}" --changed-files "$_cf" --format hook 2>/dev/null || true)
-    else
-      _audit=$(python3 "$repo_root/tools/large_change_audit.py" check --diff-lines "${_dl:-0}" --changed-files "$_cf" --format hook 2>/dev/null || true)
-    fi
-    if [ -n "$_audit" ]; then
-      _ctx="${_ctx}
-
-${_audit}"
-    fi
-  fi
 fi
 jq -n --arg ctx "$_ctx" '{
   "systemMessage": "[pre-pr-create-check] Layer 0 機械ゲート通過（Layer 1 リマインダーと Warning は Claude のコンテキストに注入済み）。",

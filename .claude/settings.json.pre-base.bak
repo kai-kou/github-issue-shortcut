@@ -64,7 +64,11 @@
       "mcp__github__search_issues",
       "mcp__github__subscribe_pr_activity",
       "mcp__github__unsubscribe_pr_activity",
-      "mcp__github__update_pull_request"
+      "mcp__github__update_pull_request",
+      "mcp__Cloudflare_API__execute",
+      "mcp__Cloudflare_API__search",
+      "mcp__Cloudflare_Developer_Platform__d1_database_query",
+      "mcp__Cloudflare_Developer_Platform__d1_databases_list"
     ],
     "deny": [
       "Read(.env)",
@@ -79,6 +83,14 @@
       "Read(**/*service-account*.json)",
       "Write(.claude/settings.local.json)",
       "Edit(.claude/settings.local.json)"
+    ]
+  },
+  "autoMode": {
+    "allow": [
+      "$defaults",
+      "`git push --force-with-lease` targeting a working branch (claude/*, feat/*, fix/*, docs/*): this project restarts already-merged working branches each sprint, which requires a force-with-lease push over the merged history. Direct pushes to main remain blocked by the pre-push hook (A-1), so this is safe.",
+      "`mcp__Cloudflare_API__execute` / `mcp__Cloudflare_API__search` and `mcp__Cloudflare_Developer_Platform__d1_database_query` / `d1_databases_list`: Claude autonomously manages this project's own Cloudflare Worker and D1 (Secrets, vars, D1 schema/migrations/queries, deploy verification). Approved by the project owner for hands-off operation.",
+      "`mcp__Cloudflare_API__execute` calling `PATCH /accounts/{account_id}/builds/workers/{script_tag}` to change this project's Workers Builds `production_settings` (e.g. `deploy_command`, `build_command`): explicitly approved by the project owner (2026-07-17, Issue #55 — adding `wrangler d1 migrations apply DB --remote` to the deploy command) for hands-off operation on this repo's own Worker build config. Does not extend to other accounts/projects."
     ]
   },
   "sandbox": {
