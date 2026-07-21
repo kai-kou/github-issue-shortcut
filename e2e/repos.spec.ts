@@ -54,4 +54,26 @@ test.describe("リポジトリ検索/選択（モック GitHub・モバイルエ
     const firstRepoButton = page.getByRole("listitem").first().getByRole("button");
     await expect(firstRepoButton).toHaveText("kai-kou/beta");
   });
+
+  // #119: 起動時の空白（タイトル + API ステータスだけの 1〜2 秒）を認証状態の SWR キャッシュで解消する。
+  // /api/me を大きく遅延させても、キャッシュ由来で起票 UI が API 応答前に即時表示されることを検証する
+  // （キャッシュが無ければ auth.status は "checking" のまま遅延応答（3.5s）まで空白になり、この assert は失敗する）。
+  test("再訪時は認証 API 応答前でも SWR キャッシュから起票 UI が即時表示される", async ({ page }) => {
+    // 初回ログインで認証状態・リポジトリ一覧のキャッシュを温める
+    await page.goto("/");
+    await page.getByRole("link", { name: /GitHub でログイン|Sign in with GitHub/ }).click();
+    await expect(page.getByRole("button", { name: "kai-kou/alpha" })).toBeVisible();
+
+    // /api/me を 3.5 秒遅延させて再訪
+    await page.route("**/api/me", async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 3500));
+      await route.continue();
+    });
+    await page.goto("/");
+
+    // 遅延応答（3.5s）を待たずに、キャッシュ由来で検索 UI / リポジトリが即時表示される（2s 以内）
+    await expect(page.getByRole("button", { name: "kai-kou/alpha" })).toBeVisible({ timeout: 2000 });
+
+    await page.unroute("**/api/me");
+  });
 });
