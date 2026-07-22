@@ -214,4 +214,4 @@ gh api --method PATCH repos/kai-kou/github-issue-shortcut/milestones/MILESTONE_N
 - **完了済みタスクの移行**: 完了済みも Issue 化して即 close（トレーサビリティ確保）
 - **Projects V2 は open/close と連動**: built-in automation（close → Done）を活用
 - **`priority:*` / `sp:*` は PO ロール権限**（`.claude/agents/owner.md`）。`status:*` は CP-4 論理ロックのため PO でも操作しない
-- **private リポジトリの制限**: Free プランは Rulesets 不可。レビューは Claude 自身の `/code-review` セルフレビュー（Layer 1・必須）で完結し、外部 AI レビュアー（Copilot / Gemini）への依頼はしない（SSOT: `docs/rules/ai-reviewer-strategy.md`）
+- **private リポジトリの制限**: Free プランは Rulesets 不可。レビューは Claude 自身の Layer 1 セルフレビュー（必須・自前 `code-review` スキル。組み込みを同名 project スキルで置換済み・自律起動可・#280）で完結し、外部 AI レビュアー（Copilot / Gemini）への依頼はしない（SSOT: `docs/rules/ai-reviewer-strategy.md`）

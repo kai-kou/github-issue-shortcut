@@ -169,7 +169,8 @@ GitHub Issue Shortcut
 | `pr-review-watcher` | PR の AI レビュー監視・指摘対応・自動マージ |
 | `discussion-review` | 議論型レビュー（敵対的相互レビュー）のネイティブ実行（name 付き Agent + SendMessage + ホワイトボード）。「専門チームを組成して」の既定経路 |
 | `design-review` | フロントエンド変更のデザイン準拠レビュー（静的チェック + E2E + チェックリスト目視の 3 層）。SSOT は `docs/design/design-guidelines.md` |
-| `self-reviewer` | PR 作成前のセルフレビュー |
+| `code-review` | 自前コードレビュー（組み込み `/code-review` を同名 project スキルで置換。disable-model-invocation で自律起動不可になった bundled の代替として、対話・自律の両方から起動可能な Layer 1 標準実行手段） |
+| `self-reviewer` | PR 作成前のセルフレビュー（Layer 1 本体は `code-review` スキルを呼び出す） |
 | `project-manager` | Issue / ラベル / マイルストーン管理 |
 | `project-sync` | リポジトリ衛生（Stale Issue・Orphan PR） |
 | `checkpoint` | 長時間タスクのチェックポイント保存 |
@@ -178,6 +179,7 @@ GitHub Issue Shortcut
 | `improvement-groomer` | 溜まった改善 Issue（type:improvement）の棚卸し（集計・重複統合・Epic 化） |
 | `waiting-user-handler` | waiting-user Issue のトリアージ |
 | `workflow-health-check` | ワークフロー健全性監査 |
+| `claude-code-spec-sync` | Claude Code 本体のバージョンアップ検知・内部資産（rules/skills/hooks/settings）の仕様追随（破壊的変更は即対応・新機能は検証フェーズ経由） |
 | `skill-creator` | 新規スキル作成・既存スキル最適化 |
 
 > **🔴 ディープリサーチのルーティング（SSOT・常駐）**: ユーザーが「ディープリサーチして」「deep research して」等と
