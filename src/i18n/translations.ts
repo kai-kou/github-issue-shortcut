@@ -129,7 +129,7 @@ interface Translations {
     repoLabel: string;
     repoNoneOption: string;
     labelsLabel: string;
-    labelsPlaceholder: string;
+    labelsSelectRepoFirst: string;
     titleLabel: string;
     titlePlaceholder: string;
     saveButton: string;
@@ -268,8 +268,8 @@ export const translations = {
       namePlaceholder: "日報",
       repoLabel: "リポジトリ（任意）",
       repoNoneOption: "（指定しない）",
-      labelsLabel: "ラベル（任意・カンマ区切り）",
-      labelsPlaceholder: "bug,enhancement",
+      labelsLabel: "ラベル（任意）",
+      labelsSelectRepoFirst: "リポジトリを選択するとラベルを選べます。",
       titleLabel: "タイトル雛形（任意）",
       titlePlaceholder: "バグ報告: ",
       saveButton: "保存",
@@ -500,8 +500,8 @@ export const translations = {
       namePlaceholder: "Daily note",
       repoLabel: "Repository (optional)",
       repoNoneOption: "(none)",
-      labelsLabel: "Labels (optional, comma-separated)",
-      labelsPlaceholder: "bug,enhancement",
+      labelsLabel: "Labels (optional)",
+      labelsSelectRepoFirst: "Select a repository to choose labels.",
       titleLabel: "Title template (optional)",
       titlePlaceholder: "Bug report: ",
       saveButton: "Save",
