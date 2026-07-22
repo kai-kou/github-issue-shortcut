@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLanguage } from "../i18n/LanguageContext";
-import { parseCommaList, savePendingRedirect } from "../issues/prefillParams";
+import { savePendingRedirect } from "../issues/prefillParams";
+import { LabelPicker } from "../issues/LabelPicker";
+import { useRepoLabels } from "../issues/useRepoLabels";
 import { buildLaunchUrl, type ShortcutPreset } from "./launchUrl";
 
-type Repo = { id: number; fullName: string };
+type Repo = { id: number; fullName: string; pushAccess: boolean };
 type Shortcut = ShortcutPreset & { id: string };
 
 type AuthState = "checking" | "anonymous" | "authenticated" | "error";
@@ -29,15 +31,23 @@ const SHORTCUT_NAME_MAX_LENGTH = 12;
 function ShortcutForm({ editing, onSaved, onCancel, repos }: ShortcutFormProps) {
   const { t } = useLanguage();
   const [repo, setRepo] = useState(editing?.repo ?? "");
-  const [labelsText, setLabelsText] = useState(editing?.labels.join(",") ?? "");
+  const [labels, setLabels] = useState<string[]>(editing?.labels ?? []);
   const [title, setTitle] = useState(editing?.title ?? "");
   const [name, setName] = useState(editing?.name ?? "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<"validation" | "save" | null>(null);
 
+  // 選択中リポジトリの push 権限（RepoPicker と同じ判定）。ラベル取得の可否と
+  // LabelPicker の警告表示に使う（リポジトリ未選択なら false = 取得しない）。
+  const selectedPushAccess = useMemo(
+    () => (repo ? repos.find((r) => r.fullName === repo)?.pushAccess ?? false : false),
+    [repo, repos],
+  );
+  // Issue フォームと同じ取得フック・SWR キャッシュ・push 権限判定を共有する（B3-2・#102）。
+  const labelsState = useRepoLabels(repo, selectedPushAccess);
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const labels = parseCommaList(labelsText);
     const trimmedTitle = title.trim();
     if (!repo && labels.length === 0 && !trimmedTitle) {
       setError("validation");
@@ -88,15 +98,21 @@ function ShortcutForm({ editing, onSaved, onCancel, repos }: ShortcutFormProps) 
           ))}
         </select>
       </label>
-      <label>
-        <span className="field-label">{t.shortcuts.labelsLabel}</span>
-        <input
-          type="text"
-          value={labelsText}
-          onChange={(e) => setLabelsText(e.target.value)}
-          placeholder={t.shortcuts.labelsPlaceholder}
+      {repo ? (
+        <LabelPicker
+          key={repo}
+          pushAccess={selectedPushAccess}
+          selected={labels}
+          onChange={setLabels}
+          initiallyOpen={labels.length > 0}
+          labelsState={labelsState}
         />
-      </label>
+      ) : (
+        <div>
+          <span className="field-label">{t.shortcuts.labelsLabel}</span>
+          <p className="status-note">{t.shortcuts.labelsSelectRepoFirst}</p>
+        </div>
+      )}
       <label>
         <span className="field-label">{t.shortcuts.titleLabel}</span>
         <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder={t.shortcuts.titlePlaceholder} />
