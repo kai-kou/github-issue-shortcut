@@ -48,6 +48,33 @@ Android エミュレータを CI で動かす方法（`reactivecircus/android-em
 native アプリ instrumentation 向けで PWA/WebAPK の standalone OAuth 検証は重く前例が薄いため、
 費用対効果で採用しない（実機手動に委ねる）。
 
+## KPI 外形計測（#35・自動計測できる下限値の監視）
+
+NFR-1（サブ秒起動）・NFR-2（起票 10 秒 / タイトルのみ 5 秒）の KPI について、**アプリが理論上出せる下限値** を `e2e/kpi.spec.ts` で外形計測する。上記ログイン E2E と同じ基盤（Pixel 7 エミュレーション + モック GitHub + `wrangler dev`）に載るため追加インフラは不要。
+
+- 実行: `npm run e2e -- kpi.spec.ts`（結果を `test-results/kpi-metrics.json` に書き出す）。
+- 計測する指標（すべて機械的に取得可能）:
+  - **起票フロー処理時間**: 起動（`goto`）→ タイトル入力可能まで / 送信 → 起票完了表示まで（クライアント処理 + API 往復）/ 合計。
+  - **Navigation Timing**: TTFB・DOMContentLoaded・load。
+  - **Web Vitals**: FCP・LCP（`PerformanceObserver` を `addInitScript` で仕込んで取得）。
+- シナリオ: ① ショートカット起動（`/new?repo=...` でリポジトリ初期選択済み）② 通常起動（リポジトリ選択タップ込み）。
+- 参考実測（コンテナ・best-case）: 合計 0.6〜0.7 秒 / FCP 76〜168ms / LCP 324〜336ms。NFR-2 の 10 秒目標に対し桁違いに余裕がある（アプリ側の処理は十分速い）。
+
+### ⚠️ この計測が意味すること / しないこと
+
+- ✅ **意味する**: 機能ゲート（起票フロー完走）+ クライアント処理 + API 往復 + レンダリング指標の **回帰監視**。「アプリ処理が遅くなった」ことは検知できる。
+- ❌ **意味しない**: 実機体感の代替。この数値は高性能コンテナ・モック GitHub のローカル即応・自動打鍵（人間のタイピングなし）で測った **best-case** であり、以下は含まない:
+  - WebAPK / standalone のホーム画面 **コールドスタート**（Service Worker 初期化込み）
+  - 実機タップ → ソフトキーボード表示の体感遅延
+  - 実機 CPU / thermal throttling
+  - 実 GitHub API の RTT（モックはローカル即応）
+
+→ したがって `kpi.spec.ts` の参考閾値（10s）は **下限値の安全網** であり、NFR-2 の実機 10 秒基準そのものの合否判定ではない。**実機体感の最終確認は「どうしても実機手動が残る範囲」（上節）に委ねる**。
+
+### 将来拡張（claude -p headless での無人計測）
+
+CI で無人実行する場合は `claude -p`（headless）に Playwright / Chrome DevTools MCP を `.mcp.json` で付与し、`--permission-mode dontAsk --output-format json` で回せる。Chrome DevTools MCP を併用すると LCP / INP / CLS を CDP トレースで自動取得でき、CDP throttle で低速回線・CPU スロットリング下の計測も追加できる（実機の絶対値は再現しないが、条件を揃えた回帰比較には有効）。src 側の計測イベント（FR-26・M2）を実装すれば、外形計測に加えて実ユーザーの分布計測も可能になる。
+
 ## 本番スモークテスト（リリースゲート・#56）
 
 デプロイ後、本番エンドポイントの実経路を検証する。E2E が見逃す本番の設定・プロビジョニング不良を捕捉する層。
