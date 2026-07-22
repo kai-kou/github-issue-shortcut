@@ -10,6 +10,9 @@ const TOKEN_KEY = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
 export default defineConfig({
   testDir: "./e2e",
   testMatch: "**/*.spec.ts",
+  // 計測ハーネス（#124）はスロットリングで遅く、所要時間の絶対値が環境速度差でぶれるため、
+  // 通常スイート（npm run e2e）からは除外する。npm run e2e:measure（E2E_MEASURE=1）でのみ走らせる。
+  testIgnore: process.env.E2E_MEASURE ? [] : ["**/measure.spec.ts"],
   fullyParallel: false,
   workers: 1,
   timeout: 30_000,

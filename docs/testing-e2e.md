@@ -48,6 +48,37 @@ Android エミュレータを CI で動かす方法（`reactivecircus/android-em
 native アプリ instrumentation 向けで PWA/WebAPK の standalone OAuth 検証は重く前例が薄いため、
 費用対効果で採用しない（実機手動に委ねる）。
 
+## 起票フロー速度・タップ数の CLI 自動計測（#124）
+
+#35（実機 E2E 検証・KPI 計測）の KPI のうち、**PC 端末の CLI ブラウザ操作で代替できる部分**を Playwright + CDP スロットリングで自動計測する層。実機必須の項目（後述）は #35 に残す。
+
+- 実行: `npm run e2e:measure`（ビルド後に計測 spec だけを走らせる）。ローカルはプリインストール Chromium を `E2E_CHROMIUM_PATH` で指定する。
+- 対象 spec: `e2e/measure.spec.ts`（ヘルパーは `e2e/helpers/measure.ts`）。通常スイート（`npm run e2e`）からは `playwright.config.ts` の `testIgnore` で除外し、`E2E_MEASURE=1` のときだけ含める。
+- スロットリング: CDP で **CPU 4x slowdown + Slow 4G**（download 1.6 Mbps / upload 750 kbps / RTT 150ms）を適用し、実機ミドルレンジ Android の下限を近似する。
+- 出力: `test-results/measure-report.json`（gitignore 済み）に所要時間・タップ数を記録し、CLI にも表形式で出す。
+
+### 何をアサートし、何を実機に委ねるか
+
+| 計測項目 | 扱い | 理由 |
+|---------|------|------|
+| **タップ数**（ショートカット起動 → 送信が 3 タップ以内・KPI） | **ハードアサート** | 操作数は決定論的で環境に依存しない |
+| **起票所要時間**（標準フロー 10 秒 / プリフィル 5 秒以内・KPI） | **レポート出力のみ**（回帰検出の基準値。極端な劣化のみ緩くガード） | スロットリング下の絶対時間は CI マシン速度差で変動し、厳格アサートすると flaky 化する |
+| PWA installable 要件・perf スコア | 別層で担保 | `lighthouserc.json`（Lighthouse CI・mobile）が継続検証する |
+
+### CLI で計測できる範囲 / 実機必須で残る範囲
+
+| 項目 | PC/CLI | 手段 |
+|------|--------|------|
+| 起票 E2E フロー（選択 → 入力 → 送信 → 反映） | 🟢 代替可 | モック GitHub 相手の Playwright |
+| 起票所要時間の**相対計測・回帰検出** | 🟡 可（絶対値は近似） | CDP スロットリング + wall-clock 区間計測 |
+| ショートカット起動の**タップ数** | 🟢 機械的に保証 | 操作アクション数のカウント |
+| WebAPK 実インストール・長押し shortcuts 表示 | 🔴 不可 | 実機のみ（#11） |
+| コールドローンチのキーボード自動表示 | 🔴 不可 | 実機のみ（#15） |
+| standalone での OAuth（CCT 経由）復帰 | 🔴 不可 | 実 WebAPK の CustomTabs 挙動 |
+| 実機 GPU/CPU の**絶対体感速度**・5 分セットアップの人間体感 | 🔴 不可 | 実機 + 人間操作（#35 に残す） |
+
+> この計測層は #35 を置き換えるものではなく、**実機確認の前に KPI 割れ・回帰を CLI で先に捕捉**して実機作業を最小化するためのもの。絶対 KPI の最終合否判定は実機に残る。
+
 ## 本番スモークテスト（リリースゲート・#56）
 
 デプロイ後、本番エンドポイントの実経路を検証する。E2E が見逃す本番の設定・プロビジョニング不良を捕捉する層。

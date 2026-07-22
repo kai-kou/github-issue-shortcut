@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "test": "vitest run",
     "e2e": "npm run build && playwright test",
+    "e2e:measure": "npm run build && E2E_MEASURE=1 playwright test measure.spec.ts",
     "cf-typegen": "wrangler types",
     "deploy": "npm run build && wrangler deploy",
     "size": "size-limit"
