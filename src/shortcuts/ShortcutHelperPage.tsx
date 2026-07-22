@@ -89,7 +89,18 @@ function ShortcutForm({ editing, onSaved, onCancel, repos }: ShortcutFormProps) 
       </label>
       <label>
         <span className="field-label">{t.shortcuts.repoLabel}</span>
-        <select value={repo} onChange={(e) => setRepo(e.target.value)}>
+        <select
+          value={repo}
+          onChange={(e) => {
+            const next = e.target.value;
+            // リポジトリを切り替えたら、前リポジトリで選んだラベルは破棄する。別リポジトリには
+            // 存在しない可能性があり、キャッシュ由来 stale 表示中は LabelPicker の絞り込みも走らない
+            // ため、残すと存在しないラベル付きのショートカットが作られてしまう（起票時に silently drop）。
+            // 編集開始時の初期ラベルは onChange を通らないので保持される。
+            if (next !== repo) setLabels([]);
+            setRepo(next);
+          }}
+        >
           <option value="">{t.shortcuts.repoNoneOption}</option>
           {repos.map((r) => (
             <option key={r.id} value={r.fullName}>
