@@ -54,9 +54,9 @@ NFR-1（サブ秒起動）・NFR-2（起票 10 秒 / タイトルのみ 5 秒）
 
 - 実行: `npm run e2e -- kpi.spec.ts`（結果を `test-results/kpi-metrics.json` に書き出す）。
 - 計測する指標（すべて機械的に取得可能）:
-  - **起票フロー処理時間**: 起動（`goto`）→ タイトル入力可能まで / 送信 → 起票完了表示まで（クライアント処理 + API 往復）/ 合計。
+  - **起票フロー処理時間**: 起動（`goto`）→ タイトル入力可能まで / タイトル入力 / 送信 → 起票完了表示まで（クライアント処理 + API 往復）/ 合計。
   - **Navigation Timing**: TTFB・DOMContentLoaded・load。
-  - **Web Vitals**: FCP・LCP（`PerformanceObserver` を `addInitScript` で仕込んで取得）。
+  - **Web Vitals**: FCP（`paint` エントリから取得）・LCP（`PerformanceObserver` を `addInitScript` で仕込んで取得）。
 - シナリオ: ① ショートカット起動（`/new?repo=...` でリポジトリ初期選択済み）② 通常起動（リポジトリ選択タップ込み）。
 - 参考実測（コンテナ・best-case）: 合計 0.6〜0.7 秒 / FCP 76〜168ms / LCP 324〜336ms。NFR-2 の 10 秒目標に対し桁違いに余裕がある（アプリ側の処理は十分速い）。
 

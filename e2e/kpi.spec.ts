@@ -1,5 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import { mkdirSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
 
 const MOCK_GITHUB_URL = "http://localhost:8788";
 const RESULT_PATH = "test-results/kpi-metrics.json";
@@ -86,7 +87,7 @@ test.describe("KPI 外形計測 PoC（モック GitHub・Pixel 7 エミュレー
   });
 
   test.afterAll(() => {
-    mkdirSync("test-results", { recursive: true });
+    mkdirSync(dirname(RESULT_PATH), { recursive: true });
     writeFileSync(RESULT_PATH, JSON.stringify(collected, null, 2));
     // reporter=list の末尾でまとめて確認できるよう表形式でも出す。
     // eslint-disable-next-line no-console
@@ -122,10 +123,12 @@ test.describe("KPI 外形計測 PoC（モック GitHub・Pixel 7 エミュレー
       totalMs: t1 - t0,
       nav,
     };
+    // 参考閾値 assert を push より前に置く。CI リトライ（retries:2）で閾値超過により失敗した
+    // attempt が、ラン共有の collected（module スコープ）へ重複行を残さないようにするため。
+    expect(m.totalMs, "起動→起票完了の外形時間（参考閾値 10s・NFR-2 の下限値監視）").toBeLessThan(10_000);
     collected.push(m);
     // eslint-disable-next-line no-console
     console.log("[KPI]", JSON.stringify(m));
-    expect(m.totalMs, "起動→起票完了の外形時間（参考閾値 10s・NFR-2 の下限値監視）").toBeLessThan(10_000);
   });
 
   test("通常起動（リポ選択タップ込み） → タイトルのみ起票の外形計測", async ({ page }) => {
@@ -156,9 +159,11 @@ test.describe("KPI 外形計測 PoC（モック GitHub・Pixel 7 エミュレー
       totalMs: t1 - t0,
       nav,
     };
+    // 参考閾値 assert を push より前に置く。CI リトライ（retries:2）で閾値超過により失敗した
+    // attempt が、ラン共有の collected（module スコープ）へ重複行を残さないようにするため。
+    expect(m.totalMs, "起動→起票完了の外形時間（参考閾値 10s・NFR-2 の下限値監視）").toBeLessThan(10_000);
     collected.push(m);
     // eslint-disable-next-line no-console
     console.log("[KPI]", JSON.stringify(m));
-    expect(m.totalMs, "起動→起票完了の外形時間（参考閾値 10s・NFR-2 の下限値監視）").toBeLessThan(10_000);
   });
 });
