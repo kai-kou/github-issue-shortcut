@@ -5,7 +5,8 @@ audio/image/video パイプラインの Step 8（PR 作成前）で実行し、
 差分が VOICEVOX 自動生成データのみ（content/scripts/V*_timed.json 等）の場合は
 重い Layer 2（敵対的多観点議論）をスキップして PR 所要時間を削減する。
 外部 AI レビュアー（Copilot / Gemini）への依頼は廃止済みで、レビューは常に Claude 自身の
-/code-review セルフレビュー（Layer 1・全 PR 必須）で完結する（SSOT: docs/rules/ai-reviewer-strategy.md）。
+Layer 1 セルフレビュー（自前 code-review スキル・全 PR 必須）で完結する
+（組み込み /code-review は同名 project スキルで置換済み・#275 → #280。SSOT: docs/rules/ai-reviewer-strategy.md）。
 
 判定ロジック:
 - コード拡張子（.py/.ts/.tsx/.js/.jsx/.sh/.yaml/.yml/.toml/.md）を含むか
@@ -34,8 +35,8 @@ audio/image/video パイプラインの Step 8（PR 作成前）で実行し、
     }
 
 review_strategy（外部レビュアー依頼は廃止。Claude セルフレビュー前提）:
-- "claude_only": Layer 0 機械ゲート + Layer 1 /code-review セルフレビューのみ（Layer 2 スキップ）
-- "full": Layer 0 + Layer 1 /code-review + 条件付き Layer 2（敵対的多観点議論）を起動
+- "claude_only": Layer 0 機械ゲート + Layer 1 観点別フレッシュ文脈セルフレビューのみ（Layer 2 スキップ）
+- "full": Layer 0 + Layer 1 観点別フレッシュ文脈セルフレビュー + 条件付き Layer 2（敵対的多観点議論）を起動
 
 high_risk（#53・Layer 3 外部独立レビューの任意手動起動を検討する判断材料）:
 - 認証/秘密情報関連パス・公開API/スキーマ/DB関連パス・フック/CI/権限境界の変更・

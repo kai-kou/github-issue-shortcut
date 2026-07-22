@@ -75,6 +75,7 @@ modules:
     skills:
       - pr-review-watcher
       - self-reviewer
+      - code-review   # 組み込み /code-review の置き換え（同名 project スキルが bundled をオーバーライド・自律起動可）
     tools:
       - check_pending_pr_reviews.py
       - poll_pr_reviews.sh
@@ -162,6 +163,17 @@ modules:
       - discussion_specs/skill_inventory_audit.json
       - discussion_specs/sp_estimation_redesign.json
       - discussion_specs/workflow_base_audit.json
+
+  # ── Claude Code 仕様追随（任意）────────────────────────
+  claude-code-spec-sync:
+    enabled: true
+    description: "Claude Code 本体のバージョンアップ検知と内部資産（rules/skills/hooks/settings）の仕様追随（設定: config/claude_code_spec_sync.yaml・state: config/claude_code_spec_state.json）"
+    rules:
+      - claude-code-spec-sync.md
+    skills:
+      - claude-code-spec-sync
+    tools:
+      - check_claude_code_updates.py
 
   # ── ネイティブ優先フォールバック（CLI/Web リリースギャップ対応）──
   native-fallback:

@@ -210,6 +210,7 @@ python3 tools/slack_notify.py publish \
 | `approval` | **PR作成前の承認依頼**（ユーザーメンション付き） | **`SLACK_APPROVAL_CHANNEL_ID`** | スキル内で明示呼び出し（必須ステップ） |
 | `waiting` | **ユーザーアクション待ち**（メンション付き） | **`SLACK_APPROVAL_CHANNEL_ID`** | スキル内で明示呼び出し |
 | `publish` | **動画公開・SNS配信・マーケティングレビュー**（メンション付き） | **`SLACK_PUBLISH_CHANNEL_ID`** | スキル内で明示呼び出し（`--event-type` 必須） |
+| `routine-idle` | **ルーティンのアイドル通知**（消化対象ゼロ＝バックログ空。維持/停止の判断支援 FYI・@mention なし） | `SLACK_CHANNEL_ID` | ルーティンが完全 no-op 時に呼び出し（`docs/routines.md` R-1 手順 8）。JST スロット（既定 08:00〜10:00）で 1 日 1 回に自己抑制・`--force` でバイパス |
 
 > `SLACK_APPROVAL_CHANNEL_ID` が未設定の場合、`approval` / `waiting` も `SLACK_CHANNEL_ID` に送信される（後方互換）。
 > `SLACK_PUBLISH_CHANNEL_ID` が未設定の場合、`publish` は `SLACK_APPROVAL_CHANNEL_ID` → `SLACK_CHANNEL_ID` にフォールバック。
