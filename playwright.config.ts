@@ -49,7 +49,9 @@ export default defineConfig({
         // 起票レート制限（10件/分・worker/index.ts ISSUE_RATE_LIMIT_PER_WINDOW）のままだと
         // スイート後半のテストが不正利用と誤判定され 429 で落ちる（テスト分離の問題）。
         // E2E 実行時だけ上限を引き上げる（本番既定値は変更しない）。
-        "--var ISSUE_RATE_LIMIT_PER_WINDOW_OVERRIDE:1000",
+        "--var ISSUE_RATE_LIMIT_PER_WINDOW_OVERRIDE:1000 " +
+        // ショートカットプリセットのレート制限（20件/分・#87）も同じ理由で E2E 時だけ引き上げる。
+        "--var SHORTCUT_RATE_LIMIT_PER_WINDOW_OVERRIDE:1000",
       url: "http://localhost:8789/api/health",
       reuseExistingServer: !process.env.CI,
       timeout: 90_000,

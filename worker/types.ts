@@ -20,4 +20,9 @@ export interface Env {
    * playwright.config.ts の wrangler dev 起動時のみ大きな値を設定する。
    */
   ISSUE_RATE_LIMIT_PER_WINDOW_OVERRIDE?: string;
+  /**
+   * ショートカットプリセット作成/更新のアプリ側レート制限（1分あたりの上限）を上書きする
+   * （E2E 専用・#87）。未設定なら本番既定値（20）のまま。
+   */
+  SHORTCUT_RATE_LIMIT_PER_WINDOW_OVERRIDE?: string;
 }

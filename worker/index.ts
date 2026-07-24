@@ -86,6 +86,20 @@ function resolveIssueRateLimitPerWindow(override: string | undefined): number {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : ISSUE_RATE_LIMIT_PER_WINDOW;
 }
 
+/**
+ * ショートカットプリセット作成/更新のアプリ側レート制限（不正利用対策・PR-4・NFR-14・#87）。
+ * `POST/PUT /api/shortcuts` には従来レート制限がなく、連打で D1 `shortcuts` テーブルに無制限に
+ * 書き込めた。プリセット作成は起票ほど頻繁な操作ではないため、起票の上限（10/分）より緩めにする。
+ * 起票のレート制限（rate_limits）とは別テーブル（shortcut_rate_limits）で予算を分離する。
+ */
+const SHORTCUT_RATE_LIMIT_WINDOW_SECONDS = 60;
+const SHORTCUT_RATE_LIMIT_PER_WINDOW = 20;
+
+function resolveShortcutRateLimitPerWindow(override: string | undefined): number {
+  const parsed = override ? Number(override) : NaN;
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : SHORTCUT_RATE_LIMIT_PER_WINDOW;
+}
+
 const PREAUTH_COOKIE = "__Host-preauth";
 const SESSION_COOKIE = "__Host-session";
 
@@ -480,6 +494,23 @@ async function requireAuthenticatedSameOrigin(c: Context<{ Bindings: Env }>): Pr
   return resolveSessionUser(c);
 }
 
+/** ショートカットプリセット作成/更新のレート制限を確認し、上限超過なら 429 応答を返す（#87）。 */
+async function checkShortcutRateLimit(c: Context<{ Bindings: Env }>, userId: string): Promise<Response | null> {
+  const perWindow = resolveShortcutRateLimitPerWindow(c.env.SHORTCUT_RATE_LIMIT_PER_WINDOW_OVERRIDE);
+  const rateLimit = await checkRateLimit(
+    c.env.DB,
+    userId,
+    SHORTCUT_RATE_LIMIT_WINDOW_SECONDS,
+    perWindow,
+    "shortcut_rate_limits",
+  );
+  if (!rateLimit.allowed) {
+    c.header("Retry-After", String(rateLimit.retryAfterSeconds));
+    return c.json(jsonError("rate_limited", "too many shortcuts submitted; please wait before retrying"), 429);
+  }
+  return null;
+}
+
 // GET /api/shortcuts: ログインユーザーのショートカットプリセット一覧（C1-1・FR-16）。
 app.get("/api/shortcuts", async (c) => {
   const user = await resolveSessionUser(c);
@@ -493,6 +524,9 @@ app.post("/api/shortcuts", async (c) => {
   const user = await requireAuthenticatedSameOrigin(c);
   if (user instanceof Response) return user;
 
+  const rateLimited = await checkShortcutRateLimit(c, user.id);
+  if (rateLimited) return rateLimited;
+
   const input = await parseShortcutInput(c);
   if (!input) {
     return c.json(jsonError("invalid_request", "at least one of repo, labels, or title is required"), 400);
@@ -505,6 +539,9 @@ app.post("/api/shortcuts", async (c) => {
 app.put("/api/shortcuts/:id", async (c) => {
   const user = await requireAuthenticatedSameOrigin(c);
   if (user instanceof Response) return user;
+
+  const rateLimited = await checkShortcutRateLimit(c, user.id);
+  if (rateLimited) return rateLimited;
 
   const input = await parseShortcutInput(c);
   if (!input) {

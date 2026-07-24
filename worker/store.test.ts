@@ -192,7 +192,7 @@ describe("request_ids (reserveRequestId / releaseRequestIdReservation) — B4-4/
 });
 
 describe("deleteAccount", () => {
-  it("removes the user's rows from users, sessions, tokens, issue_log, request_ids, rate_limits, and shortcuts (FR-12)", async () => {
+  it("removes the user's rows from users, sessions, tokens, issue_log, request_ids, rate_limits, shortcut_rate_limits, and shortcuts (FR-12)", async () => {
     const userId = await upsertUser(db, { id: 5001, login: "delme", avatar_url: "" });
     const idHash = "hash-delme";
     await createSession(db, idHash, userId, 3600);
@@ -205,6 +205,7 @@ describe("deleteAccount", () => {
     await reserveIssueLog(db, userId, "kai-kou/alpha", "hash-delme", 30);
     await reserveRequestId(db, userId, "req-delme", 26 * 60 * 60);
     await checkRateLimit(db, userId, 60, 10);
+    await checkRateLimit(db, userId, 60, 20, "shortcut_rate_limits");
     await createShortcut(db, userId, { repo: "kai-kou/alpha", labels: ["bug"], title: "", name: "" });
 
     await deleteAccount(db, userId);
@@ -216,6 +217,7 @@ describe("deleteAccount", () => {
     expect(await db.prepare("SELECT 1 FROM issue_log WHERE user_id = ?").bind(userId).first()).toBeNull();
     expect(await db.prepare("SELECT 1 FROM request_ids WHERE user_id = ?").bind(userId).first()).toBeNull();
     expect(await db.prepare("SELECT 1 FROM rate_limits WHERE user_id = ?").bind(userId).first()).toBeNull();
+    expect(await db.prepare("SELECT 1 FROM shortcut_rate_limits WHERE user_id = ?").bind(userId).first()).toBeNull();
     expect(await db.prepare("SELECT 1 FROM shortcuts WHERE user_id = ?").bind(userId).first()).toBeNull();
   });
 });
@@ -301,6 +303,15 @@ describe("checkRateLimit (不正利用対策・PR-4/OQ-6)", () => {
     await checkRateLimit(db, userId, 60, 10);
     const rows = await db.prepare("SELECT window_start FROM rate_limits WHERE user_id = ?").bind(userId).all();
     expect(rows.results).toHaveLength(1);
+  });
+
+  it("keeps the shortcut_rate_limits budget independent from the default (issue) table (#87)", async () => {
+    const userId = await upsertUser(db, { id: 6006, login: "rlusere", avatar_url: "" });
+    // 起票側の予算を使い切っても、ショートカット側の予算は別カウンタなので影響を受けない。
+    expect((await checkRateLimit(db, userId, 60, 1)).allowed).toBe(true);
+    expect((await checkRateLimit(db, userId, 60, 1)).allowed).toBe(false);
+    expect((await checkRateLimit(db, userId, 60, 1, "shortcut_rate_limits")).allowed).toBe(true);
+    expect((await checkRateLimit(db, userId, 60, 1, "shortcut_rate_limits")).allowed).toBe(false);
   });
 });
 

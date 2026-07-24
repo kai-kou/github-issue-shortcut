@@ -51,6 +51,15 @@ export const SCHEMA_STATEMENTS: string[] = [
     count INTEGER NOT NULL,
     PRIMARY KEY (user_id, window_start)
   )`,
+  // /api/issues の起票レート制限（rate_limits）とは独立の予算にするための別テーブル
+  // （#87）。rate_limits の PRIMARY KEY (user_id, window_start) を action 付きに変更するには
+  // 本番 D1 で列変更を伴うテーブル再作成が必要になるため、request_ids と同型の別テーブルで分離する。
+  `CREATE TABLE IF NOT EXISTS shortcut_rate_limits (
+    user_id TEXT NOT NULL REFERENCES users(id),
+    window_start INTEGER NOT NULL,
+    count INTEGER NOT NULL,
+    PRIMARY KEY (user_id, window_start)
+  )`,
   `CREATE TABLE IF NOT EXISTS shortcuts (
     id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL REFERENCES users(id),
@@ -347,6 +356,7 @@ export async function deleteAccount(db: D1Database, userId: string): Promise<voi
     db.prepare(`DELETE FROM issue_log WHERE user_id = ?`).bind(userId),
     db.prepare(`DELETE FROM request_ids WHERE user_id = ?`).bind(userId),
     db.prepare(`DELETE FROM rate_limits WHERE user_id = ?`).bind(userId),
+    db.prepare(`DELETE FROM shortcut_rate_limits WHERE user_id = ?`).bind(userId),
     db.prepare(`DELETE FROM tokens WHERE user_id = ?`).bind(userId),
     db.prepare(`DELETE FROM sessions WHERE user_id = ?`).bind(userId),
     db.prepare(`DELETE FROM users WHERE id = ?`).bind(userId),
@@ -437,24 +447,30 @@ export interface RateLimitResult {
   retryAfterSeconds: number;
 }
 
+/** レート制限カウンタを保持するテーブル名（用途ごとに独立した予算にするため分離・#87）。 */
+export type RateLimitTable = "rate_limits" | "shortcut_rate_limits";
+
 /**
- * 固定ウィンドウのレート制限カウンタ（不正利用対策・PR-4・OQ-6）。ユーザー・ウィンドウ単位で
+ * 固定ウィンドウのレート制限カウンタ（不正利用対策・PR-4/OQ-6・#87）。ユーザー・ウィンドウ単位で
  * 原子的にカウントをインクリメントし、上限を超えていれば `allowed: false` を返す。
  * Durable Object は導入しない（OQ-3 と同じ理由でバインディングを増やさない方針）ため、
  * `reserveIssueLog` と同様の `INSERT ... ON CONFLICT DO UPDATE ... RETURNING` で実装する。
  * 呼び出しのついでに同一ユーザーの過去ウィンドウ分の行を削除し、無期限増加を避ける（#71 と同型のリスク対応）。
+ * `table` は固定のリテラル集合（`RateLimitTable`）のみを受け付け、ユーザー入力を SQL に
+ * 組み込むことはない。
  */
 export async function checkRateLimit(
   db: D1Database,
   userId: string,
   windowSeconds: number,
   limit: number,
+  table: RateLimitTable = "rate_limits",
 ): Promise<RateLimitResult> {
   const now = nowSeconds();
   const windowStart = Math.floor(now / windowSeconds) * windowSeconds;
   const row = await db
     .prepare(
-      `INSERT INTO rate_limits (user_id, window_start, count) VALUES (?, ?, 1)
+      `INSERT INTO ${table} (user_id, window_start, count) VALUES (?, ?, 1)
        ON CONFLICT(user_id, window_start) DO UPDATE SET count = count + 1
        RETURNING count`,
     )
@@ -464,7 +480,7 @@ export async function checkRateLimit(
   // 自体（上で確定済み）を巻き込んで request 全体を失敗させない。
   try {
     await db
-      .prepare(`DELETE FROM rate_limits WHERE user_id = ? AND window_start < ?`)
+      .prepare(`DELETE FROM ${table} WHERE user_id = ? AND window_start < ?`)
       .bind(userId, windowStart)
       .run();
   } catch {
