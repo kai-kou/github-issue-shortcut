@@ -1,4 +1,4 @@
-import { test, expect, type Page, type Locator } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 
@@ -136,18 +136,28 @@ test.describe("KPI 外形計測 PoC（モック GitHub・Pixel 7 エミュレー
   }) => {
     await login(page); // ログインは初回セットアップ側。タップ数計測（起動以降）の対象外なので計測前に済ませる。
 
-    let tapCount = 0;
     // ショートカット作成ヘルパー（C1-1）が生成する `repo`+`title` 両方入りの URL 起動を模擬する。
     // タイトルまで prefill 済みのため、起動後は追加入力なしで送信するだけの想定（#124 の
     // 「プリフィル（ショートカット）フロー: `/new?repo=&title=` 起動 → 送信」に対応）。
-    async function tap(locator: Locator) {
-      tapCount += 1;
-      await locator.click();
-    }
+    //
+    // タップ数はテストコード側の手動カウントではなく、document の click イベントを実測する
+    // （手動カウントだと将来 UI にタップが増えても計測漏れで見逃す・レビュー指摘で是正）。
+    // addInitScript は以後の各 goto（ページ遷移）ごとに再実行されるため、この goto 以降に
+    // 実際に発生したクリックだけがカウントされる。
+    await page.addInitScript(() => {
+      (window as unknown as { __tapCount: number }).__tapCount = 0;
+      document.addEventListener(
+        "click",
+        () => {
+          const w = window as unknown as { __tapCount: number };
+          w.__tapCount = (w.__tapCount ?? 0) + 1;
+        },
+        true,
+      );
+    });
 
     const t0 = Date.now();
-    // 起動（ホーム画面ショートカットのタップ）自体は 1 タップとして数える。ここから先はページ内操作のみを
-    // tap() で計測し、合計（起動 1 + ページ内タップ）を #124 の Done Criteria である 3 タップ以内にアサートする。
+    // 起動（ホーム画面ショートカットのタップ）自体はページ外操作のため実測不可。固定で 1 回分を計上する。
     const launchTaps = 1;
     await page.goto("/new?repo=kai-kou%2Falpha&title=" + encodeURIComponent("KPI 計測: プリフィル起動"));
     const title = page.getByRole("textbox", { name: /タイトル|^Title$/ });
@@ -157,11 +167,12 @@ test.describe("KPI 外形計測 PoC（モック GitHub・Pixel 7 エミュレー
     const tReady = Date.now();
 
     // 追加入力（fill/タップ）なしで送信可能なことがここまでで担保済み。残りは送信タップのみ。
-    await tap(submit);
+    await submit.click();
     await expect(page.getByText(/Issue を作成しました|Issue created/)).toBeVisible();
     const t1 = Date.now();
 
-    const totalTaps = launchTaps + tapCount;
+    const pageTaps = await page.evaluate(() => (window as unknown as { __tapCount: number }).__tapCount ?? 0);
+    const totalTaps = launchTaps + pageTaps;
     expect(totalTaps, "プリフィル起動 → 起票完了までのタップ数（#124 Done Criteria: 3 タップ以内）").toBeLessThanOrEqual(3);
 
     const nav = await readNav(page);
