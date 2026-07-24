@@ -1,4 +1,4 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, type Page, type Locator } from "@playwright/test";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 
@@ -129,6 +129,54 @@ test.describe("KPI 外形計測 PoC（モック GitHub・Pixel 7 エミュレー
     collected.push(m);
     // eslint-disable-next-line no-console
     console.log("[KPI]", JSON.stringify(m));
+  });
+
+  test("プリフィル起動（repo + title 両方 URL 指定） → 3 タップ以内での起票を機械アサート（#124）", async ({
+    page,
+  }) => {
+    await login(page); // ログインは初回セットアップ側。タップ数計測（起動以降）の対象外なので計測前に済ませる。
+
+    let tapCount = 0;
+    // ショートカット作成ヘルパー（C1-1）が生成する `repo`+`title` 両方入りの URL 起動を模擬する。
+    // タイトルまで prefill 済みのため、起動後は追加入力なしで送信するだけの想定（#124 の
+    // 「プリフィル（ショートカット）フロー: `/new?repo=&title=` 起動 → 送信」に対応）。
+    async function tap(locator: Locator) {
+      tapCount += 1;
+      await locator.click();
+    }
+
+    const t0 = Date.now();
+    // 起動（ホーム画面ショートカットのタップ）自体は 1 タップとして数える。ここから先はページ内操作のみを
+    // tap() で計測し、合計（起動 1 + ページ内タップ）を #124 の Done Criteria である 3 タップ以内にアサートする。
+    const launchTaps = 1;
+    await page.goto("/new?repo=kai-kou%2Falpha&title=" + encodeURIComponent("KPI 計測: プリフィル起動"));
+    const title = page.getByRole("textbox", { name: /タイトル|^Title$/ });
+    await expect(title).toHaveValue("KPI 計測: プリフィル起動");
+    const submit = page.getByRole("button", { name: /Issue を作成|Create issue/ });
+    await expect(submit).toBeEnabled();
+    const tReady = Date.now();
+
+    // 追加入力（fill/タップ）なしで送信可能なことがここまでで担保済み。残りは送信タップのみ。
+    await tap(submit);
+    await expect(page.getByText(/Issue を作成しました|Issue created/)).toBeVisible();
+    const t1 = Date.now();
+
+    const totalTaps = launchTaps + tapCount;
+    expect(totalTaps, "プリフィル起動 → 起票完了までのタップ数（#124 Done Criteria: 3 タップ以内）").toBeLessThanOrEqual(3);
+
+    const nav = await readNav(page);
+    const m: Metrics = {
+      scenario: "prefill-launch",
+      startToReadyMs: tReady - t0,
+      inputMs: 0,
+      submitToCreatedMs: t1 - tReady,
+      totalMs: t1 - t0,
+      nav,
+    };
+    expect(m.totalMs, "起動→起票完了の外形時間（参考閾値 10s・NFR-2 の下限値監視）").toBeLessThan(10_000);
+    collected.push(m);
+    // eslint-disable-next-line no-console
+    console.log("[KPI]", JSON.stringify(m), `taps=${totalTaps}`);
   });
 
   test("通常起動（リポ選択タップ込み） → タイトルのみ起票の外形計測", async ({ page }) => {
