@@ -89,6 +89,29 @@ describe("POST /api/shortcuts", () => {
     expect(tooLongLabel.status).toBe(400);
   });
 
+  it("returns 429 with Retry-After once the per-minute rate limit is exceeded (#87)", async () => {
+    const cookie = await loginSession();
+    // 本番既定値は 20/分（worker/index.ts SHORTCUT_RATE_LIMIT_PER_WINDOW）。テストでは env override
+    // なしで実行されるため、その上限に達するまで作成を繰り返してから 429 を確認する。
+    for (let i = 0; i < 20; i++) {
+      const res = await SELF.fetch("https://example.com/api/shortcuts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: cookie },
+        body: JSON.stringify({ repo: `kai-kou/repo${i}`, labels: [], title: "" }),
+      });
+      expect(res.status).toBe(201);
+    }
+    const limited = await SELF.fetch("https://example.com/api/shortcuts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify({ repo: "kai-kou/one-too-many", labels: [], title: "" }),
+    });
+    expect(limited.status).toBe(429);
+    expect(limited.headers.get("Retry-After")).not.toBeNull();
+    const body = (await limited.json()) as { error: { code: string } };
+    expect(body.error.code).toBe("rate_limited");
+  });
+
   it("creates a preset and returns it in a subsequent list", async () => {
     const cookie = await loginSession();
     const createRes = await SELF.fetch("https://example.com/api/shortcuts", {
