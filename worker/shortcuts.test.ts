@@ -159,6 +159,33 @@ describe("POST /api/shortcuts", () => {
 });
 
 describe("PUT /api/shortcuts/:id", () => {
+  it("shares the POST rate limit counter, so exhausting it via POST also blocks PUT (#87)", async () => {
+    const cookie = await loginSession();
+    const createRes = await SELF.fetch("https://example.com/api/shortcuts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify({ repo: "kai-kou/alpha", labels: [], title: "" }),
+    });
+    const created = (await createRes.json()) as { id: string };
+    // 上の POST で 1 件消費済み。残り 19 件を POST で使い切り、PUT も同じユーザー単位カウンタで
+    // ブロックされる（checkShortcutRateLimit が POST/PUT 双方から同一カウンタを参照すること）ことを確認する。
+    for (let i = 0; i < 19; i++) {
+      const res = await SELF.fetch("https://example.com/api/shortcuts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: cookie },
+        body: JSON.stringify({ repo: `kai-kou/repo${i}`, labels: [], title: "" }),
+      });
+      expect(res.status).toBe(201);
+    }
+    const putRes = await SELF.fetch(`https://example.com/api/shortcuts/${created.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify({ repo: "kai-kou/beta", labels: [], title: "" }),
+    });
+    expect(putRes.status).toBe(429);
+    expect(putRes.headers.get("Retry-After")).not.toBeNull();
+  });
+
   it("returns 404 for a shortcut owned by another user", async () => {
     const ownerCookie = await loginSession();
     const createRes = await SELF.fetch("https://example.com/api/shortcuts", {
