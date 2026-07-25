@@ -97,6 +97,7 @@ interface Translations {
     errorMessage: string;
     queuedMessage: string;
     smartTokenListLabel: string;
+    labelSuggestListLabel: string;
     removeSmartTokenLabel: string;
     errors: {
       reauthRequired: string;
@@ -238,6 +239,7 @@ export const translations = {
       errorMessage: "Issue を作成できませんでした",
       queuedMessage: "オフラインです。接続回復後に自動で再送します（下書き保存済み）。",
       smartTokenListLabel: "認識されたラベル指定",
+      labelSuggestListLabel: "ラベルの候補",
       removeSmartTokenLabel: "ラベル指定を解除",
       errors: {
         reauthRequired: "ログインの有効期限が切れました。再度ログインしてください。",
@@ -470,6 +472,7 @@ export const translations = {
       errorMessage: "Could not create the issue",
       queuedMessage: "You're offline. This will be sent automatically once you're back online (saved as a draft).",
       smartTokenListLabel: "Recognized labels",
+      labelSuggestListLabel: "Label suggestions",
       removeSmartTokenLabel: "Remove label",
       errors: {
         reauthRequired: "Your login has expired. Please sign in again.",

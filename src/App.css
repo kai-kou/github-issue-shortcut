@@ -383,6 +383,24 @@ a.btn-primary {
   padding: 4px 12px;
 }
 
+/* `@label` 入力中のラベル候補（#145）。入力欄の直下に横並びで出し、キーボードから手を離さず
+   選べるようにする。件数上限は IssueForm 側（LABEL_SUGGESTION_LIMIT）で絞る。 */
+.smart-suggestions {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.smart-suggestions button {
+  border-radius: 999px;
+  /* タップターゲット 44px 以上（デザインガイドライン数値基準）。 */
+  min-height: 44px;
+  padding: 8px 16px;
+}
+
 .repo-list {
   list-style: none;
   margin: 12px 0 0;
