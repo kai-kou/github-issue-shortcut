@@ -38,6 +38,32 @@ export function isTokenMatched(token: SmartToken, validNames: ReadonlySet<string
   return validNames.has(token.name.toLowerCase());
 }
 
+/** 入力中（＝末尾にあり、まだ空白で確定していない）のトークンを返す。候補リストの表示条件に使う
+ * （#145）。`committedTokens` の逆条件であり、確定済みトークンには候補を出さない。 */
+export function activeToken(tokens: SmartToken[], text: string): SmartToken | null {
+  const last = tokens[tokens.length - 1];
+  return last && last.end === text.length ? last : null;
+}
+
+/** 入力中トークンの名前に前方一致（大文字小文字無視）する候補を返す（#145）。
+ * 名前が空（`@` だけ）のときは全件を対象にする。完全一致が 1 件だけの場合は既に認識済み
+ * （ハイライト + チップで示される）なので候補を出さない。 */
+export function suggestNames(candidates: readonly string[], prefix: string, limit: number): string[] {
+  const needle = prefix.toLowerCase();
+  const matches = candidates.filter((name) => name.toLowerCase().startsWith(needle));
+  if (matches.length === 1 && matches[0].toLowerCase() === needle) return [];
+  return matches.slice(0, limit);
+}
+
+/** トークンを完全な名前へ置き換える（#145 の候補タップ）。末尾に空白を足して「確定済み」にし、
+ * 既存の確定トークン → ラベル自動反映の経路へそのまま乗せる。 */
+export function replaceToken(text: string, token: SmartToken, name: string): string {
+  const before = text.slice(0, token.start);
+  const after = text.slice(token.end);
+  const replaced = `${before}${token.prefix}${name} ${after}`;
+  return after.startsWith(" ") ? replaced.replace(/\s{2,}/g, " ") : replaced;
+}
+
 /** 指定したトークン群を `text` から取り除き、生じた余分な空白を畳んで整形する。 */
 export function stripTokens(text: string, tokens: SmartToken[]): string {
   if (tokens.length === 0) return text;

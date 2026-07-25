@@ -4,7 +4,19 @@ import { loadDraft, saveDraft, clearDraft } from "./draft";
 import { LabelPicker } from "./LabelPicker";
 import { useRepoLabels } from "./useRepoLabels";
 import { HighlightedTextInput } from "./HighlightedTextInput";
-import { committedTokens, findTokens, isTokenMatched, stripTokens, type SmartToken } from "./smartInput";
+import {
+  activeToken,
+  committedTokens,
+  findTokens,
+  isTokenMatched,
+  replaceToken,
+  stripTokens,
+  suggestNames,
+  type SmartToken,
+} from "./smartInput";
+
+/** `@label` 入力中に出す候補の表示上限（#145）。起票フローが縦に伸びすぎないよう絞る（D-3）。 */
+const LABEL_SUGGESTION_LIMIT = 6;
 
 export type IssueInput = { title: string; body: string; labels: string[] };
 
@@ -72,6 +84,18 @@ export function IssueForm({
   );
   const cleanTitle = useMemo(() => stripTokens(title, matchedTitleTokens), [title, matchedTitleTokens]);
 
+  // 入力中の `@` トークンに前方一致するラベル候補（#145）。ラベルピッカーを開かずに
+  // キーボードから手を離さず選べるようにする（Todoist 級のクイック追加体験・FR-20）。
+  const suggestionToken = useMemo(() => activeToken(titleTokens, title), [titleTokens, title]);
+  const labelSuggestions = useMemo(() => {
+    if (!suggestionToken || labelsState.status !== "ready") return [];
+    return suggestNames(
+      labelsState.labels.map((l) => l.name),
+      suggestionToken.name,
+      LABEL_SUGGESTION_LIMIT,
+    );
+  }, [suggestionToken, labelsState]);
+
   /** マッチしたトークン群を対応するラベル名（重複除去済み）へ変換する。同じラベルを指す
    * トークンが複数あっても（例: 大文字小文字違いの `@Bug` `@bug`）1 回しか数えない。 */
   function matchedLabelNames(tokens: SmartToken[]): string[] {
@@ -113,6 +137,13 @@ export function IssueForm({
   function handleBodyChange(value: string) {
     setBody(value);
     persist(title, value);
+  }
+
+  /** 候補をタップしてトークンを完全なラベル名に確定する（#145）。末尾に空白が付くため、
+   * 確定トークン → ラベル自動反映の `useEffect` がそのまま拾う（追加の状態管理は不要）。 */
+  function applySuggestion(name: string) {
+    if (!suggestionToken) return;
+    handleTitleChange(replaceToken(title, suggestionToken, name));
   }
 
   /** 認識済みトークンをタップで解除する（B3-3 Done Criteria）。テキストからも紐づくラベルからも取り除く。 */
@@ -167,6 +198,23 @@ export function IssueForm({
           inputRef={titleInputRef}
         />
       </label>
+      {labelSuggestions.length > 0 ? (
+        <ul className="smart-suggestions" aria-label={t.issueForm.labelSuggestListLabel}>
+          {labelSuggestions.map((name) => (
+            <li key={name}>
+              <button
+                type="button"
+                // タップで入力欄からフォーカスが外れるとソフトキーボードが閉じてしまうため、
+                // mousedown の既定動作（フォーカス移動）を止めてから click で確定する。
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => applySuggestion(name)}
+              >
+                {name}
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
       {matchedTitleTokens.length > 0 ? (
         <ul className="smart-token-chips" aria-label={t.issueForm.smartTokenListLabel}>
           {matchedTitleTokens.map((tok) => (
