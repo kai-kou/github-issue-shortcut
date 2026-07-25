@@ -24,6 +24,8 @@
 - **コールドローンチ時のキーボード自動表示は不可能**。Android Chrome では `autofocus`/`focus()` はカーソル表示のみでキーボードは開かない（ユーザージェスチャ内の `focus()` のみキーボードが開く）。standalone PWA でも同じ。`navigator.virtualKeyboard.show()` も逃げ道にならない。
   出典: <https://discourse.wicg.io/t/how-should-browsers-treat-the-autofocus-attribute-on-mobile-devices/5238/> / <https://developer.mozilla.org/en-US/docs/Web/API/VirtualKeyboard/show>
   - **緩和策**: 起動面の最初のタップをジェスチャとして使う（プレースホルダ入力欄タップ→同期的に `focus()`）＝「起動→1 タップ→キーボード」まで縮められる。
+  - **実測（2026-07-25・#141/#143）**: `navigator.virtualKeyboard.show()` を「温かい起動」（`launch_handler: navigate-existing` で既存文書が再利用され sticky activation が残っている経路）で呼ぶ案を実機検証したが、**キーボードは開かず、逆にジェスチャ経由（ホーム一覧タップ）で開いていたキーボードまで出なくなる回帰** が発生したため撤去した。`overlaysContent` 未設定のまま `show()` を呼ぶ経路は使わないこと。
+  - **実測（2026-07-25・#143）**: `showModal()` は autoFocus 要素へ既にフォーカスを移すため、その後の `focus()` は **フォーカス変化が起きず** キーボードが開かない。ジェスチャ内でも `blur()` → `focus()` と踏んでフォーカス変化を作る必要がある。
 
 ## 3. 起動導線（Android）
 
