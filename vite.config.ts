@@ -31,8 +31,9 @@ function stripManifestFromSwPrecache(): Plugin {
     closeBundle: {
       order: "post",
       handler() {
+        if (this.environment?.name !== "client") return; // worker 環境の closeBundle では前回ビルドの sw.js が残骸として残るため対象外にする（#137）
         const swPath = resolve(process.cwd(), "dist/client/sw.js");
-        if (!existsSync(swPath)) return; // client 以外のビルドパス（worker 等）では sw.js は無い
+        if (!existsSync(swPath)) return;
         const src = readFileSync(swPath, "utf8");
         if (!MANIFEST_ENTRY.test(src)) {
           // 生成フォーマットが変わり除外に失敗した場合はビルドを止める（サイレントな回帰を防ぐ）。
