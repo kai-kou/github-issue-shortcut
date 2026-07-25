@@ -107,6 +107,7 @@ interface Translations {
       issuesDisabled: string;
       validationFailed: string;
       duplicateSubmission: string;
+      queueExpired: string;
     };
   };
   labelPicker: {
@@ -249,6 +250,8 @@ export const translations = {
         issuesDisabled: "このリポジトリは Issues が無効になっています。",
         validationFailed: "内容を見直してから再度お試しください。",
         duplicateSubmission: "この内容は直前に送信済みです。連続で作成されないよう自動的にスキップしました。",
+        queueExpired:
+          "24 時間以上送信できなかったため、自動再送を停止しました。GitHub 側に作成済みでないか確認してから、再送または破棄してください。",
       },
     },
     labelPicker: {
@@ -291,7 +294,7 @@ export const translations = {
       openButton: "開く",
       placementGuideTitle: "保存したショートカットの使い方",
       placementGuideBody:
-        "保存したショートカットは、ホーム画面上部の一覧からタップして開けます。よく使う上位 3 件は、インストール済みアプリのアイコンを長押ししたときのメニューにも表示されます（反映まで最大 1 日ほどかかることがあります）。「URL をコピー」は、ブラウザのブックマークや他アプリへの貼り付けに使えます。",
+        "保存したショートカットは、ホーム画面上部の一覧からタップして開けます。よく使う上位 3 件は、インストール済みアプリのアイコンを長押ししたときのメニューにも表示されます（反映まで最大 1 日ほどかかることがあります。待たずに反映させたい場合は、アプリを一度アンインストールして入れ直してください）。反映前でも、ホーム画面上部の「保存済みショートカット」一覧からはすぐに使えます。「URL をコピー」は、ブラウザのブックマークや他アプリへの貼り付けに使えます。",
       placementGuideNote:
         "この URL を単体でホーム画面のアイコンにしても、初期選択（プリセット）は反映されません（アプリはトップ画面で起動します・Android の仕様）。プリセット付きで開くには上記の方法を使ってください。",
       homeListTitle: "保存済みショートカット",
@@ -482,6 +485,8 @@ export const translations = {
         issuesDisabled: "Issues are disabled for this repository.",
         validationFailed: "Please review the content and try again.",
         duplicateSubmission: "This was already submitted moments ago, so the duplicate was skipped automatically.",
+        queueExpired:
+          "This couldn't be sent for over 24 hours, so automatic resending stopped. Check whether it was already created on GitHub, then resend or discard it.",
       },
     },
     labelPicker: {
@@ -524,7 +529,7 @@ export const translations = {
       openButton: "Open",
       placementGuideTitle: "Using your saved shortcuts",
       placementGuideBody:
-        "Open a saved shortcut by tapping it in the list at the top of the home screen. Your top 3 shortcuts also appear in the long-press menu on the installed app icon (this can take up to a day to update). \"Copy URL\" is handy for bookmarks or pasting into other apps.",
+        "Open a saved shortcut by tapping it in the list at the top of the home screen. Your top 3 shortcuts also appear in the long-press menu on the installed app icon (this can take up to a day to update; to see it right away, uninstall and reinstall the app). Until it updates, you can still use the shortcut immediately from the \"Saved shortcuts\" list at the top of the home screen. \"Copy URL\" is handy for bookmarks or pasting into other apps.",
       placementGuideNote:
         "Adding this URL to your home screen as a standalone icon won't keep the pre-selected fields—the app always launches on its main screen (an Android limitation). Use the methods above to open it with the preset applied.",
       homeListTitle: "Saved shortcuts",
