@@ -69,6 +69,15 @@ headless シグナルで bot 検知・2FA が誘発され不安定になるた�
 の候補 UI とフォーカス制御・Service Worker / PWA 設定に触れる PR ② リリースマイルストーンのゲート。
 結果は対象 Issue の Done Criteria コメントとして記録する（専用ツールは作らない）。
 
+> **直近の実施記録（2026-07-25・#93 / #95）**: 上記チェックリストを含む実機確認を実施し、
+> **キーボード追従・WebAPK コールドスタートからのタイトルのみ起票・機内モードからの Background Sync
+> 自動再送（GitHub 反映 1 件・重複なし）・実指タップ・配色の視認性のいずれも問題なし** と報告された。
+> ただし **ストップウォッチによる秒数の実測は行っていない**（「体感で基準内」の定性確認）。したがって
+> `docs/requirements/04-milestones.md` 側で `[x]` にした「5 秒以内 / 10 秒以内」は、実測値ではなく
+> 「定性確認 + `e2e/kpi.spec.ts` の下限値（`shortcut-launch` 580 ms / `normal-launch` 586 ms）」を
+> 根拠とする判定である。厳密な秒数が必要になったら #93 のテンプレで再計測する。
+> チェックボックスは毎ゲートで回す運用のため未チェックのまま残す（恒久的な完了印にしない）。
+
 Android エミュレータを CI で動かす方法（`reactivecircus/android-emulator-runner`）も存在するが、
 native アプリ instrumentation 向けで PWA/WebAPK の standalone OAuth 検証は重く前例が薄いため、
 費用対効果で採用しない（実機手動に委ねる）。
@@ -88,7 +97,7 @@ NFR-1（サブ秒起動）・NFR-2（起票 10 秒 / タイトルのみ 5 秒）
 
 ### CLI で測れる範囲 / 実機必須の範囲（#124・#35 の切り分け）
 
-- ✅ **CLI（本 spec）で自動計測・回帰ゲート化できる**: 起票フロー処理時間・タップ数（プリフィルの 3 タップ以内）・Navigation Timing・Web Vitals（FCP/LCP）・installable（Lighthouse CI）。
+- ✅ **CLI（本 spec）で自動計測・回帰ゲート化できる**: 起票フロー処理時間・タップ数（プリフィルの 3 タップ以内）・Navigation Timing・Web Vitals（FCP/LCP）。manifest の installable 要件（`display: standalone`・アイコン 2 種以上・`shortcuts` 3 件以下）は `e2e/pwa.spec.ts` がガードする。**CI の Lighthouse（`lighthouserc.json`）は `onlyCategories` が `performance` / `accessibility` のみで、PWA / installable カテゴリは監査していない**。
 - ❌ **実機必須（#35 に残す）**: WebAPK 実インストール・アイコン長押し shortcuts の実タップ・コールドローンチ時のソフトキーボード体感・standalone での OAuth CCT 復帰・絶対的な体感速度（回線・端末差）。上記「この計測が意味すること / しないこと」を参照。
 
 ### ⚠️ この計測が意味すること / しないこと
