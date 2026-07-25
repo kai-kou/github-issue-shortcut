@@ -30,6 +30,20 @@ if git rev-parse --verify --quiet origin/main >/dev/null 2>&1 && git diff --quie
   exit 0
 fi
 
+# PR 存在確認の gh 非依存経路（#133）。git プロトコルはクラウドでも生存する（L-114）ため、GitHub が
+# 公開する PR ref（refs/pull/<N>/head）にブランチ先端 SHA があれば「PR 作成済み」と判定できる。
+# これにより、gh が使えない環境（シムのみ・実バイナリ無し）でも PR 作成済みのセッション終了時に
+# 毎回警告が出る誤検知を防ぐ。
+# 注: refs/pull/* はクローズ済み PR も含むため、「PR を作ったが未マージのまま閉じた」ブランチでも
+# 警告は出ない。本フックの目的は「PR 作成を忘れていないか」の検知なので許容する。
+head_sha=$(git rev-parse HEAD 2>/dev/null || echo "")
+if [[ -n "$head_sha" ]]; then
+  pr_refs=$(timeout 15s git ls-remote origin 'refs/pull/*/head' 2>/dev/null || echo "")
+  if [[ -n "$pr_refs" ]] && printf '%s\n' "$pr_refs" | grep -q "^${head_sha}[[:space:]]"; then
+    exit 0
+  fi
+fi
+
 # gh の解決。Stop フックは SessionStart が注入した PATH を継承しないことがあるため、リポジトリ同梱の
 # gh シム（.claude/bin/gh）も明示的に探索する。さらにシムは実 gh バイナリを必要とし、無い環境では
 # exit 127 になるため、`gh --version` で「実際に使えるか」まで確認する（#133）。
