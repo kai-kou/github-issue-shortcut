@@ -75,8 +75,17 @@ test.describe("オフラインキュー（モック GitHub・モバイルエミ�
     await expect(page.getByText(/送信待ちのオフラインキュー|Pending offline queue/)).toBeVisible();
 
     // オンライン復帰の通知が短時間に連続で届いても（実機では電波の掴み直しで起こりうる）、
-    // 再送処理の再入ガードにより GitHub 側の作成は 1 件に収まる。
+    // 再送処理の再入ガード（useOfflineQueueSync の flushingRef）により送信は 1 回だけになる。
     await page.unroute("**/api/issues");
+
+    // 送信回数はブラウザが実際に投げた POST の数で数える。作成件数（/mock/issue-count）だけでは
+    // サーバー側の二重送信防止（issue_log の content_hash 窓）が二重送信を吸収してしまい、
+    // クライアントのガードが壊れても 1 件のままになる＝ガードの回帰を検出できないため。
+    let issuePostCount = 0;
+    page.on("request", (req) => {
+      if (req.method() === "POST" && req.url().includes("/api/issues")) issuePostCount += 1;
+    });
+
     await page.evaluate(() => {
       window.dispatchEvent(new Event("online"));
       window.dispatchEvent(new Event("online"));
@@ -85,6 +94,7 @@ test.describe("オフラインキュー（モック GitHub・モバイルエミ�
     await expect(page.getByText(/送信待ちのオフラインキュー|Pending offline queue/)).toHaveCount(0, {
       timeout: 10_000,
     });
+    expect(issuePostCount, "online 二重発火でも起票 POST は 1 回だけ").toBe(1);
     const created = await (await request.get(`${MOCK_GITHUB_URL}/mock/issue-count`)).json();
     expect(created).toEqual({ count: 1 });
   });

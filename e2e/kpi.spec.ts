@@ -132,8 +132,11 @@ test.describe("KPI 外形計測 PoC（モック GitHub・Pixel 7 エミュレー
     // 5 秒基準の正本はリリースゲート時の実機ストップウォッチ実測（docs/testing-e2e.md）とし、
     // ここは劣化に早く気づくための非ブロッキングな警告に留める。
     if (m.totalMs >= 5_000) {
+      const message = `外形時間が ${m.totalMs}ms で M3 の 5 秒目安を超えた（非ブロッキング）`;
+      // GitHub Actions ではワークフローコマンドで注釈化し、ジョブが green でも気づけるようにする
+      // （ログの一行として埋もれると誰も読まない）。ローカルは通常の警告出力。
       // eslint-disable-next-line no-console
-      console.warn(`[KPI][warn] 外形時間が ${m.totalMs}ms で M3 の 5 秒目安を超えた（非ブロッキング）`);
+      console.warn(process.env.GITHUB_ACTIONS ? `::warning title=KPI::${message}` : `[KPI][warn] ${message}`);
     }
     collected.push(m);
     // eslint-disable-next-line no-console
