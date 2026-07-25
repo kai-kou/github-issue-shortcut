@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import "./App.css";
 import TermsOfService from "./pages/TermsOfService";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
@@ -6,7 +6,7 @@ import { ShortcutHelperPage } from "./shortcuts/ShortcutHelperPage";
 import { ShortcutList } from "./shortcuts/ShortcutList";
 import { LanguageProvider, useLanguage } from "./i18n/LanguageContext";
 import { LanguageSwitcher } from "./i18n/LanguageSwitcher";
-import { RepoPicker } from "./repos/RepoPicker";
+import { RepoPicker, type RepoPickerHandle } from "./repos/RepoPicker";
 import { useAuthState, clearAllUserCaches, type AuthState } from "./auth/useAuthState";
 import { NavDrawer } from "./nav/NavDrawer";
 import {
@@ -90,6 +90,11 @@ function HomeView({ prefill, pendingRedirectTarget }: HomeViewProps) {
         ? t.home.apiStatusUnreachable
         : apiStatus;
 
+  // 保存済みショートカットのタップを、ページ遷移ではなく同一ジェスチャ内での起票シート表示に
+  // 振り替えるための参照（#135）。RepoPicker が引き受けられない場合は false が返り、
+  // ShortcutList は `<a href>` の通常遷移にフォールバックする。
+  const repoPickerRef = useRef<RepoPickerHandle>(null);
+
   const showAccountChip = auth.status === "authenticated" && !accountDeleted;
   // アカウント削除後はローカルの認証状態を匿名扱いにマスクし、ドロワーに stale なアカウント情報
   // （削除済みユーザー名・再度の削除ボタン）を再表示させない（削除完了の終端は AccountDeletionGuidance）。
@@ -151,8 +156,11 @@ function HomeView({ prefill, pendingRedirectTarget }: HomeViewProps) {
             {auth.status === "authenticated" && installed === false ? <InstallGuidance /> : null}
             {auth.status === "authenticated" && installed === true ? (
               <>
-                <ShortcutList userId={auth.me.githubUserId} />
-                <RepoPicker prefill={prefill} userId={auth.me.githubUserId} />
+                <ShortcutList
+                  userId={auth.me.githubUserId}
+                  onLaunch={(preset) => repoPickerRef.current?.openWithPreset(preset) ?? false}
+                />
+                <RepoPicker ref={repoPickerRef} prefill={prefill} userId={auth.me.githubUserId} />
               </>
             ) : null}
 

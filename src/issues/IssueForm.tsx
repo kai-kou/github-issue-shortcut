@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode, type Ref } from "react";
 import { useLanguage } from "../i18n/LanguageContext";
 import { loadDraft, saveDraft, clearDraft } from "./draft";
 import { LabelPicker } from "./LabelPicker";
@@ -19,6 +19,9 @@ interface IssueFormProps {
   initialLabels?: string[];
   /** URL パラメータ起動 / Web Share Target（B1-2・B3-4・FR-15・FR-18）の本文初期値。 */
   initialBody?: string | null;
+  /** タイトル欄への参照。ショートカット起動時にユーザージェスチャ内で同期的に focus() するために
+   * 呼び出し元（RepoPicker）へ渡す（#135・B1-3 の「1 タップで同期 focus」）。 */
+  titleInputRef?: Ref<HTMLInputElement>;
   /** 送信結果（成功/エラー）の表示要素。sticky な送信バーに隠れないよう送信ボタンの直上に描画する（§3.2）。 */
   children?: ReactNode;
 }
@@ -39,6 +42,7 @@ export function IssueForm({
   initialTitle,
   initialLabels,
   initialBody,
+  titleInputRef,
   children,
 }: IssueFormProps) {
   const { t } = useLanguage();
@@ -160,6 +164,7 @@ export function IssueForm({
           enterKeyHint="send"
           autoCapitalize="sentences"
           autoFocus
+          inputRef={titleInputRef}
         />
       </label>
       {matchedTitleTokens.length > 0 ? (
