@@ -46,6 +46,61 @@ test.describe("スマート入力（モック GitHub・モバイルエミュレ�
     expect(lastIssue.labels).toEqual(["bug"]);
   });
 
+  test("@ の入力中はラベル候補が表示され、タップで確定してラベルに反映される（#145）", async ({ page, request }) => {
+    await request.post(`${MOCK_GITHUB_URL}/mock/config`, {
+      data: {
+        installations: [
+          {
+            id: 1001,
+            repos: [{ id: 1, full_name: "kai-kou/alpha", private: false, permissions: { push: true } }],
+          },
+        ],
+        labels: [
+          { name: "bug", color: "d73a4a" },
+          { name: "backlog", color: "0e8a16" },
+          { name: "enhancement", color: "a2eeef" },
+        ],
+      },
+    });
+
+    await page.goto("/");
+    await page.getByRole("link", { name: /GitHub でログイン|Sign in with GitHub/ }).click();
+    await expect(page.getByText(/e2e-user/)).toBeVisible();
+    await page.getByRole("button", { name: "kai-kou/alpha" }).click();
+
+    const title = page.getByRole("textbox", { name: /タイトル|^Title$/ });
+    const suggestions = page.getByRole("list", { name: /ラベルの候補|Label suggestions/ });
+
+    // トークンが無いうちは候補を出さない（入力の邪魔をしない）。
+    await title.fill("ホゲ");
+    await expect(suggestions).toHaveCount(0);
+
+    // `@b` の時点で前方一致の候補が出る（bug / backlog。enhancement は出ない）。
+    await title.fill("ホゲ @b");
+    await expect(suggestions).toBeVisible();
+    await expect(suggestions.getByRole("button", { name: "bug" })).toBeVisible();
+    await expect(suggestions.getByRole("button", { name: "backlog" })).toBeVisible();
+    await expect(suggestions.getByRole("button", { name: "enhancement" })).toHaveCount(0);
+
+    // 候補タップでトークンが完全名に確定し、ラベルがチェック済みになる。
+    await suggestions.getByRole("button", { name: "bug" }).click();
+    await expect(title).toHaveValue("ホゲ @bug ");
+    // 確定後は候補を出し続けない。
+    await expect(suggestions).toHaveCount(0);
+    // 認識済みトークンとしてチップに出て、ラベル選択にも反映されている
+    // （LabelPicker は既定で畳まれているため展開して確認する）。
+    await expect(page.getByRole("button", { name: /@bug/ })).toBeVisible();
+    await page.getByText(/ラベルを追加|Add labels/).click();
+    await expect(page.getByRole("checkbox", { name: "bug" })).toBeChecked();
+
+    await page.getByRole("button", { name: /Issue を作成|Create issue/ }).click();
+    await expect(page.getByText(/Issue を作成しました|Issue created/)).toBeVisible({ timeout: 10000 });
+
+    const lastIssue = await (await request.get(`${MOCK_GITHUB_URL}/mock/last-issue`)).json();
+    expect(lastIssue.title).toBe("ホゲ");
+    expect(lastIssue.labels).toEqual(["bug"]);
+  });
+
   test("チップをタップするとトークンとラベル指定の両方が解除される", async ({ page, request }) => {
     await request.post(`${MOCK_GITHUB_URL}/mock/config`, {
       data: {

@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { committedTokens, findTokens, isTokenMatched, stripTokens } from "./smartInput";
+import {
+  activeToken,
+  committedTokens,
+  findTokens,
+  isTokenMatched,
+  replaceToken,
+  stripTokens,
+  suggestNames,
+} from "./smartInput";
 
 describe("findTokens", () => {
   it("finds @label tokens at start-of-string and after whitespace", () => {
@@ -72,5 +80,64 @@ describe("stripTokens", () => {
     const text = "@bug Fix login";
     const tokens = findTokens(text, "@");
     expect(stripTokens(text, tokens)).toBe("Fix login");
+  });
+});
+
+describe("activeToken（#145 入力中トークン）", () => {
+  it("末尾の未確定トークンを返す", () => {
+    const text = "ホゲ @b";
+    expect(activeToken(findTokens(text, "@"), text)?.name).toBe("b");
+  });
+
+  it("空白で確定済みのトークンは返さない", () => {
+    const text = "ホゲ @bug ";
+    expect(activeToken(findTokens(text, "@"), text)).toBeNull();
+  });
+
+  it("トークンが無ければ null", () => {
+    expect(activeToken(findTokens("ホゲ", "@"), "ホゲ")).toBeNull();
+  });
+
+  it("複数トークンがあっても対象は末尾のものだけ", () => {
+    const text = "@bug ホゲ @doc";
+    expect(activeToken(findTokens(text, "@"), text)?.name).toBe("doc");
+  });
+});
+
+describe("suggestNames（#145 候補の絞り込み）", () => {
+  const labels = ["bug", "backlog", "documentation", "enhancement"];
+
+  it("前方一致（大文字小文字無視）で候補を返す", () => {
+    expect(suggestNames(labels, "B", 6)).toEqual(["bug", "backlog"]);
+  });
+
+  it("プレフィックスが空なら全件を上限まで返す", () => {
+    expect(suggestNames(labels, "", 2)).toEqual(["bug", "backlog"]);
+  });
+
+  it("完全一致 1 件だけのときは候補を出さない（既に認識済みのため）", () => {
+    expect(suggestNames(labels, "documentation", 6)).toEqual([]);
+  });
+
+  it("完全一致でも他の前方一致候補があれば出す", () => {
+    expect(suggestNames(["bug", "bugfix"], "bug", 6)).toEqual(["bug", "bugfix"]);
+  });
+
+  it("一致なしなら空", () => {
+    expect(suggestNames(labels, "zzz", 6)).toEqual([]);
+  });
+});
+
+describe("replaceToken（#145 候補タップの確定）", () => {
+  it("トークンを完全名に置換し、末尾に空白を足して確定させる", () => {
+    const text = "ホゲ @b";
+    const [token] = findTokens(text, "@");
+    expect(replaceToken(text, token, "bug")).toBe("ホゲ @bug ");
+  });
+
+  it("後続テキストがある場合も空白が二重にならない", () => {
+    const text = "@b ホゲ";
+    const [token] = findTokens(text, "@");
+    expect(replaceToken(text, token, "bug")).toBe("@bug ホゲ");
   });
 });
