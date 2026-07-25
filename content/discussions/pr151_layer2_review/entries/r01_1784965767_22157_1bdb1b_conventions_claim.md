@@ -84,7 +84,7 @@ L-114 / L-133 への参照も適切。
 
 **CJK 強調前後の半角スペース** 確認:
 - `errors.submitError.queueExpired`: 「自動再送を停止」が **太字** → 「を停止」で句点直前のため不要。✅
-- `offlineQueueResendConfirmMessage`: 「既に作成済み**だった**場合」の **だった** は太字でなく通常（コード例の一部）。✅
+- `offlineQueueResendConfirmMessage`: 「既に作成済み **だった** 場合」の **だった** は太字でなく通常（コード例の一部）。✅
 - `placementGuideBody`: 「（待たずに反映させたい場合は」の **待たずに** が強調でなく通常テキスト。✅
 
 ---
