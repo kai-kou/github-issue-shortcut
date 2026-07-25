@@ -31,7 +31,11 @@ function stripManifestFromSwPrecache(): Plugin {
     closeBundle: {
       order: "post",
       handler() {
-        if (this.environment?.name !== "client") return; // worker 環境の closeBundle では前回ビルドの sw.js が残骸として残るため対象外にする（#137）
+        // worker 環境の closeBundle では前回ビルドの sw.js が残骸として残るため対象外にする（#137）。
+        // environment が未取得（想定外の呼び出し経路）の場合はスキップせず後続の existsSync
+        // チェックへフォールスルーする（#98 のフェイルラウド設計を壊さないため・環境名不明を
+        // サイレントスキップにしない）。
+        if (this.environment && this.environment.name !== "client") return;
         const swPath = resolve(process.cwd(), "dist/client/sw.js");
         if (!existsSync(swPath)) return;
         const src = readFileSync(swPath, "utf8");
