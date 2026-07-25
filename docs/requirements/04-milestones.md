@@ -78,7 +78,7 @@
 ### Done 判定（検証可能な条件）
 
 - [x] 実機 Android（Chrome）で、ログイン → リポジトリ検索 / 選択 → タイトル入力 → 送信 → GitHub 上に Issue 反映、を E2E で確認できる（品質ゲート: これなしで main にマージしない）（実機確認 2026-07-25・#95）
-- [x] ホーム画面追加で standalone（WebAPK）起動し、Lighthouse の PWA installable 要件に合格する（実機で「ホーム画面に追加」→ WebAPK の standalone 起動を確認 2026-07-25・#95。Chrome は installable 要件を満たす場合のみ WebAPK 化するため、WebAPK 化の成立をもって要件充足とみなす）
+- [x] ホーム画面追加で standalone（WebAPK）起動し、Lighthouse の PWA installable 要件に合格する（実機で「ホーム画面に追加」→ WebAPK の standalone 起動を確認 2026-07-25・#95。**Lighthouse による PWA 監査は未実施**: CI の Lighthouse（`lighthouserc.json`）は `onlyCategories` が `performance` / `accessibility` のみで PWA カテゴリを含まない。本項目は「WebAPK 化して standalone 起動した」実機事実で代替判定しており、manifest 側の回帰検知は `e2e/pwa.spec.ts`（`display: standalone`・アイコン 2 種以上・`shortcuts` 3 件以下）が担う）
 - [x] standalone 起動からタイトルのみ起票が **10 秒以内** で完了する（実機計測）（実機は定性確認「待たされる感じなし」でストップウォッチ実測値なし。数値の裏付けは CLI 外形計測の下限値 0.59 秒 = `test-results/kpi-metrics.json` の `normal-launch.totalMs`・2026-07-25・#93）
 - [x] 機内モードで送信 → 失敗表示 + 入力内容が下書きとして残り、復元できる（実機確認 2026-07-25・#93 項目 8）
 - [x] 認証切れ・権限不足・レート制限・Issues 無効がそれぞれ識別可能な文言で表示される（B5-2・#27・PR #68）
@@ -113,7 +113,7 @@
 ### Done 判定（検証可能な条件）
 
 - [x] `/new?repo=owner/name&labels=bug&title=雛形` で起動すると各項目が初期選択済みで表示される（未ログイン時はログイン後に復元・B1-2・#8）
-- [x] 実機の WebAPK でアイコン長押しメニューにショートカットが 3 個表示され、タップでプリセット済み画面が開く（実機確認 2026-07-25・#93 項目 5。WebAPK 入れ直しで `SHORTCUTS_DIFFER` の 24h 周期を回避して検証）
+- [x] 実機の WebAPK でアイコン長押しメニューにショートカットが 3 個表示され、タップでプリセット済み画面が開く（実機確認 2026-07-25・#93 項目 5。WebAPK の入れ直しを実施した上で 3 件表示を確認。`SHORTCUTS_DIFFER` の 24h 更新周期そのものの挙動は検証していない）
 - [x] ヘルパーで作成したショートカットから「起動 → 入力 → 送信」が **3 タップ以内** で完了する（実機計測）（実機は定性確認・タップ数の機械アサートは `e2e/kpi.spec.ts`（プリフィル起動 3 タップ以内・保存済みショートカット 2 タップ以内）が PASS・2026-07-25・#93 項目 3）
 - [x] push 権限のないリポジトリではラベル UI が警告表示になり、silently dropped を利用者が事前に知れる（E2E `e2e/labels.spec.ts` でカバー）
 - [ ] Android 共有シートに本アプリが表示され、共有したテキスト / URL が本文にプレフィルされる（**実機未確認**・#93 の計測項目外のため #153 へ切り出し）
