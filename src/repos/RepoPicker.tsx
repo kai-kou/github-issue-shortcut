@@ -1,4 +1,5 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type Ref } from "react";
+import { flushSync } from "react-dom";
 import { useLanguage } from "../i18n/LanguageContext";
 import { loadRecentRepos, recordRecentRepo } from "./recentRepos";
 import { loadReposCache, saveReposCache, type Repo } from "./reposCache";
@@ -8,6 +9,7 @@ import { loadDraft, clearDraft } from "../issues/draft";
 import { HighlightedTextInput } from "../issues/HighlightedTextInput";
 import { findTokens, isTokenMatched, stripTokens } from "../issues/smartInput";
 import type { PrefillParams } from "../issues/prefillParams";
+import type { ShortcutPreset } from "../shortcuts/launchUrl";
 import { submitErrorCode, submitErrorMessage } from "../issues/submitError";
 import { useOfflineQueueSync } from "../issues/useOfflineQueueSync";
 import { OfflineQueueList } from "../issues/OfflineQueueList";
@@ -27,15 +29,29 @@ type SubmitState =
   | { status: "queued" }
   | { status: "error"; code: string };
 
+/** アプリ内起動で受け取るプリセット（ShortcutPreset のうち起票に必要な項目のみ）。 */
+type LaunchablePreset = Pick<ShortcutPreset, "repo" | "labels" | "title">;
+
+/** 保存済みショートカット一覧（ShortcutList）から、ページ遷移せずに起票シートを開くための命令的 API。 */
+export interface RepoPickerHandle {
+  /** プリセットを適用して起票シートを開き、タイトル欄へフォーカスする。
+   * 呼び出し元のクリックハンドラ内（＝ユーザージェスチャ内）で同期的に完了するため、
+   * モバイル Chrome でもソフトキーボードが開く（#135）。
+   * リポジトリを持たないプリセットは選択 UI が必要なため false を返し、呼び出し元の
+   * 通常のリンク遷移（`/new?labels=&title=`）へフォールバックさせる。 */
+  openWithPreset: (preset: LaunchablePreset) => boolean;
+}
+
 interface RepoPickerProps {
   /** URL パラメータ起動（B1-2・FR-15）の初期値。下書き（B5-1）が存在する場合はそちらを優先する。 */
   prefill?: PrefillParams | null;
   /** ログイン中ユーザーの GitHub ユーザー ID。SWR キャッシュの所有者照合に使う（#101・別アカウント混入防止）。 */
   userId: number;
+  ref?: Ref<RepoPickerHandle>;
 }
 
 /** 起票先リポジトリの検索/選択 UI（B2-1/B2-2）。最近使用したリポジトリを先頭に表示する。 */
-export function RepoPicker({ prefill = null, userId }: RepoPickerProps) {
+export function RepoPicker({ prefill = null, userId, ref }: RepoPickerProps) {
   const { t } = useLanguage();
   const [state, setState] = useState<ReposState>(() => initialReposState(userId));
   const [query, setQuery] = useState("");
@@ -45,10 +61,20 @@ export function RepoPicker({ prefill = null, userId }: RepoPickerProps) {
   const [selected, setSelected] = useState<string | null>(() => loadDraft()?.repo ?? prefill?.repo ?? null);
   const [submitState, setSubmitState] = useState<SubmitState>({ status: "idle" });
   const [formKey, setFormKey] = useState(0);
+  // URL パラメータ起動（B1-2）で受け取ったプリフィルと、保存済みショートカットのタップで
+  // アプリ内適用したプリセット（#135）を同じ経路で扱うための実効プリフィル。props の `prefill` は
+  // 「この文書がどの URL で起動されたか」の入力であり、アプリ内で別のショートカットを開いた場合は
+  // こちらが新しいプリセットで上書きされる。
+  const [activePrefill, setActivePrefill] = useState<PrefillParams | null>(prefill);
+  // ショートカット起動のたびに IssueForm を作り直すための連番（#135）。同じリポジトリの別プリセットを
+  // 続けて開いても、タイトル雛形・ラベルが確実に新しいプリセットへ切り替わるようにする。
+  const [launchSeq, setLaunchSeq] = useState(0);
   // スマート入力（B3-3・#repo）でリポジトリを選んだ際、検索欄に残っていた自由文をタイトルの
   // 初期値として引き継ぐ（quickAddTitle）。一覧タップ経由の選択では null になる。
   const [quickAddTitle, setQuickAddTitle] = useState<string | null>(null);
   const dialogRef = useRef<HTMLDialogElement>(null);
+  // タイトル欄の実体 input。ショートカットのタップ（ユーザージェスチャ）内で同期的に focus する（#135）。
+  const titleInputRef = useRef<HTMLInputElement>(null);
   // オフラインキュー（B4-2・FR-22）: ネットワーク到達不能時の起票を保持し、オンライン復帰後に自動再送する。
   const {
     pendingCount,
@@ -65,6 +91,13 @@ export function RepoPicker({ prefill = null, userId }: RepoPickerProps) {
     if (dialog && !dialog.open) dialog.showModal();
   }
 
+  /** 起票シートを開き、タイトル欄へフォーカスする。呼び出し元のクリックハンドラ内で同期的に
+   * 完了させることで、モバイル Chrome でもソフトキーボードが開く（#135・B1-3）。 */
+  function openSheetAndFocusTitle() {
+    openDialog();
+    titleInputRef.current?.focus();
+  }
+
   // `selected` の初期値（上記 useState）は RepoPicker の初回マウント時点の prefill しか見ないため、
   // 認証/インストール確認（App.tsx）が終わって RepoPicker が先にマウントされた後に launchQueue
   // 経由で prefill が届くケース（WebAPK 再利用起動・#98）を取りこぼす。`navigate-existing` は同一
@@ -76,8 +109,13 @@ export function RepoPicker({ prefill = null, userId }: RepoPickerProps) {
   useEffect(() => {
     if (!prefill?.repo || prefill.repo === appliedPrefillRepoRef.current) return;
     appliedPrefillRepoRef.current = prefill.repo;
+    setActivePrefill(prefill);
+    // 一度送信した後（formKey > 0）に別のショートカットで再起動された場合も、新しい起動の
+    // プリセットは適用する（連続起票で同じ雛形が復活するのを防ぐ formKey の役割は保ったまま、
+    // 「新しい起動」だけリセットする）。
+    setFormKey(0);
     if (selected !== prefill.repo) setSelected(prefill.repo);
-  }, [prefill?.repo, selected]);
+  }, [prefill, selected]);
 
   // 下書き（B5-1）/ URL パラメータ起動（B1-2）でリポジトリが初期選択済みの場合も、
   // ユーザー操作を待たずボトムシートを自動的に開く（B1-3）。state.status も依存に含めるのは、
@@ -142,23 +180,50 @@ export function RepoPicker({ prefill = null, userId }: RepoPickerProps) {
   // URL パラメータ起動（B1-2）のタイトル/ラベルは、まだ一度も送信していない・かつプレフィルが
   // 指定したリポジトリのままである場合のみ適用する。ユーザーが別リポジトリへ手動で切り替えた
   // 場合や、一度送信して連続起票に入った場合は引き継がない。
-  const appliesPrefill = formKey === 0 && (!prefill?.repo || prefill.repo === selected);
+  const appliesPrefill = formKey === 0 && (!activePrefill?.repo || activePrefill.repo === selected);
   // プレフィルがなければスマート入力（B3-3）由来の quickAddTitle にフォールバックする
   // （selectRepo のたびに常に上書きされるため formKey 等での追加ガードは不要）。
-  const resolvedInitialTitle = (appliesPrefill ? prefill?.title : undefined) ?? quickAddTitle ?? undefined;
+  const resolvedInitialTitle = (appliesPrefill ? activePrefill?.title : undefined) ?? quickAddTitle ?? undefined;
 
   /** `prefillTitle`: スマート入力（B3-3）の `#repo` トークンタップ経由の選択時、検索欄に残っていた
    * 自由文（トークンを取り除いたもの）をタイトルの初期値として引き継ぐ。一覧タップ経由では null。 */
-  function selectRepo(fullName: string, prefillTitle: string | null = null) {
+  /** 起票先の確定に伴う共通の状態更新（一覧タップ・ショートカット起動で共有する）。
+   * flushSync の中から呼ぶ前提（呼び出し側がジェスチャ内での同期反映を担保する）。 */
+  function applyRepoSelection(fullName: string, prefillTitle: string | null) {
     setSelected(fullName);
     setRecent(recordRecentRepo(fullName));
     setSubmitState({ status: "idle" });
     setQuickAddTitle(prefillTitle);
-    // クリックハンドラ内で同期的に開く（ユーザージェスチャのまま dialog を開くことで、
-    // 内部の autoFocus 要素へのネイティブ focus 連携がモバイル Chrome でも
-    // キーボード表示につながりやすくする・B1-3・research/mobile-ux-pwa §2 の緩和策）。
-    openDialog();
   }
+
+  function selectRepo(fullName: string, prefillTitle: string | null = null) {
+    // クリックハンドラ内（＝ユーザージェスチャ内）で IssueForm のマウントまで同期的に終わらせてから
+    // dialog を開き focus する。React の既定のバッチ更新ではマウント（と autoFocus）がジェスチャの
+    // 外へずれ、Android Chrome がソフトキーボードを開かない（#135・research/mobile-ux-pwa §2）。
+    flushSync(() => {
+      applyRepoSelection(fullName, prefillTitle);
+    });
+    openSheetAndFocusTitle();
+  }
+
+  /** 保存済みショートカット（ShortcutList）のタップからページ遷移せずに起票シートを開く（#135）。
+   * リポジトリを持たないプリセットはリポジトリ選択 UI が必要なため false を返し、
+   * 呼び出し元の通常のリンク遷移へフォールバックさせる。 */
+  function openWithPreset(preset: LaunchablePreset): boolean {
+    // リポジトリ一覧の取得前（loading / error）は dialog 自体が未レンダリングでシートを開けないため、
+    // アプリ内起動を引き受けずリンク遷移へ委ねる。
+    if (!preset.repo || state.status !== "ready") return false;
+    flushSync(() => {
+      setActivePrefill({ repo: preset.repo, labels: preset.labels, title: preset.title || null, body: null });
+      setFormKey(0);
+      setLaunchSeq((n) => n + 1);
+      applyRepoSelection(preset.repo, null);
+    });
+    openSheetAndFocusTitle();
+    return true;
+  }
+
+  useImperativeHandle(ref, () => ({ openWithPreset }));
 
   /** 一覧タップ時: 検索欄に確定済みの `#repo` トークンがあれば、残りの自由文をタイトルへ引き継ぐ。 */
   function handleSelectFromList(fullName: string) {
@@ -284,14 +349,15 @@ export function RepoPicker({ prefill = null, userId }: RepoPickerProps) {
               </button>
             </div>
             <IssueForm
-              key={`${selected}-${formKey}`}
+              key={`${selected}-${formKey}-${launchSeq}`}
               repoFullName={selected}
               pushAccess={selectedPushAccess}
               onSubmit={submitIssue}
               submitting={submitState.status === "submitting"}
               initialTitle={resolvedInitialTitle}
-              initialLabels={appliesPrefill ? prefill?.labels : undefined}
-              initialBody={appliesPrefill ? prefill?.body : undefined}
+              initialLabels={appliesPrefill ? activePrefill?.labels : undefined}
+              initialBody={appliesPrefill ? activePrefill?.body : undefined}
+              titleInputRef={titleInputRef}
             >
               {submitState.status === "success" ? (
                 <p className="submit-result success">

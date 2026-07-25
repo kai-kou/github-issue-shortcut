@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type MouseEvent } from "react";
 import { useLanguage } from "../i18n/LanguageContext";
 import { buildLaunchUrl } from "./launchUrl";
 import { loadShortcutsCache, saveShortcutsCache, type Shortcut } from "./shortcutsCache";
@@ -15,6 +15,9 @@ function initialShortcutsState(userId: number): ShortcutsState {
 interface ShortcutListProps {
   /** ログイン中ユーザーの GitHub ユーザー ID。SWR キャッシュの所有者照合に使う（#101・別アカウント混入防止）。 */
   userId: number;
+  /** タップされたプリセットをページ遷移せずにアプリ内で開く（#135）。処理した場合は true を返す。
+   * false（未指定・リポジトリなしプリセット）のときは `<a href>` の通常遷移にフォールバックする。 */
+  onLaunch?: (preset: Shortcut) => boolean;
 }
 
 /**
@@ -25,7 +28,7 @@ interface ShortcutListProps {
  * ログイン済み（`AuthPanel` が `installed === true` のときのみ描画）が前提のため、
  * 未ログイン時のガードはこのコンポーネントでは行わない。
  */
-export function ShortcutList({ userId }: ShortcutListProps) {
+export function ShortcutList({ userId, onLaunch }: ShortcutListProps) {
   const { t } = useLanguage();
   const [state, setState] = useState<ShortcutsState>(() => initialShortcutsState(userId));
 
@@ -51,6 +54,14 @@ export function ShortcutList({ userId }: ShortcutListProps) {
     };
   }, [userId]);
 
+  /** 主ボタン・修飾キーなしのタップだけをアプリ内起動へ振り替える（#135）。
+   * 「新しいタブで開く」「リンクをコピー」等のブラウザ標準動作と長押しメニューは `<a href>` のまま残す。 */
+  function handleLaunchClick(e: MouseEvent<HTMLAnchorElement>, shortcut: Shortcut) {
+    if (!onLaunch) return;
+    if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    if (onLaunch(shortcut)) e.preventDefault();
+  }
+
   if (state.status === "loading") return null;
   if (state.status === "error") return <p className="status-note">{t.shortcuts.homeListLoadError}</p>;
   if (state.shortcuts.length === 0) return null;
@@ -66,7 +77,11 @@ export function ShortcutList({ userId }: ShortcutListProps) {
           const meta = [shortcut.repo, shortcut.labels.join(",")].filter(Boolean).join(" · ");
           return (
             <li key={shortcut.id}>
-              <a className="shortcut-quicklist-item" href={buildLaunchUrl(shortcut, "")}>
+              <a
+                className="shortcut-quicklist-item"
+                href={buildLaunchUrl(shortcut, "")}
+                onClick={(e) => handleLaunchClick(e, shortcut)}
+              >
                 <span className="shortcut-quicklist-label">{label}</span>
                 {meta ? <span className="shortcut-quicklist-meta">{meta}</span> : null}
               </a>
