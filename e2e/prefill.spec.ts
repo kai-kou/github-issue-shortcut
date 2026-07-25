@@ -94,6 +94,24 @@ test.describe("URL パラメータ起動（モック GitHub・モバイルエミ
     await expect(body).toBeFocused();
   });
 
+  test("起動直後にラベル選択（details/summary）を開いてもタイトル欄へフォーカスを横取りしない（#138）", async ({
+    page,
+  }) => {
+    await page.goto("/");
+    await page.getByRole("link", { name: /GitHub でログイン|Sign in with GitHub/ }).click();
+    await expect(page.getByText(/e2e-user/)).toBeVisible();
+
+    await page.goto("/new?repo=kai-kou%2Falpha");
+    const title = page.getByRole("textbox", { name: /タイトル|^Title$/ });
+    await expect(title).toBeVisible();
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+
+    // ラベルを選びに来たユーザーのキーボードが勝手に開くと候補が隠れるため、横取りしない。
+    await page.getByText(/ラベルを追加|Add labels/).click();
+    await expect(page.getByRole("checkbox", { name: "bug" })).toBeVisible();
+    await expect(title).not.toBeFocused();
+  });
+
   test("未ログインで開いてログインすると、コールバック復帰後も同じプレフィルが復元される", async ({ page }) => {
     await page.goto(
       "/new?repo=kai-kou%2Falpha&title=%E6%9C%AA%E3%83%AD%E3%82%B0%E3%82%A4%E3%83%B3%E3%83%97%E3%83%AC%E3%83%95%E3%82%A3%E3%83%AB",

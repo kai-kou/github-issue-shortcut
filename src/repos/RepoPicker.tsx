@@ -122,7 +122,8 @@ export function RepoPicker({ prefill = null, userId, ref }: RepoPickerProps) {
     const target = e.target as HTMLElement;
     // backdrop（dialog 要素そのもの）へのタップと、他の操作対象へのタップは横取りしない。
     if (target === dialogRef.current) return;
-    if (target.closest("input, textarea, button, a, select, label")) {
+    // ラベル選択は <details><summary>（LabelPicker）なので summary も除外する。
+    if (target.closest("input, textarea, button, a, select, label, summary, [role='button']")) {
       pendingLaunchFocusRef.current = false;
       return;
     }
