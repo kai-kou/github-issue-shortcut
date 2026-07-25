@@ -1,7 +1,11 @@
 # Claude Code 最新機能リファレンス & ワークフロー最適化
 
 > 最終更新: 2026-07-03
-> 対象: Claude Code v2.1.163+, Claude 4.6/4.7/**4.8** モデルファミリー
+> 対象: Claude Code v2.1.219+, Claude 4.6/4.7/4.8/**5** モデルファミリー
+
+> **2026-07-24 追記②（モデル指定のエイリアス化・#314）**: モデル世代交代のたびにリポジトリを書き換える運用をやめ、**運用ファイルのモデル指定は `opus` / `sonnet` / `haiku` / `fable` のエイリアス既定** に統一した（公式: 「Aliases point to the recommended version for your provider and update over time」・Anthropic API では `opus`→Opus 5 / `sonnet`→Sonnet 5・v2.1.219+）。エイリアスは `/model`・`claude --model`・`ANTHROPIC_MODEL`・`settings.json` の `model`・サブエージェント/スキル frontmatter の `model`・Agent ツールの `model` パラメータで使える（Agent ツールは **エイリアスのみ** 受理）。厳密 ID を書く例外は ① API 直叩き ② 料金表など ID をキーにする実装 ③ 再現性のためのピン留め の 3 つ。SSOT は `agent-team.md`「モデル指定の方針」。
+
+> **2026-07-24 追記（Opus 5 リリース）**: **Claude Opus 5（`claude-opus-5`）が現行 Opus** となり、本ファイル・`agent-team.md` の推奨モデルを Opus 4.8 → Opus 5 に更新した（Opus 4.8/4.7/4.6 は legacy 参考として残置）。Opus 4.8 と **同価格（$5 / $25）・1M コンテキスト・128K 出力のドロップイン更新**。差分は ① **thinking が既定 ON**（未指定でも adaptive。4.8/4.7 は未指定＝思考なし。`max_tokens` は thinking + 応答の合計上限のため余裕を持たせる） ② **thinking 無効化は effort `high` 以下限定**（`xhigh`/`max` と併用すると HTTP 400） ③ prompt cache 最小長 512 トークン（4.8 は 1024） ④ レート枠は Opus 4.x プールと別枠 ⑤ Fast mode（`/fast`）対象は Opus 5 / 4.8（4.7 は v2.1.219 で除外・#306）。デフォルト effort は `high` で 4.8 と同じ。**Opus 5 は `low`/`medium` でも高品質** なため、コスト削減はモデル変更より先に effort を下げて評価する。挙動の癖（出力が長い・自己検証が過剰になりやすい・スコープを広げがち・サブエージェント委譲に積極的）は `agent-team.md` のモデル一覧注記を参照。
 
 > **2026-07-03 追記（ユーザー指示による事実確認・`/deep-research` のネイティブ実行）**: `code.claude.com/docs/en/workflows`・`/en/commands` を Fetch して確認した結果、`/deep-research` は公式に **Workflow** 分類（Skill ではない）で、CLI・Desktop・IDE拡張・`claude -p`・Agent SDK のいずれでも同一に動作し、**クラウド実行環境のメインセッションから `claude -p` サブプロセスを介さず直接 invoke できる** ことが確定した。モデルは既定でセッションのモデルを使用（スクリプトが明示的に別モデルへ routing しない限り）— 本プロジェクトの `run_deep_research_workflow.py` が Opus を使うのは明示指定によるプロジェクトの選択であり、ネイティブ機能自体が Opus 固定という意味ではない。手書き `.js` ワークフロー（`Workflow` ツール）も本セッションで実際に呼び出し可能なことを確認（ユーザー明示オプトイン時のみ使用する制約あり）。詳細は `docs/rules/dynamic-workflows-rules.md` と `.claude/skills/research-runner/SKILL.md`（Step 3a/3b）を参照。
 
@@ -27,7 +31,7 @@
 
 ### Adaptive Thinking（適応的思考）
 
-Opus 4.8 / Opus 4.7 / Opus 4.6 / Sonnet 5 に搭載。クエリの複雑さに基づき、内部で思考量を自動調整する。
+現行の Opus / Sonnet（および Opus 4.x）に搭載。クエリの複雑さに基づき、内部で思考量を自動調整する（現行 Opus は既定 ON）。
 
 - 単純なタスク → 思考を最小化（速く・安く）
 - 複雑なタスク → 深く考える（品質優先）
@@ -35,13 +39,13 @@ Opus 4.8 / Opus 4.7 / Opus 4.6 / Sonnet 5 に搭載。クエリの複雑さに�
 
 ### Auto mode for Max subscribers（v2.1.111）
 
-Claude Max サブスクライバーが Opus 4.8（および 4.7）で利用できるモード。Adaptive Thinking が自動調整されるため、`/effort` を明示的に設定しなくてもタスク複雑度に応じて思考量が最適化される。
+Claude Max サブスクライバーが Opus 系で利用できるモード。Adaptive Thinking が自動調整されるため、`/effort` を明示的に設定しなくてもタスク複雑度に応じて思考量が最適化される。
 
 **`/effort` との関係**:
 - Auto mode は Adaptive Thinking の **自動制御**。`/effort` は **手動上書き**
 - `/effort xhigh` を指定すると Auto mode の自動調整より xhigh を優先する
 - コスト重視の場合は Auto mode + `/effort low` で抑制可能
-- **スケジュールタスク（headless）**: Auto mode も `/effort` も有効。コスト管理のため `medium` を推奨（Opus 4.7 + xhigh は高コストのため、日常的な自動パイプラインでは `medium` でバランスを取る）
+- **スケジュールタスク（headless）**: Auto mode も `/effort` も有効。コスト管理のため `medium` を推奨（`opus` + xhigh は高コストのため、日常的な自動パイプラインでは `medium` でバランスを取る）
 
 ### `/effort` コマンド（思考深度の明示制御）
 
@@ -54,13 +58,13 @@ Claude Code セッション内で思考の深度を設定できる。API レベ�
 | `/effort low` | `"low"` | 最小・大幅なトークン節約 | 定型チェック・軽量調査・ルーティング判断 |
 | `/effort medium` | `"medium"` | バランス・適度なトークン節約 | 通常の実装・PR 対応（Sonnet 5 に特に推奨） |
 | `/effort high` | `"high"` | 複雑なタスクに対応 | 複雑な実装・設計判断・ファクトチェック |
-| `/effort xhigh` | `"xhigh"` | コーディング/エージェント向け最適（Opus 4.7 の既定） | **Opus 4.8/4.7 推奨**・台本生成・複数ファイルリファクタリング・アーキテクチャ設計（Opus 4.8 では明示指定が必要） |
+| `/effort xhigh` | `"xhigh"` | コーディング/エージェント向け最適 | **`opus` 推奨**・台本生成・複数ファイルリファクタリング・アーキテクチャ設計（現行 Opus / Sonnet は既定 `high` のため明示指定が必要） |
 | `/effort max` | `"max"` | 絶対最大・トークン無制限 | 最深の推論が必要な設計・アーキテクチャ決定。実用上は xhigh で十分なことが多い |
 
-> **2026-06-05 更新（Opus 4.8）**: effort は 5 段階（`low` / `medium` / `high` / `xhigh` / `max`）。**Opus 4.8 のデフォルトは `high`**（Opus 4.7 は `xhigh`）。Opus 4.7 → 4.8 へ切り替えると effort が自動的に `high` にリセットされる。公式推奨は「反射的に `xhigh` を選ばず `high` を基準に eval で per-route 調整。コーディング/エージェントは `xhigh`、知能重視は最低 `high`」。`max` は Opus 専用。
-> **注意**: `/effort high` は Opus 4.8 のデフォルト。意識的にコストを下げたい場合は `medium` または `low` を指定する。
-> **Opus 4.8 推奨**: 台本生成品質の観点から **Opus 4.8 + `/effort xhigh` を明示指定**（旧: Opus 4.7 + xhigh）。Opus 4.8 は既定が `high` のため、xhigh を使うには明示指定が必須。
-> **`ultracode`（Opus 4.8・セッション限定）**: `xhigh` + Dynamic Workflows（`/workflows`）。大規模・多エージェント作業の動的オーケストレーション。`settings.json` には書けない（セッション内のみ）。1ターンだけ深い推論が欲しい場合は `ultrathink` キーワードをプロンプトに含める（effort 設定は変わらない）。
+> **2026-07-24 更新（Opus 5）**: effort は 5 段階（`low` / `medium` / `high` / `xhigh` / `max`）。**現行 Opus のデフォルトは `high`**（旧 Opus 4.7 のみ `xhigh`）。公式推奨は「コーディング/エージェントは `xhigh`、それ以外の知能重視は `high` を基準に eval で per-route 調整」。現行 Opus では **`low`/`medium` でも品質が高い** ため、コスト削減はまず effort を下げて評価する。`max` は Opus 系と Sonnet・Fable で利用可。
+> **注意**: `/effort high` は現行 Opus のデフォルト。意識的にコストを下げたい場合は `medium` または `low` を指定する。
+> **Opus 推奨**: 台本生成品質の観点から **`/model opus` + `/effort xhigh` を明示指定**。現行 Opus は既定が `high` のため、xhigh を使うには明示指定が必須。
+> **`ultracode`（Opus 系セッション限定）**: `xhigh` + Dynamic Workflows（`/workflows`）。大規模・多エージェント作業の動的オーケストレーション。`settings.json` には書けない（セッション内のみ）。1ターンだけ深い推論が欲しい場合は `ultrathink` キーワードをプロンプトに含める（effort 設定は変わらない）。
 
 **effort がサブエージェントに与える影響**:
 - `/effort` コマンドはメインセッションの思考深度を設定する
@@ -69,8 +73,7 @@ Claude Code セッション内で思考の深度を設定できる。API レベ�
 - サブエージェントプロンプトに「簡潔に・要点のみ」等の指示を入れることで間接的に出力量を削減できる
 
 **推奨**:
-- 台本生成（**Opus 4.8** 使用時）: `/effort xhigh` を **明示指定**（4.8 既定は `high`）。コーディング/エージェント/知能重視に最適
-- 台本生成（Opus 4.7 使用時）: `/effort xhigh`（4.7 のデフォルト・legacy）
+- 台本生成（**`opus`** 使用時）: `/effort xhigh` を **明示指定**（現行 Opus の既定は `high`）。コーディング/エージェント/知能重視に最適
 - Sonnet 5 で通常作業: `/effort medium` でコスト削減
 - 定型・ルーティング判断: `/effort low` で高速化
 
@@ -95,13 +98,13 @@ effort: high   # このスキル実行中のみ effort: high が適用される
 
 | effort | スキル |
 |--------|--------|
-| `xhigh` | `script-writer`（Opus 4.8 で明示指定・2026-06-05 更新） |
+| `xhigh` | `script-writer`（`opus` で明示指定・2026-07-24 更新） |
 | `high` | `fact-checker`, `self-reviewer`, `script-team-reviewer` |
 | `medium` | `script-pipeline`, `theme-discovery`, `metadata-reviewer`, `retrospective` |
 | `low` | `refinement`, `retro-try-handler` |
 | （未設定） | その他のスキル |
 
-> **2026-06-05 更新**: `script-writer` は `effort: xhigh`。Opus 4.8 はデフォルト effort が `high` のため、frontmatter で `xhigh` を明示することで台本生成時のみ深い推論を確保する（旧: Opus 4.7 + xhigh）。
+> **2026-07-24 更新**: `script-writer` は `effort: xhigh`。現行 Opus はデフォルト effort が `high` のため、frontmatter で `xhigh` を明示することで台本生成時のみ深い推論を確保する（旧: Opus 4.8 + xhigh）。
 
 ### `/advisor` コマンドと Advisor Tool（2026-04 確認済み）
 
@@ -164,7 +167,7 @@ response = client.beta.messages.create(
     tools=[{
         "type": "advisor_20260301",
         "name": "advisor",
-        "model": "claude-opus-4-8",  # Advisor: Opus（高精度判断）
+        "model": "claude-opus-5",  # Advisor: Opus（高精度判断・API 直叩きのため full ID が必須＝エイリアス例外①）
         "max_uses": 3
     }],
     messages=[...]
@@ -175,10 +178,10 @@ response = client.beta.messages.create(
 
 | シーン | Executor | Advisor | 期待効果 |
 |--------|---------|---------|---------|
-| 台本生成（Phase 3） | Sonnet 5 | Opus 4.8 | 品質向上、コスト削減（Opus 4.8 単独より安価） |
-| ファクトチェック | Haiku 4.5 | Opus 4.8 | コスト -85%（Sonnet 比）、品質は Opus 4.8 水準 |
-| セルフレビュー | Haiku 4.5 | Opus 4.8 | 軽量チェック + 深いレビュー |
-| 画像生成判断 | Haiku 4.5 | Opus 4.8 | edge case の高精度判定 |
+| 台本生成（Phase 3） | Sonnet | Opus | 品質向上、コスト削減（Opus 単独より安価） |
+| ファクトチェック | Haiku | Opus | コスト -85%（Sonnet 比）、品質は Opus 水準 |
+| セルフレビュー | Haiku | Opus | 軽量チェック + 深いレビュー |
+| 画像生成判断 | Haiku | Opus | edge case の高精度判定 |
 
 #### 公式リソース
 
@@ -190,7 +193,7 @@ response = client.beta.messages.create(
 
 | 状況 | 推奨戦略 |
 |------|---------|
-| 台本生成（Phase 3）| Opus 4.8 の 1M コンテキストを活用し、リサーチ全文 + キャラ設定 + 既存台本を同時参照 |
+| 台本生成（Phase 3）| Opus の 1M コンテキストを活用し、リサーチ全文 + キャラ設定 + 既存台本を同時参照 |
 | 画像パイプライン | Sonnet 5 でデザイン定義書 + 全 visual_cue を一括処理（圧縮リスク低減） |
 | レビュー・検証 | Haiku でコンテキスト効率最大化（不要な情報を渡さない） |
 | 長時間パイプライン | 圧縮は Claude 標準の Auto Compaction（コンテキスト上限付近で自動発動）に委ねる。PostCompact フックが自動コミットで作業を保護する |
@@ -499,7 +502,7 @@ echo "$total_chars"
 
 ### Auto mode for Max subscribers（v2.1.111）
 
-Opus 4.8（および 4.7）での Adaptive Thinking 自動制御モード。詳細は上記「Auto mode for Max subscribers」セクションを参照。
+Opus 系での Adaptive Thinking 自動制御モード。詳細は上記「Auto mode for Max subscribers」セクションを参照。
 
 ### `alwaysLoad` MCP オプション（v2.1.121）
 
@@ -1241,6 +1244,8 @@ timeout 120 claude -p "List open issues as JSON" \
 | 2026-07-21 | v2.1.216 | 破壊的変更 | 組み込み `code-review` スキルに `disable-model-invocation: true` が付与され Skill ツール経由の自律起動が不可に。自律セッションの Layer 1 実行手段を `self-reviewer` Step 2（サブエージェント観点別フレッシュ文脈レビュー）に変更（`ai-reviewer-strategy.md`/`pr-review-flow*.md`/`self-reviewer`/`pr-review-watcher` を整合修正） | #275 |
 | 2026-07-21 | v2.1.216 | 恒久対策 | 同名 project スキル `.claude/skills/code-review/`（自前実装）で bundled `code-review` を置換（公式オーバーライド仕様）。対話・自律の両セッションから `/code-review` が再び起動可能になり、Layer 1 標準実行手段を自前スキルへ再統一。`modules.yaml` pr-review モジュールに登録し派生リポジトリへも apply-base で伝播 | #280 |
 | 2026-07-22 | v2.1.217 | 破壊的変更（影響なし） | サブエージェントが既定でネストしたサブエージェントを起動できなくなった（`CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH` で深化可能）。横断調査（`code-review`/`self-reviewer`/`discussion-review`/`retrospective`/`self-improvement-loop`/`problem-investigation-protocol.md` 等の並列サブエージェント起動箇所）の結果、本プロジェクトの全ファンアウトはメインセッション（lead）が直接サブエージェントを起動する設計で、サブエージェントがさらにサブエージェントを起動する箇所は皆無と確認。対応不要 | #284 |
+| 2026-07-23 | v2.1.218 | 破壊的変更（影響なし・5件一括） | ① 組み込み `/code-review` がバックグラウンドサブエージェント実行に変更（レビュー対象はスタックされたスラッシュコマンド）→ 本プロジェクトは同名 project スキル（`.claude/skills/code-review/`）で bundled を完全に置換済み・レビュー対象は自スキル Step 0 で明示決定するため無関係。② auto mode で危険 rm・バックグラウンド `&`・疑わしい Windows パスの許可ダイアログが廃止されクラシファイア判定に変更 → `.claude/settings.json` は `permissions.defaultMode`（auto 等）を設定しておらず auto mode のダイアログ機構自体を利用していない。`user-prompt-submit-guard.sh` は UserPromptSubmit 時のプロンプト文字列に対する助言専用フック（非ブロッキング・rm は `rm -rf /` 等の一部パターンのみ検出・`&`/Windows パス検出なし）であり、auto-mode 許可ダイアログとは独立した別レイヤーで代替関係にない（本フックが `&`/Windows パスの安全網として機能しているわけではない点に注意）。よって設定変更は不要。③ `/deep-research` が手動起動時のみ開始に変更（自発始動の廃止） → `research-runner` は元々 `Skill` ツール経由の明示呼び出しのみで自発始動に依存していないため無関係。④ auto の plan mode で read-only 証明不能な Bash コマンドの確認プロンプトが廃止されクラシファイア判定に変更 → 本プロジェクトは Plan mode の対話許可ダイアログに依存する設定・ルールを持たないため無関係。⑤ サーバー管理設定の軽微なトグルが settings-approval プロンプトを発火しなくなった → `.claude/settings.json` の env/permissions は影響対象の「軽微なトグル」カテゴリに該当する記述なし。5 件とも本プロジェクトの内部資産（rules/skills/hooks/settings）に修正不要 | #289 |
+| 2026-07-24 | v2.1.219 | 破壊的変更（影響なし） | Fast mode（`/fast`）の対象モデルから Opus 4.7 が完全除外され、Opus 5 / Opus 4.8 のみが対象に変更。`.claude/`（hooks/skills/agents/settings）を横断 Grep した結果、`/fast` を実際に呼び出す・Opus 4.7 との組み合わせを前提とする箇所は皆無（本プロジェクトのスケジュールタスクは cost-sensitive のため Fast mode 自体を使用しない方針・既存記載どおり）。`agent-team.md`/`agent-team-summary.md`/本ファイル内の Opus 4.7 併記は legacy 参考情報であり `/fast` 運用手順ではないため修正不要 | #306 |
 | （spec-sync レーンが対応時に追記する） | — | — | — | — |
 
 ## 禁止事項

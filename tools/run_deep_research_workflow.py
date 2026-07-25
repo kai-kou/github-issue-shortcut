@@ -20,7 +20,7 @@ Claude Code のネイティブ /deep-research（Dynamic Workflows）を起動し
     claude -p（非対話）・Agent SDK のいずれでも同一に動作し、クラウド実行環境（本ハーネス）からも
     claude -p サブプロセスを介さず直接 invoke できることが確定した（詳細: docs/rules/dynamic-workflows-rules.md）。
   - モデルは公式には「セッションのモデルを使う（スクリプトが明示的に別モデルへ routing しない限り）」。
-    本ツールが DEFAULT_ENGINE_MODEL=claude-opus-4-8 を --model で明示指定しているのは
+    本ツールが DEFAULT_ENGINE_MODEL=opus（エイリアス）を --model で明示指定しているのは
     **本プロジェクトの選択**であり、ネイティブ /deep-research 自体が Opus に固定されている
     という確認は取れていない（過去の「Opus orchestrator」という言い回しは本ツールの説明として使う）。
   - 本ツール（claude -p サブプロセス経由）は Step 3b 専用として存続する。対話起動（Step 3a）は
@@ -74,8 +74,8 @@ RESEARCH_DIR = REPO_ROOT / "content" / "research"
 SCHEMA_PATH = REPO_ROOT / "tools" / "research_schema.json"
 COST_LOG = REPO_ROOT / "content" / "pipeline-state" / "research_cost_log.jsonl"
 
-DEFAULT_ENGINE_MODEL = "claude-opus-4-8"
-DEFAULT_NORMALIZE_MODEL = "claude-sonnet-5"
+DEFAULT_ENGINE_MODEL = "opus"        # エイリアス既定（最新 Opus に自動追随・agent-team.md「モデル指定の方針」）
+DEFAULT_NORMALIZE_MODEL = "sonnet"   # 同上（最新 Sonnet に自動追随）
 
 # サブスク週次枠経路（#2562・ユーザー指示 2026-06-04）:
 # claude -p サブプロセスの env から ANTHROPIC_API_KEY を除去して Claude Code Max の
@@ -235,7 +235,7 @@ def _run_claude(prompt: str, model: str, allowed_tools: str | None,
     使い捨て TemporaryDirectory を cwd にする（normalize 等のファイル回収が不要な呼び出し向け）。
     """
     cmd = ["claude", "-p", prompt, "--model", model, "--output-format", "json",
-           "--fallback-model", "claude-sonnet-5"]
+           "--fallback-model", "sonnet"]
     if allowed_tools:
         cmd += ["--allowedTools", allowed_tools]
     # サブスク経路（#2562）では API 課金用の予算上限を付けない（上限は週次クォータが担保）。

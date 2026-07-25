@@ -44,6 +44,7 @@
 | ☐ | 未コミット・未追跡・未 push がないか | 機械（フック） | フックでブロック済み |
 | ☐ | タスク外ファイルが diff に混入していないか（`git diff origin/main...HEAD --name-only`） | 目視 | CLAUDE.md「やってはいけないこと」 |
 | ☐ | リポジトリ名・パス・コマンドの typo（github-issue-shortcut の末尾 i 重複等） | 機械 | 実指摘あり（誤操作リスク） |
+| ☐ | 対象 Issue の Done Criteria（Issue 本文または最初のコミットメッセージのいずれかに記載）を diff が満たしているか（どちらにも未記載なら理由を1行記録してスキップ） | 目視 | self-reviewer SKILL.md Step 1 追加（verification loops 記事の spec validation 縮小採用・#297・#302） |
 
 ## 1. 台本・コンテンツ（`content/scripts/` `content/meta/`）
 
@@ -118,5 +119,5 @@
 
 1. PR マージ後、self-reviewer スキル Step F-1〜F-4（AI レビュー指摘の学習）を実行する
 2. 同種指摘が 2 回以上 → 本シートに行を追加 + 機械化可能なら `self_review_check.py` にチェックを追加（**同一 PR で**）
-3. 同種指摘が 3 回以上 → Lv3 フック / Lv4 CI への昇格を検討（`docs/rules/harness-escalation.md`）
+3. 同種指摘が 3 回以上 → Lv3 フックへの昇格を検討（`docs/rules/harness-escalation.md`。Lv4 CI は現時点不採用・飼い主決定 #298 のため昇格先にしない）
 4. **週次定期再分析（自動スケジュール済み・Issue #2870/#2900）**: 毎週月曜の 07:00 スロット ⑤.7 で `python3 tools/analyze_pr_review_comments.py --report` を実行し、前週比デルタ（カテゴリ +10 件/週以上・新出カテゴリ・機械化済みカテゴリの増加）を確認して本シート + チェッカーを更新する。週 ~90 PR ペースのため週次でないと同種指摘が頻発する。手順詳細は プロジェクト定義のスケジューリング詳細ファイル（例: `{プロジェクト定義: hourly-routing 相当}` ⑤.7 等）、分類ルールの正本は同ツールの `CATEGORY_RULES`

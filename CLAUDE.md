@@ -104,7 +104,7 @@ GitHub Issue Shortcut
 `intent-gate-rules.md`（挙動変更前の spec/test/code 権威解決・fable-method 反映）/
 `large-change-audit-rules.md`（**大きめの改善は Layer 2 議論型レビュー + 実機検証 + 新規挙動テスト + 記録を必須にする監査ゲート**。判定は `tools/large_change_audit.py`）/
 `problem-investigation-protocol.md` / `harness-escalation.md` / `lessons-management.md` /
-`pr-review-flow.md` / `claude-code-optimization.md` / `token-optimization-rules.md` /
+`pr-review-flow.md` / `claude-code-optimization.md` / `claude-code-spec-sync.md`（Claude Code 仕様変更追随レーン・同名スキルが Read）/ `token-optimization-rules.md` /
 `github-mcp-fallback-patterns.md` / `native-fallback-rules.md`（Web 未提供機能の claude -p フォールバック標準形）/ `slack-notification-rules.md` /
 `security-posture-controls.md` / `sandbox-rules.md` / `env-vars.md` /
 `design-rules.md`（**フロントエンド（`src/`・`index.html`・manifest・CSS）変更タスクの着手前に必ず Read**。SSOT は `docs/design/design-guidelines.md`・レビュー観点は `design-review-checklist.md`）ほか。
@@ -165,7 +165,7 @@ GitHub Issue Shortcut
 | スキル | 用途 |
 |--------|------|
 | `apply-base` | 自然文「claude-code-base を反映して／適用して」で、ベースのルール・スキル・ハーネス一式を現在のリポジトリへ適用・再同期（`gh` 経由・private 対応・冪等） |
-| `research-runner` | ディープリサーチの完全自動化（`/deep-research` 直接実行・Opus orchestrator → Gemini → DIY） |
+| `research-runner` | ディープリサーチの完全自動化（`/deep-research` 直接実行 → `claude -p` → DIY WebSearch。Gemini 等の外部 LLM API は使わない） |
 | `pr-review-watcher` | PR の AI レビュー監視・指摘対応・自動マージ |
 | `discussion-review` | 議論型レビュー（敵対的相互レビュー）のネイティブ実行（name 付き Agent + SendMessage + ホワイトボード）。「専門チームを組成して」の既定経路 |
 | `design-review` | フロントエンド変更のデザイン準拠レビュー（静的チェック + E2E + チェックリスト目視の 3 層）。SSOT は `docs/design/design-guidelines.md` |
@@ -210,7 +210,7 @@ frontmatter は公式仕様（`name` / `description` 必須・`model` / `tools` 
 | `session-start.sh` | env 伝搬・gh 準備・GitHub Variables ロード・作業ツリー整備・状態注入 |
 | `user-prompt-submit-guard.sh` | 高リスク入力（main 直 push・rm -rf・.env 等）検出時にガードレールを助言注入（非ブロッキング） |
 | `prompt-structuring.sh` | ユーザーの生指示（タスク依頼）を着手前に作業スペックへ展開させる構造化ディレクティブを注入（非ブロッキング・`docs/rules/prompt-structuring-rules.md`）。トグル `CLAUDE_PROMPT_STRUCTURING=auto\|off\|always`（既定 auto）。`/`・`!`・システム通知・高リスク入力・純粋な質問では無発火 |
-| `orchestrator-directive.sh` | 高コストモデル（Opus/Fable 系）検出時に「オーケストレーターとして専門チームを組成せよ」を自動注入（非ブロッキング）。トグル `CLAUDE_ORCHESTRATOR_DIRECTIVE=auto\|off\|always`（既定 auto）・判定正規表現 `CLAUDE_HIGH_COST_MODEL_RE`（既定 `opus\|fable`）。注入本文は `.claude/orchestrator-directive.txt` で全文差し替え可（4KB 上限） |
+| `orchestrator-directive.sh` | 高コストモデル（Opus/Fable 系）検出時に「オーケストレーターとして専門チームを組成せよ」を自動注入（非ブロッキング）。現在モデルは transcript 末尾の assistant `message.model` から取得し `/model` 途中変更に追随。トグル `CLAUDE_ORCHESTRATOR_DIRECTIVE=auto\|off\|always`（既定 auto）・判定正規表現 `CLAUDE_HIGH_COST_MODEL_RE`（既定 `opus\|fable`）。注入本文は `.claude/orchestrator-directive.txt` で全文差し替え可（4KB 上限） |
 | `permission-request-auto-allow.sh` | `.claude/` 配下ファイルの Read/Write/Edit/NotebookEdit を自動許可（PermissionRequest フック） |
 | `pre-tool-use-router.sh` | main 直 push ブロック・PR 作成前チェック・.env アクセスブロック |
 | `pre-git-push-check.sh` / `pre-pr-create-check.sh` | Lv3 ハードコンストレイント（`pre-tool-use-router.sh` 経由でディスパッチ）。`pre-pr-create-check.sh` は PR 作成時に大規模改善を機械判定（`tools/large_change_audit.py`）し、該当時は監査ゲート（議論型レビュー + 実機検証 + 新規挙動テスト + 記録）のチェックリストを注入する |
