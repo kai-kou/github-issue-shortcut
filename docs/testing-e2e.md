@@ -44,6 +44,31 @@ headless シグナルで bot 検知・2FA が誘発され不安定になるた�
   Chrome Custom Tab 経由の OAuth リダイレクト往復（#21 の PWA 化と併せて確認）。
 - **実 GitHub アカウントでの認可**: 本番 URL での実ログイン（`docs` / Issue #14 の手順）。
 
+### スマート入力・オフライン系の実機残余チェックリスト（#148）
+
+チェックリストとして残すのは、Playwright（Chromium・Pixel 7 記述子エミュレーション）が
+**構造的に検証できない OS レベルの副作用** だけに絞る。状態遷移・DOM ロジック
+（`#repo` 絞り込み・タイトル引き継ぎ・`@label` の候補表示/確定/チップ解除・オフラインキューの
+表示と再送・4xx 非再送）は `e2e/smart-input.spec.ts` / `e2e/offline-queue.spec.ts` が自動カバー済みで、
+ここに手動項目としては書かない。
+
+- [ ] `@bug` 候補タップ後もソフトキーボードが閉じず、`interactive-widget=resizes-content` で
+      レイアウトが崩れない（DOM フォーカス保持は `e2e/smart-input.spec.ts` の `toBeFocused()` が
+      回帰ガードするが、実 IME パネルの表示継続はヘッドレスに存在しないため実機のみ）
+- [ ] WebAPK（ホーム画面追加済み）のコールドスタートから、タイトルのみ入力して送信完了まで
+      ストップウォッチで 5 秒以内（`e2e/kpi.spec.ts` の外形計測はプロセス起動を含まない下限値）
+- [ ] 機内モードで起票 → キュー表示 → **アプリを完全に閉じた状態** から復帰し、Service Worker の
+      Background Sync で自動再送が発火する（設定の残存は `tools/check_sw_background_sync.py` が
+      ガード。**重複の有無はサーバー側の冪等性キー（`request_ids`）+ `e2e/offline-queue.spec.ts` の
+      作成件数アサートで担保済みのため、実機で数え直す必要はない**）
+- [ ] 実指のタップで候補チップ・ラベルチェックボックスの誤タップが起きない（合成イベントは
+      接触楕円を持たないため自動化不可）
+- [ ] 実機ディスプレイでハイライト・チップの配色が視認できる
+
+**実施タイミング**（毎 PR には課さない）: ① `index.html` の viewport / manifest・`src/issues/IssueForm.tsx`
+の候補 UI とフォーカス制御・Service Worker / PWA 設定に触れる PR ② リリースマイルストーンのゲート。
+結果は対象 Issue の Done Criteria コメントとして記録する（専用ツールは作らない）。
+
 Android エミュレータを CI で動かす方法（`reactivecircus/android-emulator-runner`）も存在するが、
 native アプリ instrumentation 向けで PWA/WebAPK の standalone OAuth 検証は重く前例が薄いため、
 費用対効果で採用しない（実機手動に委ねる）。

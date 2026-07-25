@@ -85,6 +85,13 @@ test.describe("スマート入力（モック GitHub・モバイルエミュレ�
     // 候補タップでトークンが完全名に確定し、ラベルがチェック済みになる。
     await suggestions.getByRole("button", { name: "bug" }).click();
     await expect(title).toHaveValue("ホゲ @bug ");
+    // 候補タップ後もタイトル欄がフォーカスを保つ（IssueForm の候補ボタンの
+    // onMouseDown + preventDefault が効いていること）。
+    // 限界（#148 の議論で明示）: これが証明するのは「blur が起きていない」という
+    // 必要条件までで、実機ソフトキーボードのパネル表示が継続することの証明ではない
+    // （Headless Chromium に IME パネルは存在しない）。ただし blur → キーボードが閉じる
+    // は確定した因果のため、preventDefault が壊れる回帰はこのアサートで必ず検出できる。
+    await expect(title).toBeFocused();
     // 確定後は候補を出し続けない。
     await expect(suggestions).toHaveCount(0);
     // 認識済みトークンとしてチップに出て、ラベル選択にも反映されている

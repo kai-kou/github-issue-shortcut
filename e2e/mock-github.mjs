@@ -7,6 +7,7 @@
 // - GET  /repos/:owner/:repo/labels         : リポジトリのラベル一覧を返す（B3-2）
 // - POST /repos/:owner/:repo/issues         : Issue 作成をシミュレートし number/html_url を返す（B4-1）
 // - GET  /mock/last-issue                   : 直近の Issue 作成リクエストボディを返す（labels 送信の E2E 検証用）
+// - GET  /mock/issue-count                  : 作成された Issue の件数を返す（オフライン再送の重複なし検証・#148）
 // - POST /mock/config                       : インストール/リポジトリ/ラベルの応答内容をテストごとに上書きする
 // Worker（wrangler dev）の GITHUB_OAUTH_BASE / GITHUB_API_BASE をこのサーバーに向けて使う。
 import { createServer } from "node:http";
@@ -26,6 +27,9 @@ const MOCK_USER = { id: 424242, login: "e2e-user", avatar_url: "http://localhost
 let mockConfig = { installations: [], labels: [], labelsByRepo: {} };
 let nextIssueNumber = 1;
 let lastIssueRequestBody = null;
+// 実際に作成された Issue の件数（#148）。オフラインキューの再送で「GitHub 側に 1 件だけ
+// 作られたか」を、キュー表示が消えたという間接証拠ではなく直接検証するために数える。
+let issueCreateCount = 0;
 
 // タイトルにこのマジック文字列を使うと、Issue 作成 API が対応する GitHub エラーを返す
 // （B5-2/FR-9 の E2E: エラー種別ごとの表示分岐を検証するためのトリガー）。
@@ -109,6 +113,8 @@ const server = createServer(async (req, res) => {
         labelsByRepo:
           body.labelsByRepo && typeof body.labelsByRepo === "object" ? body.labelsByRepo : {},
       };
+      // テストごとの初期化点。作成件数もここでリセットし、spec 間で持ち越さない。
+      issueCreateCount = 0;
       return json(200, { ok: true });
     } catch {
       res.writeHead(400);
@@ -118,6 +124,10 @@ const server = createServer(async (req, res) => {
 
   if (req.method === "GET" && url.pathname === "/mock/last-issue") {
     return json(200, lastIssueRequestBody ?? {});
+  }
+
+  if (req.method === "GET" && url.pathname === "/mock/issue-count") {
+    return json(200, { count: issueCreateCount });
   }
 
   if (req.method === "GET" && url.pathname === "/user/installations") {
@@ -154,6 +164,7 @@ const server = createServer(async (req, res) => {
       return res.end(JSON.stringify(trigger.body));
     }
     lastIssueRequestBody = body;
+    issueCreateCount += 1;
     const number = nextIssueNumber++;
     return json(201, { number, html_url: `https://github.com/${issueMatch[1]}/issues/${number}` });
   }
