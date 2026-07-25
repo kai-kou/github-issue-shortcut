@@ -21,13 +21,34 @@ current_branch=$(git branch --show-current)
 # main / 空 はスキップ（slug 導出より前に判定し、main では slug 警告を出さない）
 if [[ -z "$current_branch" ]] || [[ "$current_branch" == "main" ]]; then exit 0; fi
 
+# 作業内容が既に origin/main へ取り込まれている（差分ゼロ）なら PR は完了済み、または PR にする
+# 変更が無い。どちらの場合も「PR 未作成」警告は誤検知になるためスキップする（#133）。
+# squash マージ直後は origin/main のツリーがブランチ先端と一致するため、この判定で拾える
+# （マージコミットの祖先関係に依存しないので squash 運用でも機能する）。
+timeout 10s git fetch --quiet origin main >/dev/null 2>&1 || true
+if git rev-parse --verify --quiet origin/main >/dev/null 2>&1 && git diff --quiet origin/main HEAD 2>/dev/null; then
+  exit 0
+fi
+
+# gh の解決。Stop フックは SessionStart が注入した PATH を継承しないことがあるため、リポジトリ同梱の
+# gh シム（.claude/bin/gh）も明示的に探索する。さらにシムは実 gh バイナリを必要とし、無い環境では
+# exit 127 になるため、`gh --version` で「実際に使えるか」まで確認する（#133）。
+REPO_ROOT="$(cd "$HOOK_DIR/../.." && pwd)"
+if [[ -x "$REPO_ROOT/.claude/bin/gh" ]] && ! command -v gh >/dev/null 2>&1; then
+  PATH="$REPO_ROOT/.claude/bin:$PATH"
+fi
+gh_usable=false
+if command -v gh >/dev/null 2>&1 && timeout 10s gh --version >/dev/null 2>&1; then
+  gh_usable=true
+fi
+
 # リポジトリ slug（owner/repo）を動的に導出する。
 # 雛形プレースホルダ kai-kou/github-issue-shortcut をハードコードすると、bootstrap で置換し忘れた
 # プロジェクトで PR チェックが機能しない（実際に発生・L-103 再発の温床）。
 # 優先順: GITHUB_REPOSITORY → gh repo view → origin URL パース。
 REPO_SLUG="${GITHUB_REPOSITORY:-}"
 # クラウドでは gh repo view が 403（GraphQL・L-114）のため試行せず origin URL パースへ進む
-if [[ -z "$REPO_SLUG" ]] && [[ "${CLAUDE_CODE_REMOTE:-}" != "true" ]] && command -v gh >/dev/null 2>&1; then
+if [[ -z "$REPO_SLUG" ]] && [[ "${CLAUDE_CODE_REMOTE:-}" != "true" ]] && [[ "$gh_usable" == "true" ]]; then
   REPO_SLUG=$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null || echo "")
 fi
 if [[ -z "$REPO_SLUG" ]]; then
@@ -74,7 +95,7 @@ else
   # ブランチ名に / を含む場合のためURL エンコードを適用
   # クラウドでも repo スコープ REST は 2026-07-14 実測で許可（プロキシ挙動変化・Issue #254）。
   # 403 に回帰した場合は空が返り unknown のまま PR チェックへ進む（安全側）。
-  if command -v gh >/dev/null 2>&1; then
+  if [[ "$gh_usable" == "true" ]]; then
     branch_api_result=$(timeout 10s gh api \
       "repos/${REPO_SLUG}/branches/$(printf -- '%s' "$current_branch" | jq -Rr @uri)" \
       --jq '.name' 2>/dev/null || echo "")
@@ -94,9 +115,10 @@ if [[ "$branch_check_status" == "not_found" ]]; then exit 0; fi
 # --method GET を明示指定（-f フラグ使用時のデフォルト POST を回避）
 # state=all + jq フィルタ: open PR と merged PR のみカウント（closed/abandoned PR は除外）
 
-# gh CLI 未導入の場合は GitHub UI / API での手動確認を案内して終了
-if ! command -v gh >/dev/null 2>&1; then
-  hook_block "⚠️ PR確認できません: gh CLI が未導入のため PR 存在確認ができません。gh をインストールするか GitHub UI（https://github.com/${REPO_SLUG}/pulls）でブランチ ${current_branch} の PR を確認してください。"
+# gh が使えない環境（未導入、または gh シムのみで実 gh バイナリが無い）では gh を案内しても
+# 機能しないため、クラウドの一次経路（MCP）での確認へ誘導する（#133・L-114）。
+if [[ "$gh_usable" != "true" ]]; then
+  hook_block "⚠️ PR確認できません: この環境では gh CLI が利用できません（未導入、または gh シムのみで実 gh バイナリが無い）。${VERIFY_HINT}。作成されていない場合は pr-review-flow.md に従い PR を作成してください（GitHub UI: https://github.com/${REPO_SLUG}/pulls）。"
 fi
 
 total="unknown"
