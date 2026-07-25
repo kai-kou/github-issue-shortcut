@@ -20,7 +20,7 @@ disallowed-tools: AskUserQuestion
 
 Claude Code はアップデート頻度が高く、破壊的変更で既存のフック・スキル・設定が
 サイレントに壊れることがある（実例: L-101 ツールコールパース退行、L-106 CLAUDE_ENV_FILE 肥大、
-Opus 4.8 の effort デフォルト変更）。本レーンは検知（`tools/check_claude_code_updates.py`・定期）と
+Opus 4.8 の effort デフォルト変更）。なお **新モデル世代のリリース自体は原則として追随作業が不要** （運用ファイルのモデル指定はエイリアス既定・`agent-team.md`「モデル指定の方針」）。追随が要るのは エイリアスの解決先を記した参考表と、effort 既定や API 仕様の破壊的変更のみ。本レーンは検知（`tools/check_claude_code_updates.py`・定期）と
 対応（本スキル）を分離し、**2つの速度** で追随する:
 
 - **破壊的変更 → 即対応**: 検知したその日のセッションが影響調査→修正→PR→マージまで完遂する

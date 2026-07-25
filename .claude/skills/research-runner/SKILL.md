@@ -49,7 +49,7 @@ Deep Research の完全自動化スキル。ユーザーの手動ディープリ
 | フォールバック | **DIY（ウェブリサーチ）**（Sonnet 5 + WebSearch + WebFetch）（上記2つが失敗時の最終手段） |
 | 禁止 | **外部 LLM API（Gemini 等）によるディープリサーチは行わない**（飼い主決定・2026-07-16・Issue #260）。旧 Gemini Deep Research Max 経路は廃止済み |
 | コスト | **既定=サブスク週次枠経路（追加 $ ゼロ）**: セッション認証（Claude Code Max サブスク）をそのまま使用し（`DEEP_RESEARCH_USE_SUBSCRIPTION=1` 既定）、`/deep-research` は週次クォータの枠内で実行され追加課金なし。`DEEP_RESEARCH_USE_SUBSCRIPTION=0` で従来の API 従量経路（1本上限 `--max-budget-usd`・当月累計 `$40` 超で DIY フォールバック・月 `$50` ブレーカー）に戻せる（Step 3a の直接呼び出しはセッションの既存認証をそのまま使うため、この課金分岐自体が発生しない） |
-| モデル | 公式仕様は「ワークフロー内の各エージェントはセッションのモデルを使用（スクリプトが明示的に別モデルへ routing しない限り）」。**Opus 固定は本プロジェクトの選択**（Step 3b が `--model claude-opus-4-8` を明示指定）であり、Anthropic 側が `/deep-research` を Opus に固定している仕様ではない。Step 3a（直接呼び出し）はそのときのセッションモデルに従う点に注意 |
+| モデル | 公式仕様は「ワークフロー内の各エージェントはセッションのモデルを使用（スクリプトが明示的に別モデルへ routing しない限り）」。**Opus 固定は本プロジェクトの選択**（Step 3b が `--model opus` を明示指定・エイリアス）であり、Anthropic 側が `/deep-research` を Opus に固定している仕様ではない。Step 3a（直接呼び出し）はそのときのセッションモデルに従う点に注意 |
 | 想定時間 | 本番では 30〜50分/本（wall-clock）。Step 3a はネイティブの Workflow バックグラウンド実行 + 完了通知に従う。Step 3b は必ず `run_in_background` + heartbeat で監視する |
 
 > **claude -p の位置づけ**: Step 3b の `claude -p` は Web ギャップ代替ではなく、コンテキスト隔離・90 分タイムアウト・レート枠検出（EXIT=6）が本質的に必要な **設計上の一次経路**（`isolation-by-design`）。分類とフォールバック標準形の SSOT は `docs/rules/native-fallback-rules.md`。
@@ -157,7 +157,7 @@ Skill(skill="deep-research", args="{Step 2 で生成したプロンプトの調�
 
 - 呼び出しは Workflow ランタイム経由でバックグラウンド実行される。ターン終了を焦らず、完了通知
   （タスク完了 / レポート到着）を待つ。**モデルはそのときのセッションモデルに従う**（Opus 品質が
-  必要なら呼び出し前に `/model claude-opus-4-8` するか、Step 3b を使う。§「モデル」の注意参照）。
+  必要なら呼び出し前に `/model opus` するか、Step 3b を使う。§「モデル」の注意参照）。
 - 結果として返るレポート本文を `content/research/{ID}_research_raw.md` に保存 → 即コミット&push（L-100）
   → Step 3b と同じ **正規化ロジック**（`tools/run_deep_research_workflow.py --normalize-only --report ...`）
   で `research_schema.json` 準拠 JSON に変換して Step 5 へ進む（再検索なし・$0）。
@@ -192,7 +192,7 @@ python3 tools/run_deep_research_workflow.py {ID}
 - **EXIT=6（レート枠超過）→ Step 3.6（スキップ判定）へ**。**DIY に即落とさない**。
 - **EXIT=2（入力不足）→ ユーザー報告**（プロンプト未生成）。
 
-> モデルは既定 **Opus**（`DEFAULT_ENGINE_MODEL=claude-opus-4-8`）。コスト/時間削減が必要なら `--max-budget-usd` を下げるか DIY を使う。
+> モデルは既定 **Opus**（`DEFAULT_ENGINE_MODEL=opus`・エイリアスなので世代交代に自動追随）。コスト/時間削減が必要なら `--max-budget-usd` を下げるか DIY を使う。
 
 ### Step 3.6: レート枠超過時のスキップ判定【Step 3 が EXIT=6（レート枠超過・capacity）のときのみ】
 

@@ -4,29 +4,29 @@
   "participants": [
     {
       "name": "correctness",
-      "model": "claude-sonnet-4-6",
+      "model": "sonnet",
       "lens": "正確性・バグの観点。分岐網羅・境界値・null/空配列・例外処理・数値/単位/日付の整合・後方互換（呼び出し元/スキーマ/API破壊）を、差分の該当行を根拠に検証する。実害のある欠陥のみ指摘し、好みの問題は出さない。"
     },
     {
       "name": "security",
-      "model": "claude-sonnet-4-6",
+      "model": "sonnet",
       "lens": "セキュリティの観点。秘密情報のハードコード・入力バリデーション欠如・コマンド/SQLインジェクション・パストラバーサル・安全でない deserialization・権限/認可の漏れを、差分の該当行を根拠に検証する。理論的でなく差分から再現可能な脆弱性のみ critical にする。"
     },
     {
       "name": "simplicity",
-      "model": "claude-haiku-4-5",
+      "model": "haiku",
       "lens": "簡潔化・再利用・効率の観点。既存ユーティリティで代替できる重複・不要な複雑性・明らかな非効率（N+1・無駄なI/O）を、差分の該当行を根拠に指摘する。機械的に判断できる範囲に絞り、設計論の押し付けはしない。"
     },
     {
       "name": "conventions",
-      "model": "claude-haiku-4-5",
+      "model": "haiku",
       "lens": "プロジェクト規約の観点。CLAUDE.md の規約（CJK 半角スペース・main直push禁止・タスク外変更の混入・SSOT同期=ルールとコード/SKILL.mdのdesync）・命名/コメント密度の周辺整合を、差分の該当行を根拠に検証する。self_review_check.py で機械検出済みの項目は重複指摘しない。"
     }
   ],
   "synthesizer": {
     "name": "lead",
     "instruction": "4観点の指摘を読み、ラウンド2の相互検証で否定されなかった真の欠陥のみを critical に集約する。各 critical は「ファイル:行・欠陥・根拠・推奨修正」を1行で含める。誤検知・好み・憶測は除外する。重大欠陥がなければ verdict=PASS。",
-    "model": "claude-sonnet-4-6"
+    "model": "sonnet"
   },
   "verdict_schema": "{\"verdict\":\"PASS|WARN|FAIL\",\"critical\":[],\"consensus\":\"レビュー総括1文\",\"summary\":\"検出した主な観点1-2文\"}"
 }

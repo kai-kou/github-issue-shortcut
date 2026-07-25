@@ -301,7 +301,7 @@ def run_diy(research_id: str, theme: str, prompt_text: str) -> RunResult:
         research_id=research_id,
         theme=theme,
         engine="diy-sonnet-websearch",
-        engine_version="claude-sonnet-5",
+        engine_version="sonnet",   # エイリアス既定（agent-team.md「モデル指定の方針」）
     )
     # Phase A: 実装は research-runner SKILL.md の手順に従い、Claude Code セッション側で
     # WebSearch / WebFetch を実行して本ランナーに引き渡す形で完成させる。

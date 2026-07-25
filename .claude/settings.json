@@ -1,5 +1,5 @@
 {
-  "model": "claude-sonnet-5",
+  "model": "sonnet",
   "outputStyle": "concise-neko",
   "env": {
     "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1",
