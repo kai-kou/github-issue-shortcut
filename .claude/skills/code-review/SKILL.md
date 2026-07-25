@@ -50,10 +50,14 @@ git fetch origin +main:refs/remotes/origin/main && git diff origin/main...HEAD &
 | ドキュメント整合 | ルール・SKILL.md・README との desync・参照切れ |
 
 起動前に **所見の受け渡し先ディレクトリ** を作る（サブエージェントの最終メッセージ本文を成果物の
-運搬経路にしない・理由は Step 1.5）:
+運搬経路にしない・理由は Step 1.5）。**Bash ツールはシェル変数を呼び出し間で保持しない** ため、
+`mktemp -d` のようなランダムパスを使わず、レビュー対象から決まる固定パスにする（以降の
+ファインダープロンプト・検証コマンドには **絶対パスをベタ書き** する。変数参照は空になる）:
 
 ```bash
-RUN_DIR="$(mktemp -d)/code-review" && mkdir -p "$RUN_DIR" && echo "$RUN_DIR"
+# <scratchpad> = システムプロンプトで指定されたセッションのスクラッチパッドディレクトリ
+# <target> = PR 番号（例: pr-136）または現在のブランチ名（スラッシュは - に置換）
+mkdir -p "<scratchpad>/code-review-<target>" && echo "<scratchpad>/code-review-<target>"
 ```
 
 各ファインダーへの指示テンプレート（`agent-team-summary.md` の出力ルールを先頭に付ける）:
@@ -75,8 +79,12 @@ RUN_DIR="$(mktemp -d)/code-review" && mkdir -p "$RUN_DIR" && echo "$RUN_DIR"
 ファインダー完了後、**観点ごとに成果物ファイルの存在と非空を確認してから** Step 2 へ進む。
 
 ```bash
-ls -l "$RUN_DIR" && wc -l "$RUN_DIR"/*.md
+# RUN_DIR は変数で持ち回さず、Step 1 でエコーした絶対パスをそのまま書く
+ls -l <scratchpad>/code-review-<target>/ && wc -l <scratchpad>/code-review-<target>/*.md
 ```
+
+ファイルが見つからないときに **`mkdir` からやり直さない**（ファインダーへ渡したパスと別の
+ディレクトリを見て「欠落」と誤判定する。Step 1 でエコーした絶対パスを確認する）。
 
 > **なぜファイル経由か（実測・Issue #140）**: 親セッションが受け取るのは
 > **サブエージェントの「最後の」assistant テキストだけ** で、途中で出した所見本文は届かない。
