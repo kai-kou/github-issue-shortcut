@@ -231,6 +231,10 @@ test.describe("KPI 外形計測 PoC（モック GitHub・Pixel 7 エミュレー
       );
     });
     await page.goto("/");
+    // リポジトリ一覧の取得前にタップすると、アプリ内起動を引き受けられずリンク遷移へ
+    // フォールバックする仕様（RepoPicker.openWithPreset）。一覧の描画を待ってから計測する
+    // （実機では SWR キャッシュにより 2 回目以降の起動は即 ready になる）。
+    await expect(page.getByRole("button", { name: "kai-kou/alpha" })).toBeVisible();
 
     await page.locator(".shortcut-quicklist-item").first().click();
 
