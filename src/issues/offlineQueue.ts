@@ -29,6 +29,11 @@ export type QueuedIssue = {
   status: QueueStatus;
   /** status が failed のときのエラーコード（B5-2 の分類・upstream_failed 等）。 */
   errorCode?: string;
+  /** TTL 超過で自動再送を打ち切ったことを表す永続フラグ（#91）。`errorCode` は「直近の送信試行の
+   * 結果」で上書きされるため、手動再送が別の理由（429 等）で失敗すると `queue_expired` の記録が
+   * 消えてしまう。期限切れは恒久的な分類なので outcome とは独立のフィールドで保持し、手動再送の
+   * 確認ステップ（重複起票の警告）が二度目以降も必ず出るようにする。 */
+  expired?: boolean;
 };
 
 function isQueuedIssue(value: unknown): value is QueuedIssue {
@@ -96,7 +101,7 @@ export function expireStaleEntries(
   const next = queue.map((entry) => {
     if (entry.status !== "pending" || !isOfflineQueueEntryExpired(entry, now)) return entry;
     expiredIds.push(entry.id);
-    return { ...entry, status: "failed" as const, errorCode: QUEUE_EXPIRED_ERROR_CODE };
+    return { ...entry, status: "failed" as const, errorCode: QUEUE_EXPIRED_ERROR_CODE, expired: true };
   });
   return expiredIds.length > 0 ? { queue: next, expiredIds } : { queue, expiredIds };
 }

@@ -25,7 +25,8 @@ if [[ -z "$current_branch" ]] || [[ "$current_branch" == "main" ]]; then exit 0;
 # 変更が無い。どちらの場合も「PR 未作成」警告は誤検知になるためスキップする（#133）。
 # squash マージ直後は origin/main のツリーがブランチ先端と一致するため、この判定で拾える
 # （マージコミットの祖先関係に依存しないので squash 運用でも機能する）。
-timeout 10s git fetch --quiet origin main >/dev/null 2>&1 || true
+# 明示 refspec で origin/main を同期する（G-1・非明示形式だと追跡ブランチが古いまま判定しうる）。
+timeout 10s git fetch --quiet origin "+refs/heads/main:refs/remotes/origin/main" >/dev/null 2>&1 || true
 if git rev-parse --verify --quiet origin/main >/dev/null 2>&1 && git diff --quiet origin/main HEAD 2>/dev/null; then
   exit 0
 fi

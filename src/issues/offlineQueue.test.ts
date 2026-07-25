@@ -59,6 +59,9 @@ describe("expireStaleEntries", () => {
       id: "req-1",
       status: "failed",
       errorCode: QUEUE_EXPIRED_ERROR_CODE,
+      // errorCode は次の送信試行の結果で上書きされるため、期限切れは独立したフラグでも保持する
+      // （これが無いと 2 回目以降の手動再送で重複起票の確認が出なくなる）。
+      expired: true,
     });
   });
 

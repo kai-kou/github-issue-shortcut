@@ -131,7 +131,9 @@ test.describe("オフラインキュー（モック GitHub・モバイルエミ�
     await expect(page.getByText(/e2e-user/)).toBeVisible();
 
     await page.getByRole("button", { name: "kai-kou/alpha" }).click();
-    await page.getByRole("textbox", { name: /タイトル|^Title$/ }).fill("長期滞留したキュー");
+    // モック GitHub のマジック文字列（422）を使い、後段で「手動再送が期限切れとは無関係な理由で
+    // 失敗する」ケースまで検証できるようにする。
+    await page.getByRole("textbox", { name: /タイトル|^Title$/ }).fill("__mock_422__");
 
     await page.route("**/api/issues", (route) => route.abort());
     await page.getByRole("button", { name: /Issue を作成|Create issue/ }).click();
@@ -177,6 +179,20 @@ test.describe("オフラインキュー（モック GitHub・モバイルエミ�
     await page.getByRole("button", { name: /^キャンセル$|^Cancel$/ }).click();
     await expect(page.getByText(/重複して作成されます|will create a duplicate/)).toHaveCount(0);
     expect(issuePostCount, "キャンセルでは再送しない").toBe(0);
+
+    // 確認して再送すると送信されるが、この内容は 422 が返るためキューに残る。このとき errorCode は
+    // validation_failed に上書きされる。期限切れの記録（expired フラグ）が errorCode と独立に
+    // 保持されていないと、2 回目以降の再送が確認なしのワンタップに戻ってしまう（Layer 2 レビュー指摘）。
+    await page.getByRole("button", { name: /^再送$|^Resend$/ }).click();
+    await page.getByRole("button", { name: /^再送する$|^Resend anyway$/ }).click();
+    await expect.poll(() => issuePostCount).toBe(1);
+    await expect(page.getByText(/送信に失敗した起票|Failed to send/)).toBeVisible();
+
+    // 回帰ガード: 期限切れ以外の理由で失敗した後も、再送には必ず確認が挟まる。
+    await page.getByRole("button", { name: /^再送$|^Resend$/ }).click();
+    await expect(page.getByText(/重複して作成されます|will create a duplicate/)).toBeVisible();
+    expect(issuePostCount, "確認前に再送 POST を投げない（2 回目）").toBe(1);
+    await page.getByRole("button", { name: /^キャンセル$|^Cancel$/ }).click();
 
     // 破棄でキューから消える。
     await page.getByRole("button", { name: /^破棄$|^Discard$/ }).click();

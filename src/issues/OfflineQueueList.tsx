@@ -31,9 +31,13 @@ export function OfflineQueueList({ items, onResend, onDiscard }: OfflineQueueLis
 
   /** TTL 超過で自動再送を打ち切った項目（#91）は、サーバー側の重複防止窓も切れているため
    * 手動再送で重複起票しうる。ワンタップで送らず確認を挟み、利用者が「GitHub 側に作成済みでないか
-   * 確認した」うえで送る形にする（4xx/5xx で失敗した項目は従来どおりワンタップ再送）。 */
+   * 確認した」うえで送る形にする（4xx/5xx で失敗した項目は従来どおりワンタップ再送）。
+   *
+   * 判定には `errorCode` ではなく永続フラグ `expired` を使う。`errorCode` は手動再送の結果
+   * （429 等）で上書きされるため、それに依存すると 2 回目以降の再送で確認が出なくなる。
+   * `errorCode` も併せて見るのは、本フラグ導入前に端末へ保存されたキューへの後方互換。 */
   function requestResend(item: QueuedIssue) {
-    if (item.errorCode === QUEUE_EXPIRED_ERROR_CODE) {
+    if (item.expired === true || item.errorCode === QUEUE_EXPIRED_ERROR_CODE) {
       setConfirmingResendId(item.id);
       return;
     }
