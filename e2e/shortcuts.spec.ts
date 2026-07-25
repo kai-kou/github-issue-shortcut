@@ -91,6 +91,35 @@ test.describe("ショートカット作成ヘルパー（モック GitHub・モ�
     await expect(page.getByText(/まだショートカットがありません|No shortcuts yet/)).toBeVisible();
   });
 
+  test("リポジトリなしプリセットはアプリ内起動を引き受けず /new へのリンク遷移にフォールバックする（#135）", async ({
+    page,
+  }) => {
+    await page.goto("/");
+    await page.getByRole("link", { name: /GitHub でログイン|Sign in with GitHub/ }).click();
+    await expect(page.getByText(/e2e-user/)).toBeVisible();
+
+    // リポジトリ未選択（タイトル雛形のみ）のプリセットを作る。起票先が決まらないため
+    // アプリ内で起票シートを開けず、RepoPicker.openWithPreset は false を返す経路になる。
+    await page.goto("/shortcuts");
+    await page.getByPlaceholder(/バグ報告|Bug report/).fill("メモ: ");
+    await page.getByRole("button", { name: /^保存$|^Save$/ }).click();
+    await expect(page.locator(".shortcut-row")).toHaveCount(1);
+
+    await page.goto("/");
+    await page.locator(".shortcut-quicklist-item").first().click();
+
+    // フォールバック: `<a href>` の通常遷移で /new?title=... が開き、雛形が適用される。
+    await expect(page).toHaveURL(/\/new\?title=/);
+    await page.getByRole("button", { name: "kai-kou/alpha" }).click();
+    await expect(page.getByRole("textbox", { name: /タイトル|^Title$/ })).toHaveValue("メモ:");
+
+    // 後続テスト（同一 e2e-user を使う他 spec）に D1 状態を残さない。
+    await page.goto("/shortcuts");
+    await page.getByRole("button", { name: /削除|Delete/ }).click();
+    await page.getByRole("button", { name: /削除|Delete/ }).click();
+    await expect(page.getByText(/まだショートカットがありません|No shortcuts yet/)).toBeVisible();
+  });
+
   test("編集中の対象を削除すると、保存しても重複作成されずフォームがリセットされる", async ({ page }) => {
     await page.goto("/");
     await page.getByRole("link", { name: /GitHub でログイン|Sign in with GitHub/ }).click();

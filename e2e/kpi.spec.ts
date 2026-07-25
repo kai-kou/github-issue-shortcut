@@ -251,6 +251,13 @@ test.describe("KPI 外形計測 PoC（モック GitHub・Pixel 7 エミュレー
 
     const taps = await page.evaluate(() => (window as unknown as { __tapCount: number }).__tapCount ?? 0);
     expect(taps, "ショートカット起動 → 起票完了までのタップ数（#135: 2 タップ以内）").toBeLessThanOrEqual(2);
+
+    // 後始末: 同一 e2e-user を共有する後続 spec（shortcuts.spec.ts の件数アサート）へ
+    // 作成したプリセットを持ち越さない（計測後なのでタップ数には影響しない）。
+    await page.goto("/shortcuts");
+    await page.getByRole("button", { name: /削除|Delete/ }).click();
+    await page.getByRole("button", { name: /削除|Delete/ }).click();
+    await expect(page.getByText(/まだショートカットがありません|No shortcuts yet/)).toBeVisible();
   });
 
   test("通常起動（リポ選択タップ込み） → タイトルのみ起票の外形計測", async ({ page }) => {

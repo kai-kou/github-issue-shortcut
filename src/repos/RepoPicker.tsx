@@ -9,6 +9,7 @@ import { loadDraft, clearDraft } from "../issues/draft";
 import { HighlightedTextInput } from "../issues/HighlightedTextInput";
 import { findTokens, isTokenMatched, stripTokens } from "../issues/smartInput";
 import type { PrefillParams } from "../issues/prefillParams";
+import type { ShortcutPreset } from "../shortcuts/launchUrl";
 import { submitErrorCode, submitErrorMessage } from "../issues/submitError";
 import { useOfflineQueueSync } from "../issues/useOfflineQueueSync";
 import { OfflineQueueList } from "../issues/OfflineQueueList";
@@ -28,6 +29,9 @@ type SubmitState =
   | { status: "queued" }
   | { status: "error"; code: string };
 
+/** アプリ内起動で受け取るプリセット（ShortcutPreset のうち起票に必要な項目のみ）。 */
+type LaunchablePreset = Pick<ShortcutPreset, "repo" | "labels" | "title">;
+
 /** 保存済みショートカット一覧（ShortcutList）から、ページ遷移せずに起票シートを開くための命令的 API。 */
 export interface RepoPickerHandle {
   /** プリセットを適用して起票シートを開き、タイトル欄へフォーカスする。
@@ -35,7 +39,7 @@ export interface RepoPickerHandle {
    * モバイル Chrome でもソフトキーボードが開く（#135）。
    * リポジトリを持たないプリセットは選択 UI が必要なため false を返し、呼び出し元の
    * 通常のリンク遷移（`/new?labels=&title=`）へフォールバックさせる。 */
-  openWithPreset: (preset: { repo: string; labels: string[]; title: string }) => boolean;
+  openWithPreset: (preset: LaunchablePreset) => boolean;
 }
 
 interface RepoPickerProps {
@@ -183,15 +187,21 @@ export function RepoPicker({ prefill = null, userId, ref }: RepoPickerProps) {
 
   /** `prefillTitle`: スマート入力（B3-3）の `#repo` トークンタップ経由の選択時、検索欄に残っていた
    * 自由文（トークンを取り除いたもの）をタイトルの初期値として引き継ぐ。一覧タップ経由では null。 */
+  /** 起票先の確定に伴う共通の状態更新（一覧タップ・ショートカット起動で共有する）。
+   * flushSync の中から呼ぶ前提（呼び出し側がジェスチャ内での同期反映を担保する）。 */
+  function applyRepoSelection(fullName: string, prefillTitle: string | null) {
+    setSelected(fullName);
+    setRecent(recordRecentRepo(fullName));
+    setSubmitState({ status: "idle" });
+    setQuickAddTitle(prefillTitle);
+  }
+
   function selectRepo(fullName: string, prefillTitle: string | null = null) {
     // クリックハンドラ内（＝ユーザージェスチャ内）で IssueForm のマウントまで同期的に終わらせてから
     // dialog を開き focus する。React の既定のバッチ更新ではマウント（と autoFocus）がジェスチャの
     // 外へずれ、Android Chrome がソフトキーボードを開かない（#135・research/mobile-ux-pwa §2）。
     flushSync(() => {
-      setSelected(fullName);
-      setRecent(recordRecentRepo(fullName));
-      setSubmitState({ status: "idle" });
-      setQuickAddTitle(prefillTitle);
+      applyRepoSelection(fullName, prefillTitle);
     });
     openSheetAndFocusTitle();
   }
@@ -199,7 +209,7 @@ export function RepoPicker({ prefill = null, userId, ref }: RepoPickerProps) {
   /** 保存済みショートカット（ShortcutList）のタップからページ遷移せずに起票シートを開く（#135）。
    * リポジトリを持たないプリセットはリポジトリ選択 UI が必要なため false を返し、
    * 呼び出し元の通常のリンク遷移へフォールバックさせる。 */
-  function openWithPreset(preset: { repo: string; labels: string[]; title: string }): boolean {
+  function openWithPreset(preset: LaunchablePreset): boolean {
     // リポジトリ一覧の取得前（loading / error）は dialog 自体が未レンダリングでシートを開けないため、
     // アプリ内起動を引き受けずリンク遷移へ委ねる。
     if (!preset.repo || state.status !== "ready") return false;
@@ -207,10 +217,7 @@ export function RepoPicker({ prefill = null, userId, ref }: RepoPickerProps) {
       setActivePrefill({ repo: preset.repo, labels: preset.labels, title: preset.title || null, body: null });
       setFormKey(0);
       setLaunchSeq((n) => n + 1);
-      setSelected(preset.repo);
-      setRecent(recordRecentRepo(preset.repo));
-      setSubmitState({ status: "idle" });
-      setQuickAddTitle(null);
+      applyRepoSelection(preset.repo, null);
     });
     openSheetAndFocusTitle();
     return true;
