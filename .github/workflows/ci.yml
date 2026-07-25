@@ -29,6 +29,10 @@ jobs:
 
       - run: npm run build
 
+      # dist/ を消さずに連続実行しても成功することを確認する（#137: worker 環境の closeBundle が
+      # 前回ビルドの sw.js 残骸を誤検知して失敗する回帰のガード）。
+      - run: npm run build
+
       - run: npm test
 
       - uses: actions/setup-python@v5
