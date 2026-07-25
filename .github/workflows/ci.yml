@@ -20,6 +20,15 @@ jobs:
         with:
           fetch-depth: 0
 
+      # .claude/hooks/*.sh・tools/*.sh の構文検証（#152: 壊れても CI が検出できないギャップの解消）。
+      # shellcheck 未導入のため、依存ゼロで構文エラーのみ拾う bash -n を最低線として回す。
+      - run: |
+          status=0
+          for f in .claude/hooks/*.sh tools/*.sh; do
+            bash -n "$f" || status=1
+          done
+          exit $status
+
       - uses: actions/setup-node@v4
         with:
           node-version: 22
