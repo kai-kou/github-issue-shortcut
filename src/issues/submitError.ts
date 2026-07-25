@@ -1,4 +1,5 @@
 import type { Translations } from "../i18n/translations";
+import { QUEUE_EXPIRED_ERROR_CODE } from "./offlineQueue";
 
 /** `/api/issues` の失敗レスポンス（`{ error: { code, message } }`・B5-2・FR-9）から表示コードを読み取る。 */
 export async function submitErrorCode(res: Response): Promise<string> {
@@ -27,6 +28,9 @@ export function submitErrorMessage(code: string, t: Translations): string {
       return t.issueForm.errors.validationFailed;
     case "duplicate_submission":
       return t.issueForm.errors.duplicateSubmission;
+    // サーバー由来ではなくクライアント側の TTL 判定で付与されるコード（#91）。
+    case QUEUE_EXPIRED_ERROR_CODE:
+      return t.issueForm.errors.queueExpired;
     default:
       return t.issueForm.errorMessage;
   }
