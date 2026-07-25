@@ -1,4 +1,13 @@
-import { useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type Ref } from "react";
+import {
+  useEffect,
+  useImperativeHandle,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+  type Ref,
+} from "react";
 import { flushSync } from "react-dom";
 import { useLanguage } from "../i18n/LanguageContext";
 import { loadRecentRepos, recordRecentRepo } from "./recentRepos";
@@ -75,6 +84,12 @@ export function RepoPicker({ prefill = null, userId, ref }: RepoPickerProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   // タイトル欄の実体 input。ショートカットのタップ（ユーザージェスチャ）内で同期的に focus する（#135）。
   const titleInputRef = useRef<HTMLInputElement>(null);
+  /** 起動（長押しメニュー・URL 直叩き・共有シート・下書き復元）でシートが自動で開いたときに
+   * 立てるフラグ。この経路はユーザー活性化がないためキーボードを自動表示できない
+   * （`navigator.virtualKeyboard.show()` の sticky activation はナビゲーションで失われる・#138）。
+   * 起動後の最初のタップをジェスチャとして使い、シート内のどこを叩いてもキーボードを開く。 */
+  const pendingLaunchFocusRef = useRef(false);
+
   // オフラインキュー（B4-2・FR-22）: ネットワーク到達不能時の起票を保持し、オンライン復帰後に自動再送する。
   const {
     pendingCount,
@@ -96,6 +111,26 @@ export function RepoPicker({ prefill = null, userId, ref }: RepoPickerProps) {
   function openSheetAndFocusTitle() {
     openDialog();
     titleInputRef.current?.focus();
+    // ジェスチャ内で開いた（＝キーボードも開く）のでシート内タップの肩代わりは不要。
+    pendingLaunchFocusRef.current = false;
+  }
+
+  /** 起動直後の最初のタップでタイトル欄へフォーカスを移す（#138）。
+   * blur → focus と踏むのは、既にフォーカス済みの要素へ focus() してもキーボードが開かないため。 */
+  function handleSheetClick(e: ReactMouseEvent<HTMLDialogElement>) {
+    if (!pendingLaunchFocusRef.current) return;
+    const target = e.target as HTMLElement;
+    // backdrop（dialog 要素そのもの）へのタップと、他の操作対象へのタップは横取りしない。
+    if (target === dialogRef.current) return;
+    if (target.closest("input, textarea, button, a, select, label")) {
+      pendingLaunchFocusRef.current = false;
+      return;
+    }
+    pendingLaunchFocusRef.current = false;
+    const input = titleInputRef.current;
+    if (!input) return;
+    input.blur();
+    input.focus();
   }
 
   // `selected` の初期値（上記 useState）は RepoPicker の初回マウント時点の prefill しか見ないため、
@@ -122,7 +157,12 @@ export function RepoPicker({ prefill = null, userId, ref }: RepoPickerProps) {
   // API 取得中（loading）は dialog 自体が早期 return で未レンダリングなため、
   // ready 化で dialog が初めて DOM に現れたタイミングでも再評価する必要があるため。
   useLayoutEffect(() => {
-    if (selected) openDialog();
+    if (!selected) return;
+    // この効果は起動経由（下書き復元・URL パラメータ・launchQueue）でも、ジェスチャ経由
+    // （selectRepo / openWithPreset の flushSync 内）でも走る。ジェスチャ経由は直後に
+    // openSheetAndFocusTitle がフラグを下ろすため、ここでは一律に立てておけばよい（#138）。
+    if (!dialogRef.current?.open) pendingLaunchFocusRef.current = true;
+    openDialog();
   }, [selected, state.status]);
 
   useEffect(() => {
@@ -334,7 +374,7 @@ export function RepoPicker({ prefill = null, userId, ref }: RepoPickerProps) {
       {/* ボトムシート（B1-3）: リポジトリ選択と同時に開き、起動直後の 1 タップで
           IssueForm 内タイトル欄へネイティブ autofocus 連携させる（interactive-widget=resizes-content
           は index.html の viewport meta で設定済み・キーボード表示時も送信ボタンが隠れない）。 */}
-      <dialog ref={dialogRef} className="issue-sheet" aria-label={t.issueForm.targetRepoLabel}>
+      <dialog ref={dialogRef} className="issue-sheet" aria-label={t.issueForm.targetRepoLabel} onClick={handleSheetClick}>
         {selected ? (
           <>
             <div className="issue-sheet-header">

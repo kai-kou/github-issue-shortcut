@@ -62,6 +62,38 @@ test.describe("URL パラメータ起動（モック GitHub・モバイルエミ
     expect(lastIssue.labels).toEqual(["bug"]);
   });
 
+  test("起動でシートが開いた場合、シート内の最初のタップでタイトル欄へフォーカスが移る（#138）", async ({
+    page,
+  }) => {
+    await page.goto("/");
+    await page.getByRole("link", { name: /GitHub でログイン|Sign in with GitHub/ }).click();
+    await expect(page.getByText(/e2e-user/)).toBeVisible();
+
+    // 長押しメニュー起動と同じ「ページ遷移を伴う起動」。ユーザー活性化がないため実機では
+    // ソフトキーボードが開かない。最初のタップをジェスチャとして肩代わりする挙動を検証する。
+    await page.goto("/new?repo=kai-kou%2Falpha");
+    const title = page.getByRole("textbox", { name: /タイトル|^Title$/ });
+    await expect(title).toBeVisible();
+
+    // 起動直後のフォーカス状態に依存せず「タップでフォーカスが入る」ことを検証するため、
+    // いったんフォーカスを外してから、シート内の非操作領域（起票先の表示行）をタップする。
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+    await expect(title).not.toBeFocused();
+    await page.locator(".target-repo").click();
+    await expect(title).toBeFocused();
+  });
+
+  test("起動直後に本文欄をタップした場合はタイトル欄へフォーカスを横取りしない（#138）", async ({ page }) => {
+    await page.goto("/");
+    await page.getByRole("link", { name: /GitHub でログイン|Sign in with GitHub/ }).click();
+    await expect(page.getByText(/e2e-user/)).toBeVisible();
+
+    await page.goto("/new?repo=kai-kou%2Falpha");
+    const body = page.getByRole("textbox", { name: /本文|Body/ });
+    await body.click();
+    await expect(body).toBeFocused();
+  });
+
   test("未ログインで開いてログインすると、コールバック復帰後も同じプレフィルが復元される", async ({ page }) => {
     await page.goto(
       "/new?repo=kai-kou%2Falpha&title=%E6%9C%AA%E3%83%AD%E3%82%B0%E3%82%A4%E3%83%B3%E3%83%97%E3%83%AC%E3%83%95%E3%82%A3%E3%83%AB",
