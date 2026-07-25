@@ -64,7 +64,7 @@ _NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$")
 # discussion_whiteboard.py の discussion_id 規約（英数字 + _.-・先頭英数字・最大64）と一致させる
 _ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
 
-DEFAULT_MODEL = "claude-sonnet-5"
+DEFAULT_MODEL = "sonnet"   # エイリアス既定（最新 Sonnet に自動追随・agent-team.md「モデル指定の方針」）
 # lead + サブエージェントが使うツール（root では allowedTools で事前許可）。
 DEFAULT_ALLOWED_TOOLS = "Bash Read Write Edit Glob Grep Agent Task Workflow WebFetch"
 
@@ -178,7 +178,7 @@ def build_lead_prompt(discussion_id: str, spec: dict, targets: list[str], rounds
 def run_claude(prompt: str, model: str, allowed_tools: str,
                max_budget_usd: float | None, timeout: int) -> dict:
     cmd = ["claude", "-p", prompt, "--model", model, "--output-format", "json",
-           "--allowedTools", allowed_tools, "--fallback-model", "claude-haiku-4-5"]
+           "--allowedTools", allowed_tools, "--fallback-model", "haiku"]
     if max_budget_usd is not None and not USE_SUBSCRIPTION:
         cmd += ["--max-budget-usd", str(max_budget_usd)]
     child_env = None

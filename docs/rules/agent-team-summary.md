@@ -20,17 +20,22 @@
 
 ## モデル選択（コスト最適化）
 
-| 用途 | モデル | effort |
-|------|--------|--------|
-| 知能重視タスク（例: 長文生成・複雑な設計判断） | Opus 4.8 (`claude-opus-4-8`) | `/effort xhigh`（明示指定） |
-| メインセッション・実装・PR対応 | Sonnet 5 (`claude-sonnet-5`) | `/effort medium` |
-| 調査・検証・チェック（サブエージェント） | Haiku 4.5 (`claude-haiku-4-5`) | — |
+> 🔴 **モデルは「エイリアス」で指定し、厳密バージョン ID（`claude-opus-5` 等）を運用ファイルに書かない**
+> （エイリアスは推奨バージョンへ自動追随＝世代交代の修正が不要）。例外は ① API 直叩き ② 料金表など ID を
+> キーにする実装 ③ 意図的なピン留め の 3 つ。詳細は `agent-team.md`「モデル指定の方針」（SSOT）。
 
-**原則**: 迷ったら Sonnet。Opus は知能重視タスク（長文生成・複雑設計）など明確に必要な場合のみ。
+| 用途 | モデル（エイリアス） | effort |
+|------|------------------|--------|
+| 知能重視タスク（例: 長文生成・複雑な設計判断） | `opus` | `/effort xhigh`（明示指定） |
+| メインセッション・実装・PR対応 | `sonnet` | `/effort medium` |
+| 調査・検証・チェック（サブエージェント） | `haiku` | — |
+| 一区切りに収まらない最難関・超長時間タスク | `fable`（高コスト・既定にしない） | `/effort high`〜 |
 
-> **`.claude/settings.json` の `model` 設定について**: メインセッションの既定は `claude-sonnet-5`（標準作業のコスト最適）。上表のとおり知能重視タスク（長文生成・複雑設計等）は Opus 4.8 を `/model` ・ `/effort xhigh` で **明示指定** する運用で、常時 Opus は高コストのため既定にはしない。両者の差は意図的（モデル運用の詳細は `docs/rules/claude-code-optimization.md` を参照）。
+**原則**: 迷ったら `sonnet`。`opus` は知能重視タスクなど明確に必要な場合のみ。
 
-> **Opus 4.8（2026-05-28・v2.1.154 でデフォルト化）の effort 注意**: Opus 4.8 の **デフォルト effort は `high`**（Opus 4.7 は `xhigh`）。Opus 4.7 → 4.8 へ切り替えると effort が自動的に `high` にリセットされる。知能重視タスク（長文生成・複雑設計等）では **`/effort xhigh` を明示指定** する（4.8 公式推奨: 反射的に xhigh を選ばず `high` を基準に eval で per-route 調整。コーディング/エージェントは xhigh）。詳細は `docs/rules/claude-code-optimization.md` を参照。
+> **`.claude/settings.json` の `model` 設定について**: メインセッションの既定は `sonnet`（エイリアス・標準作業のコスト最適）。上表のとおり知能重視タスク（長文生成・複雑設計等）は `/model opus` ・ `/effort xhigh` で **明示指定** する運用で、常時 Opus は高コストのため既定にはしない。両者の差は意図的（モデル運用の詳細は `docs/rules/claude-code-optimization.md` を参照）。
+
+> **Opus（`opus`）の effort 注意**: 既定 effort は `high`。知能重視タスクでは **`/effort xhigh` を明示指定** する（コーディング/エージェントは `xhigh`、他は `high` 基準で per-route 調整。`low`/`medium` でも高品質なため、コスト削減はまず effort を下げて評価する）。**thinking は既定 ON**。詳細は `docs/rules/claude-code-optimization.md`。
 
 ## サブエージェント使い分け
 

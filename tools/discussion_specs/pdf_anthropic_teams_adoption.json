@@ -4,24 +4,24 @@
   "participants": [
     {
       "name": "overlap-reviewer",
-      "model": "claude-sonnet-4-6",
+      "model": "sonnet",
       "lens": "digest セクション A の 16 tips を既存 CLAUDE.md・docs/rules/・.claude/skills/・.claude/hooks/ と1件ずつ照合し、①既存実装済みで実質重複（取り込み不要）、②既存にない新規視点で取り込み価値あり、③本ベースの性質に不適合、の3分類で claim/evidence を post する。必ず具体的なファイル名・セクション名・スキル名を根拠として示す（例: 『tip4 は checkpoint スキルと G-1/G-2 で実装済み』）。曖昧な『たぶんある』は禁止で、実ファイルを Read して確認すること。"
     },
     {
       "name": "gap-value-reviewer",
-      "model": "claude-sonnet-4-6",
+      "model": "sonnet",
       "lens": "未実装と判定された tips のうち、本ベースの自律運用品質を実際に高めるものを発掘する立場。特に tip3（async/sync 分類）・tip14（interrupt for simplicity）・tip10（実験ログ self-improving）・tip15（issue→自動 PR）の新規価値を、本ベースの既存欠落（どのルール/スキルにも無い具体的ギャップ）を根拠に論じる。overlap-reviewer が『重複』と判定したものに対し、新規性が残る部分があれば rebuttal で具体的に反論する。"
     },
     {
       "name": "yagni-cost-reviewer",
-      "model": "claude-haiku-4-5",
+      "model": "haiku",
       "lens": "取り込みの実装コスト（ルール追記・フック追加・スキル改修）と効果を見積もり、ルール肥大化リスクを厳格に評価する立場。本ベースは lessons_guard で Hot 層上限を機械強制しており、ルール追加自体がコスト。gap-value-reviewer が『取り込むべき』とした各提案に対し、(a) 本当に新規ルール/フックが必要か、それとも既存ファイルへの1行追記で足りるか、(b) 効果が実運用で測れるか、を rebuttal で検証し、過剰な提案を潰す。CLAUDE.md への追記そのままを避け『要約 or 既存ルールへの統合』を優先する。"
     }
   ],
   "synthesizer": {
     "name": "lead",
     "instruction": "3役（overlap-reviewer / gap-value-reviewer / yagni-cost-reviewer）の対立点・合意点を整理し、本ベースに実際に取り込むべき提案を優先順位付きで合意として提示する。各提案について『適用先ファイル（CLAUDE.md / docs/rules/<name>.md / .claude/hooks/ / .claude/skills/ など）』『取り込みの粒度（既存ルールへの1行追記 / 新規ルール節 / 新規スキル / フック）』『期待効果』を具体的に示す。議論を経ても重複・不適合と確定したものは proposals に入れず、reason を summary に1行残す。最終 verdict は ADOPT（多数を新規採用）/ PARTIAL（少数を厳選採用）/ PASS（現状で十分・採用なし）の3択。",
-    "model": "claude-sonnet-4-6"
+    "model": "sonnet"
   },
   "verdict_schema": "{\"verdict\":\"ADOPT|PARTIAL|PASS\",\"critical\":[],\"proposals\":[{\"priority\":1,\"tip\":\"tipの番号と名称\",\"target_file\":\"適用先\",\"granularity\":\"1行追記|新規節|新規スキル|フック\",\"action\":\"取り込む内容\",\"effect\":\"期待効果\"}],\"already_covered\":[\"重複と確定した tip 番号\"],\"not_applicable\":[\"不適合と確定した tip 番号\"],\"summary\":\"議論の要約1-2文\"}"
 }
