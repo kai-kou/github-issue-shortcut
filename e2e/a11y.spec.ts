@@ -21,6 +21,25 @@ async function configureMockRepo(request: import("@playwright/test").APIRequestC
   });
 }
 
+/** LabelPicker（チェックボックス展開状態）を検査対象に含めるには、push 権限のあるリポジトリと
+ * ラベル候補が必要になる（push 権限がないと警告表示になり checkbox が出ない・B5-3）。 */
+async function configureMockRepoWithLabels(request: import("@playwright/test").APIRequestContext) {
+  await request.post(`${MOCK_GITHUB_URL}/mock/config`, {
+    data: {
+      installations: [
+        {
+          id: 1001,
+          repos: [{ id: 1, full_name: "kai-kou/alpha", private: false, permissions: { push: true } }],
+        },
+      ],
+      labels: [
+        { name: "bug", color: "d73a4a" },
+        { name: "P1", color: "0e8a16" },
+      ],
+    },
+  });
+}
+
 async function resetMockRepo(request: import("@playwright/test").APIRequestContext) {
   await request.post(`${MOCK_GITHUB_URL}/mock/config`, { data: { installations: [] } });
 }
@@ -56,6 +75,27 @@ test.describe("a11y: axe-core（wcag2a/wcag2aa/wcag22aa・モバイルエミュ�
 
     const results = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
     expect(results.violations, JSON.stringify(results.violations, null, 2)).toEqual([]);
+  });
+
+  // #128: 既存の 3 ブロックはいずれも LabelPicker を畳んだ状態しか検査していないため、展開時の
+  // aria 属性・チェック状態・フォーカス順序の回帰を検出できなかった。LabelPicker は起票フォームと
+  // ショートカット作成フォームで共有するコンポーネントなので、展開状態の検査は 1 箇所で足りる。
+  test("LabelPicker（チェックボックス展開状態）に WCAG 違反がない", async ({ page, request }) => {
+    await configureMockRepoWithLabels(request);
+
+    await page.goto("/");
+    await page.getByRole("link", { name: /GitHub でログイン|Sign in with GitHub/ }).click();
+    await expect(page.getByText(/e2e-user/)).toBeVisible();
+    await page.goto("/shortcuts");
+    await page.getByLabel(/リポジトリ（任意）|Repository \(optional\)/).selectOption("kai-kou/alpha");
+
+    await page.getByText(/ラベルを追加|Add labels/).click();
+    await page.getByRole("checkbox", { name: "bug" }).check();
+    await expect(page.getByRole("checkbox", { name: "bug" })).toBeChecked();
+
+    const results = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
+    expect(results.violations, JSON.stringify(results.violations, null, 2)).toEqual([]);
+    // ショートカットは保存しないため D1 状態は残らない。
   });
 
   test("ショートカット作成ヘルパー画面に WCAG 違反がない（一覧表示された ShortcutRow を含む）", async ({ page }) => {

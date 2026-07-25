@@ -3,6 +3,7 @@ import { useLanguage } from "../i18n/LanguageContext";
 import { savePendingRedirect } from "../issues/prefillParams";
 import { LabelPicker } from "../issues/LabelPicker";
 import { useRepoLabels } from "../issues/useRepoLabels";
+import { hasPushAccess } from "../repos/pushAccess";
 import { buildLaunchUrl, type ShortcutPreset } from "./launchUrl";
 
 type Repo = { id: number; fullName: string; pushAccess: boolean };
@@ -37,12 +38,9 @@ function ShortcutForm({ editing, onSaved, onCancel, repos }: ShortcutFormProps) 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<"validation" | "save" | null>(null);
 
-  // 選択中リポジトリの push 権限（RepoPicker と同じ判定）。ラベル取得の可否と
-  // LabelPicker の警告表示に使う（リポジトリ未選択なら false = 取得しない）。
-  const selectedPushAccess = useMemo(
-    () => (repo ? repos.find((r) => r.fullName === repo)?.pushAccess ?? false : false),
-    [repo, repos],
-  );
+  // 選択中リポジトリの push 権限。ラベル取得の可否と LabelPicker の警告表示に使う
+  // （リポジトリ未選択なら false = 取得しない）。判定は RepoPicker と共通関数を使う（#128）。
+  const selectedPushAccess = useMemo(() => hasPushAccess(repos, repo), [repo, repos]);
   // Issue フォームと同じ取得フック・SWR キャッシュ・push 権限判定を共有する（B3-2・#102）。
   const labelsState = useRepoLabels(repo, selectedPushAccess);
 

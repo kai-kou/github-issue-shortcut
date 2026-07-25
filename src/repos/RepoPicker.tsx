@@ -13,6 +13,7 @@ import { useLanguage } from "../i18n/LanguageContext";
 import { loadRecentRepos, recordRecentRepo } from "./recentRepos";
 import { loadReposCache, saveReposCache, type Repo } from "./reposCache";
 import { buildRepoIndex } from "./repoIndex";
+import { hasPushAccess } from "./pushAccess";
 import { IssueForm, type IssueInput } from "../issues/IssueForm";
 import { loadDraft, clearDraft } from "../issues/draft";
 import { HighlightedTextInput } from "../issues/HighlightedTextInput";
@@ -219,9 +220,10 @@ export function RepoPicker({ prefill = null, userId, ref }: RepoPickerProps) {
     return [...recentFirst, ...rest];
   }, [state, query, recent, repoToken]);
 
+  // 判定は ShortcutHelperPage と共通関数を使う（#128）。
   const selectedPushAccess = useMemo(() => {
-    if (state.status !== "ready" || !selected) return false;
-    return state.repos.find((r) => r.fullName === selected)?.pushAccess ?? false;
+    if (state.status !== "ready") return false;
+    return hasPushAccess(state.repos, selected);
   }, [state, selected]);
 
   // URL パラメータ起動（B1-2）のタイトル/ラベルは、まだ一度も送信していない・かつプレフィルが
