@@ -106,32 +106,16 @@ export function RepoPicker({ prefill = null, userId, ref }: RepoPickerProps) {
     if (dialog && !dialog.open) dialog.showModal();
   }
 
-  /** 起動でシートが開いたときにソフトキーボードの表示を試みる（#141・ベストエフォート）。
-   *
-   * `VirtualKeyboard.show()` は **sticky activation**（その文書が読み込まれてから、ユーザーが
-   * 実際に操作したことがある状態）とフォームコントロールへのフォーカスを要求する（仕様）。
-   * - 冷たい起動（新規文書）: sticky activation が無いため仕様どおり no-op になる（既存挙動のまま）
-   * - 温かい起動（`launch_handler: navigate-existing` で既存文書を再利用。長押しメニューから
-   *   起動中アプリを開いた場合）: 以前の操作による sticky activation が残っているため開ける可能性がある
-   *
-   * `overlaysContent` は設定しない（設定すると viewport がリサイズされなくなり、
-   * `interactive-widget=resizes-content` 前提の「キーボード表示時も送信ボタンが隠れない」が壊れる）。
-   * 非対応ブラウザ・条件未達では何も起きず、`autoFocus` と最初のタップ肩代わり（#138）が引き続き働く。 */
-  function requestVirtualKeyboard() {
-    const vk = (navigator as Navigator & { virtualKeyboard?: { show?: () => void } }).virtualKeyboard;
-    if (!vk?.show) return;
-    try {
-      vk.show();
-    } catch {
-      /* 条件未達・未実装は無視する（既定の挙動へフォールバック） */
-    }
-  }
-
   /** 起票シートを開き、タイトル欄へフォーカスする。呼び出し元のクリックハンドラ内で同期的に
    * 完了させることで、モバイル Chrome でもソフトキーボードが開く（#135・B1-3）。 */
   function openSheetAndFocusTitle() {
     openDialog();
-    titleInputRef.current?.focus();
+    // `showModal()` は autoFocus 要素へ既にフォーカスを移しているため、そのまま focus() を
+    // 呼んでもフォーカス変化が起きず、Android Chrome はキーボードを開かない。
+    // 明示的に blur → focus と踏んでフォーカス変化を発生させる（#143）。
+    const input = titleInputRef.current;
+    input?.blur();
+    input?.focus();
     // ジェスチャ内で開いた（＝キーボードも開く）のでシート内タップの肩代わりは不要。
     pendingLaunchFocusRef.current = false;
   }
@@ -186,7 +170,6 @@ export function RepoPicker({ prefill = null, userId, ref }: RepoPickerProps) {
     const wasClosed = !dialogRef.current?.open;
     if (wasClosed) pendingLaunchFocusRef.current = true;
     openDialog();
-    if (wasClosed) requestVirtualKeyboard();
   }, [selected, state.status]);
 
   useEffect(() => {
