@@ -1,0 +1,13 @@
+{
+  "id": "pr151_layer2_review",
+  "topic": "PR #151 Layer 2 議論型レビュー（オフラインキュー TTL の重複起票防止設計 / stop-pr-check の PR 存在判定）",
+  "brief": "あなた方は対象 PR の実装経緯を知らない外部レビュアーである。差分そのものを唯一の根拠として欠陥を探す。焦点は (1) オフラインキュー TTL（クライアント 24h < サーバー重複防止窓 26h）+ 期限切れ手動再送の確認ステップで、重複起票が本当に防げているか (2) stop-pr-check.sh の PR 存在判定（refs/pull/*/head の SHA 照合 + origin/main との差分ゼロ判定）が誤検知・見逃しを起こさないか。ラウンド2で互いの指摘を批判検証し、議論を経ても残る真の欠陥だけを critical にする。",
+  "participants": [
+    "correctness",
+    "security",
+    "simplicity",
+    "conventions"
+  ],
+  "created_at": "2026-07-25T16:46:52+09:00",
+  "updated_at": "2026-07-25T16:46:52+09:00"
+}

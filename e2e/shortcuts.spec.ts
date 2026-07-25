@@ -36,6 +36,35 @@ test.describe("ショートカット作成ヘルパー（モック GitHub・モ�
     await expect(page.getByRole("button", { name: /保存|Save/ })).toHaveCount(0);
   });
 
+  // #128: 「リポジトリ未選択 → 案内文」「選択 → LabelPicker」の切り替え分岐を独立に固める。
+  // CRUD テストは選択後の checkbox 操作しか通らないため、案内文の消失・トグルの出現・
+  // 未選択へ戻したときの復帰が壊れても検出できなかった。
+  test("リポジトリ未選択のときは案内文のみが表示され、選択で LabelPicker へ切り替わる", async ({ page }) => {
+    const guide = page.getByText(/リポジトリを選択するとラベルを選べます|Select a repository to choose labels/);
+    const labelPickerToggle = page.getByText(/ラベルを追加|Add labels/);
+
+    await page.goto("/");
+    await page.getByRole("link", { name: /GitHub でログイン|Sign in with GitHub/ }).click();
+    await expect(page.getByText(/e2e-user/)).toBeVisible();
+
+    await page.goto("/shortcuts");
+    await expect(page.getByRole("button", { name: /^保存$|^Save$/ })).toBeVisible();
+
+    // 未選択: ラベルはリポジトリが決まらないと取得できないため、案内文だけを出す。
+    await expect(guide).toBeVisible();
+    await expect(labelPickerToggle).toHaveCount(0);
+
+    const repoSelect = page.getByLabel(/リポジトリ（任意）|Repository \(optional\)/);
+    await repoSelect.selectOption("kai-kou/alpha");
+    await expect(labelPickerToggle).toBeVisible();
+    await expect(guide).toHaveCount(0);
+
+    // 未選択へ戻すと案内文に戻る（切り替えが片方向にならないことの回帰ガード）。
+    await repoSelect.selectOption("");
+    await expect(guide).toBeVisible();
+    await expect(labelPickerToggle).toHaveCount(0);
+  });
+
   test("ログイン後にプリセットを作成すると起動 URL 付きで一覧に表示され、編集・削除できる", async ({ page }) => {
     await page.goto("/");
     await page.getByRole("link", { name: /GitHub でログイン|Sign in with GitHub/ }).click();
