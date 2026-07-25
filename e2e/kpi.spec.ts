@@ -190,6 +190,69 @@ test.describe("KPI 外形計測 PoC（モック GitHub・Pixel 7 エミュレー
     console.log("[KPI]", JSON.stringify(m), `taps=${totalTaps}`);
   });
 
+  test("保存済みショートカットのタップ起動 → 2 タップ以内での起票を機械アサート（#135）", async ({
+    page,
+    request,
+  }) => {
+    // ラベル付きプリセットを作るため、この test だけラベル候補をモックに足す。
+    await request.post(`${MOCK_GITHUB_URL}/mock/config`, {
+      data: {
+        installations: [
+          {
+            id: 1001,
+            repos: [{ id: 1, full_name: "kai-kou/alpha", private: false, permissions: { push: true } }],
+          },
+        ],
+        labels: [{ name: "bug", color: "d73a4a" }],
+      },
+    });
+    await login(page);
+
+    // 準備: ショートカット作成ヘルパー（C1-1）でプリセットを 1 件保存する（計測対象外）。
+    await page.goto("/shortcuts");
+    await page.getByLabel(/リポジトリ（任意）|Repository \(optional\)/).selectOption("kai-kou/alpha");
+    await page.getByText(/ラベルを追加|Add labels/).click();
+    await page.getByRole("checkbox", { name: "bug" }).check();
+    await page.getByPlaceholder(/バグ報告|Bug report/).fill("bug:");
+    await page.getByRole("button", { name: /^保存$|^Save$/ }).click();
+    await expect(page.locator('.shortcut-row input[type="text"]')).toHaveValue(/\/new\?repo=kai-kou%2Falpha/);
+
+    // ここから計測。ホーム画面の保存済みショートカット一覧をタップして起票する経路を数える
+    // （#13 実機計測と同じ数え方: ショートカットのタップ=起動、文字入力は打鍵なのでタップに数えない）。
+    await page.addInitScript(() => {
+      (window as unknown as { __tapCount: number }).__tapCount = 0;
+      document.addEventListener(
+        "click",
+        () => {
+          const w = window as unknown as { __tapCount: number };
+          w.__tapCount = (w.__tapCount ?? 0) + 1;
+        },
+        true,
+      );
+    });
+    await page.goto("/");
+
+    await page.locator(".shortcut-quicklist-item").first().click();
+
+    // ページ遷移せずにその場で起票シートが開く（#135）。遷移すると addInitScript でカウンタが
+    // リセットされるため、URL が "/" のままであることはタップ数計測の前提でもある。
+    expect(new URL(page.url()).pathname).toBe("/");
+    const title = page.getByRole("textbox", { name: /タイトル|^Title$/ });
+    // タップ直後にタイトル欄へフォーカスが当たっている（実機ではソフトキーボードが開く条件）。
+    await expect(title).toBeFocused();
+    // サーバー保存時に前後空白は落ちるため、雛形はトリム済みの値で復元される（URL 起動経路と同じ）。
+    await expect(title).toHaveValue("bug:");
+    // プリセットのラベルもページ遷移経由と同じく適用される（回帰防止）。
+    await expect(page.getByRole("checkbox", { name: "bug" })).toBeChecked();
+
+    await title.fill("bug: KPI 2 タップ計測");
+    await page.getByRole("button", { name: /Issue を作成|Create issue/ }).click();
+    await expect(page.getByText(/Issue を作成しました|Issue created/)).toBeVisible();
+
+    const taps = await page.evaluate(() => (window as unknown as { __tapCount: number }).__tapCount ?? 0);
+    expect(taps, "ショートカット起動 → 起票完了までのタップ数（#135: 2 タップ以内）").toBeLessThanOrEqual(2);
+  });
+
   test("通常起動（リポ選択タップ込み） → タイトルのみ起票の外形計測", async ({ page }) => {
     await login(page);
 

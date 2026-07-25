@@ -1,4 +1,4 @@
-import type { ChangeEvent, UIEvent } from "react";
+import type { ChangeEvent, Ref, UIEvent } from "react";
 import { useRef } from "react";
 import type { SmartToken } from "./smartInput";
 
@@ -13,6 +13,9 @@ interface HighlightedTextInputProps {
   enterKeyHint?: "send" | "search";
   autoCapitalize?: string;
   autoFocus?: boolean;
+  /** 実体の input への参照。呼び出し元がユーザージェスチャ内で同期的に focus() するために使う
+   * （#135・Android Chrome はジェスチャ外の focus ではソフトキーボードを開かない）。 */
+  inputRef?: Ref<HTMLInputElement>;
 }
 
 /** `#repo` `@label` トークン（B3-3）をインライン認識・ハイライト表示するテキスト入力。
@@ -27,6 +30,7 @@ export function HighlightedTextInput({
   enterKeyHint,
   autoCapitalize,
   autoFocus,
+  inputRef,
 }: HighlightedTextInputProps) {
   const overlayRef = useRef<HTMLDivElement>(null);
 
@@ -67,6 +71,7 @@ export function HighlightedTextInput({
         )}
       </div>
       <input
+        ref={inputRef}
         type="text"
         className="highlighted-input-field"
         value={value}
