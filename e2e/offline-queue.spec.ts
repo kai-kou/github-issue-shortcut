@@ -125,6 +125,81 @@ test.describe("オフラインキュー（モック GitHub・モバイルエミ�
     await expect(page.locator(".offline-queue-item-title").getByText("__mock_422__")).toBeVisible();
   });
 
+  test("TTL 超過の pending は自動再送されず、期限切れとして手動確認へ回る（#91）", async ({ page, request }) => {
+    await page.goto("/");
+    await page.getByRole("link", { name: /GitHub でログイン|Sign in with GitHub/ }).click();
+    await expect(page.getByText(/e2e-user/)).toBeVisible();
+
+    await page.getByRole("button", { name: "kai-kou/alpha" }).click();
+    // モック GitHub のマジック文字列（422）を使い、後段で「手動再送が期限切れとは無関係な理由で
+    // 失敗する」ケースまで検証できるようにする。
+    await page.getByRole("textbox", { name: /タイトル|^Title$/ }).fill("__mock_422__");
+
+    await page.route("**/api/issues", (route) => route.abort());
+    await page.getByRole("button", { name: /Issue を作成|Create issue/ }).click();
+    await expect(page.getByText(/送信待ちのオフラインキュー|Pending offline queue/)).toBeVisible();
+
+    // 端末に残ったキューの queuedAt を TTL（24h）超過へ書き換え、数日放置された状態を再現する。
+    // サーバー側の重複防止窓（26h）が切れた後に自動再送すると重複起票しうるため、この状態では
+    // 自動再送を止めてユーザーの確認に委ねるのが期待挙動（#91）。
+    await page.unroute("**/api/issues");
+    await page.evaluate(() => {
+      const key = "issue-shortcut:offline-queue";
+      const queue = JSON.parse(localStorage.getItem(key) ?? "[]") as { queuedAt: number }[];
+      for (const entry of queue) entry.queuedAt -= 25 * 60 * 60 * 1000;
+      localStorage.setItem(key, JSON.stringify(queue));
+    });
+
+    let issuePostCount = 0;
+    page.on("request", (req) => {
+      if (req.method() === "POST" && req.url().includes("/api/issues")) issuePostCount += 1;
+    });
+
+    // 再読み込みでオンライン状態のまま自動再送（マウント時の flush）が走る条件を作る。
+    await page.reload();
+
+    // 期限切れとして failed 一覧に現れ、pending の件数表示は消える。
+    await expect(page.getByText(/送信に失敗した起票|Failed to send/)).toBeVisible();
+    await expect(page.getByText(/自動再送を停止しました|automatic resending stopped/)).toBeVisible();
+    await expect(page.getByText(/送信待ちのオフラインキュー|Pending offline queue/)).toHaveCount(0);
+
+    // 自動再送そのものが起きていないことを POST 数と作成件数の両方で確認する。
+    expect(issuePostCount, "TTL 超過のキューは自動再送しない").toBe(0);
+    const created = await (await request.get(`${MOCK_GITHUB_URL}/mock/issue-count`)).json();
+    expect(created).toEqual({ count: 0 });
+
+    // 手動での救済導線（D2-1）は残る。一覧は起票シート（モーダル）の背面にあるため、
+    // シートを閉じてから操作する。
+    await page.getByRole("button", { name: /閉じる|Close/ }).click();
+
+    // 期限切れ項目の手動再送はワンタップで送らず確認を挟む（重複起票の可能性を明示する）。
+    await page.getByRole("button", { name: /^再送$|^Resend$/ }).click();
+    await expect(page.getByText(/重複して作成されます|will create a duplicate/)).toBeVisible();
+    expect(issuePostCount, "確認前に再送 POST を投げない").toBe(0);
+    await page.getByRole("button", { name: /^キャンセル$|^Cancel$/ }).click();
+    await expect(page.getByText(/重複して作成されます|will create a duplicate/)).toHaveCount(0);
+    expect(issuePostCount, "キャンセルでは再送しない").toBe(0);
+
+    // 確認して再送すると送信されるが、この内容は 422 が返るためキューに残る。このとき errorCode は
+    // validation_failed に上書きされる。期限切れの記録（expired フラグ）が errorCode と独立に
+    // 保持されていないと、2 回目以降の再送が確認なしのワンタップに戻ってしまう（Layer 2 レビュー指摘）。
+    await page.getByRole("button", { name: /^再送$|^Resend$/ }).click();
+    await page.getByRole("button", { name: /^再送する$|^Resend anyway$/ }).click();
+    await expect.poll(() => issuePostCount).toBe(1);
+    await expect(page.getByText(/送信に失敗した起票|Failed to send/)).toBeVisible();
+
+    // 回帰ガード: 期限切れ以外の理由で失敗した後も、再送には必ず確認が挟まる。
+    await page.getByRole("button", { name: /^再送$|^Resend$/ }).click();
+    await expect(page.getByText(/重複して作成されます|will create a duplicate/)).toBeVisible();
+    expect(issuePostCount, "確認前に再送 POST を投げない（2 回目）").toBe(1);
+    await page.getByRole("button", { name: /^キャンセル$|^Cancel$/ }).click();
+
+    // 破棄でキューから消える。
+    await page.getByRole("button", { name: /^破棄$|^Discard$/ }).click();
+    await page.getByRole("button", { name: /^破棄する$|^Yes, discard$/ }).click();
+    await expect(page.getByText(/送信に失敗した起票|Failed to send/)).toHaveCount(0);
+  });
+
   test("D2-1: failed 項目を手動で再送・破棄できる", async ({ page }) => {
     await page.goto("/");
     await page.getByRole("link", { name: /GitHub でログイン|Sign in with GitHub/ }).click();

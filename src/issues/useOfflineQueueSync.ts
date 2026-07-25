@@ -1,8 +1,10 @@
 import { useEffect, useOptimistic, useRef, useState, useTransition } from "react";
 import {
   enqueueOfflineIssue,
+  expireStaleOfflineQueue,
   loadOfflineQueue,
   markOfflineQueueFailed,
+  QUEUE_EXPIRED_ERROR_CODE,
   removeFromOfflineQueue,
   type QueuedIssue,
 } from "./offlineQueue";
@@ -80,7 +82,19 @@ export function useOfflineQueueSync() {
       if (flushingRef.current) return;
       flushingRef.current = true;
       try {
-        for (const entry of loadOfflineQueue().filter((q) => q.status === "pending")) {
+        // 滞留が長すぎる pending は自動再送せず failed（queue_expired）へ落とす（#91）。サーバー側の
+        // 重複防止窓（26h）が切れた後に同じ client_request_id で送ると、既に作成済みの Issue を
+        // もう一度作りかねないため、ここから先はユーザーの確認（D2-1 の一覧）に委ねる。
+        const { queue: current, expiredIds } = expireStaleOfflineQueue();
+        if (expiredIds.length > 0) {
+          startTransition(() => {
+            for (const id of expiredIds) {
+              applyAction({ type: "settle", id, status: "failed", errorCode: QUEUE_EXPIRED_ERROR_CODE });
+            }
+          });
+          setQueue(current);
+        }
+        for (const entry of current.filter((q) => q.status === "pending")) {
           if (cancelled || !navigator.onLine) break;
           const result = await postQueuedEntry(entry);
           if (cancelled) break;
