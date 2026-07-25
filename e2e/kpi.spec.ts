@@ -126,6 +126,18 @@ test.describe("KPI 外形計測 PoC（モック GitHub・Pixel 7 エミュレー
     // 参考閾値 assert を push より前に置く。CI リトライ（retries:2）で閾値超過により失敗した
     // attempt が、ラン共有の collected（module スコープ）へ重複行を残さないようにするため。
     expect(m.totalMs, "起動→起票完了の外形時間（参考閾値 10s・NFR-2 の下限値監視）").toBeLessThan(10_000);
+    // M3 の KPI 上限値（5 秒）は **ハード assert にしない**（#148 の議論結果）。理由:
+    //   - 同一メトリクス totalMs への二重閾値は新しい失敗モードを検出しない
+    //   - CI マシン性能・GC のブレで「実機なら 4.5s でも CI で 5.2s」という偽陽性が出る
+    // 5 秒基準の正本はリリースゲート時の実機ストップウォッチ実測（docs/testing-e2e.md）とし、
+    // ここは劣化に早く気づくための非ブロッキングな警告に留める。
+    if (m.totalMs >= 5_000) {
+      const message = `外形時間が ${m.totalMs}ms で M3 の 5 秒目安を超えた（非ブロッキング）`;
+      // GitHub Actions ではワークフローコマンドで注釈化し、ジョブが green でも気づけるようにする
+      // （ログの一行として埋もれると誰も読まない）。ローカルは通常の警告出力。
+      // eslint-disable-next-line no-console
+      console.warn(process.env.GITHUB_ACTIONS ? `::warning title=KPI::${message}` : `[KPI][warn] ${message}`);
+    }
     collected.push(m);
     // eslint-disable-next-line no-console
     console.log("[KPI]", JSON.stringify(m));

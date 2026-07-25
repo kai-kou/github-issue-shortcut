@@ -26,7 +26,7 @@ test.describe("オフラインキュー（モック GitHub・モバイルエミ�
     await request.post(`${MOCK_GITHUB_URL}/mock/config`, { data: { installations: [] } });
   });
 
-  test("オフライン時にキュー表示され、オンライン復帰後に自動送信されて GitHub に反映される", async ({ page }) => {
+  test("オフライン時にキュー表示され、オンライン復帰後に自動送信されて GitHub に反映される", async ({ page, request }) => {
     await page.goto("/");
     await page.getByRole("link", { name: /GitHub でログイン|Sign in with GitHub/ }).click();
     await expect(page.getByText(/e2e-user/)).toBeVisible();
@@ -52,6 +52,51 @@ test.describe("オフラインキュー（モック GitHub・モバイルエミ�
 
     // 再送が成功し GitHub へ反映されると、キュー表示が消える。
     await expect(page.getByText(/送信待ちのオフラインキュー|Pending offline queue/)).toHaveCount(0, { timeout: 10_000 });
+
+    // 「重複せず 1 件だけ」を、キュー表示が消えたという間接証拠ではなくモック GitHub の
+    // 作成件数で直接検証する（#148）。
+    const created = await (await request.get(`${MOCK_GITHUB_URL}/mock/issue-count`)).json();
+    expect(created).toEqual({ count: 1 });
+  });
+
+  test("online イベントが連続発火しても再送は 1 回だけ実行される（再入ガードの回帰）", async ({
+    page,
+    request,
+  }) => {
+    await page.goto("/");
+    await page.getByRole("link", { name: /GitHub でログイン|Sign in with GitHub/ }).click();
+    await expect(page.getByText(/e2e-user/)).toBeVisible();
+
+    await page.getByRole("button", { name: "kai-kou/alpha" }).click();
+    await page.getByRole("textbox", { name: /タイトル|^Title$/ }).fill("二重再送しない");
+
+    await page.route("**/api/issues", (route) => route.abort());
+    await page.getByRole("button", { name: /Issue を作成|Create issue/ }).click();
+    await expect(page.getByText(/送信待ちのオフラインキュー|Pending offline queue/)).toBeVisible();
+
+    // オンライン復帰の通知が短時間に連続で届いても（実機では電波の掴み直しで起こりうる）、
+    // 再送処理の再入ガード（useOfflineQueueSync の flushingRef）により送信は 1 回だけになる。
+    await page.unroute("**/api/issues");
+
+    // 送信回数はブラウザが実際に投げた POST の数で数える。作成件数（/mock/issue-count）だけでは
+    // サーバー側の二重送信防止（issue_log の content_hash 窓）が二重送信を吸収してしまい、
+    // クライアントのガードが壊れても 1 件のままになる＝ガードの回帰を検出できないため。
+    let issuePostCount = 0;
+    page.on("request", (req) => {
+      if (req.method() === "POST" && req.url().includes("/api/issues")) issuePostCount += 1;
+    });
+
+    await page.evaluate(() => {
+      window.dispatchEvent(new Event("online"));
+      window.dispatchEvent(new Event("online"));
+    });
+
+    await expect(page.getByText(/送信待ちのオフラインキュー|Pending offline queue/)).toHaveCount(0, {
+      timeout: 10_000,
+    });
+    expect(issuePostCount, "online 二重発火でも起票 POST は 1 回だけ").toBe(1);
+    const created = await (await request.get(`${MOCK_GITHUB_URL}/mock/issue-count`)).json();
+    expect(created).toEqual({ count: 1 });
   });
 
   test("4xx はキュー自動再送の対象外として扱われる", async ({ page }) => {

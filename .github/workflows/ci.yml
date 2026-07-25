@@ -41,6 +41,10 @@ jobs:
 
       - run: python3 tools/check_cjk_markdown.py --changed
 
+      # オフラインキューの再送保証（Workbox Background Sync）の設定が、生成された SW から
+      # 静かに消えていないかを検査する（#148。E2E では SW の sync 発火を再現できないため）。
+      - run: python3 tools/check_sw_background_sync.py
+
   e2e:
     runs-on: ubuntu-latest
     steps:
