@@ -166,9 +166,19 @@ test.describe("オフラインキュー（モック GitHub・モバイルエミ�
     const created = await (await request.get(`${MOCK_GITHUB_URL}/mock/issue-count`)).json();
     expect(created).toEqual({ count: 0 });
 
-    // 手動での救済導線（D2-1）は残る: 破棄でキューから消える。一覧は起票シート（モーダル）の
-    // 背面にあるため、シートを閉じてから操作する。
+    // 手動での救済導線（D2-1）は残る。一覧は起票シート（モーダル）の背面にあるため、
+    // シートを閉じてから操作する。
     await page.getByRole("button", { name: /閉じる|Close/ }).click();
+
+    // 期限切れ項目の手動再送はワンタップで送らず確認を挟む（重複起票の可能性を明示する）。
+    await page.getByRole("button", { name: /^再送$|^Resend$/ }).click();
+    await expect(page.getByText(/重複して作成されます|will create a duplicate/)).toBeVisible();
+    expect(issuePostCount, "確認前に再送 POST を投げない").toBe(0);
+    await page.getByRole("button", { name: /^キャンセル$|^Cancel$/ }).click();
+    await expect(page.getByText(/重複して作成されます|will create a duplicate/)).toHaveCount(0);
+    expect(issuePostCount, "キャンセルでは再送しない").toBe(0);
+
+    // 破棄でキューから消える。
     await page.getByRole("button", { name: /^破棄$|^Discard$/ }).click();
     await page.getByRole("button", { name: /^破棄する$|^Yes, discard$/ }).click();
     await expect(page.getByText(/送信に失敗した起票|Failed to send/)).toHaveCount(0);

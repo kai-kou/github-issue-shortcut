@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useLanguage } from "../i18n/LanguageContext";
 import { submitErrorMessage } from "./submitError";
-import type { QueuedIssue } from "./offlineQueue";
+import { QUEUE_EXPIRED_ERROR_CODE, type QueuedIssue } from "./offlineQueue";
 
 interface OfflineQueueListProps {
   items: QueuedIssue[];
@@ -16,6 +16,7 @@ export function OfflineQueueList({ items, onResend, onDiscard }: OfflineQueueLis
   const { t } = useLanguage();
   const [resendingId, setResendingId] = useState<string | null>(null);
   const [confirmingDiscardId, setConfirmingDiscardId] = useState<string | null>(null);
+  const [confirmingResendId, setConfirmingResendId] = useState<string | null>(null);
 
   if (items.length === 0) return null;
 
@@ -26,6 +27,17 @@ export function OfflineQueueList({ items, onResend, onDiscard }: OfflineQueueLis
     } finally {
       setResendingId((current) => (current === id ? null : current));
     }
+  }
+
+  /** TTL 超過で自動再送を打ち切った項目（#91）は、サーバー側の重複防止窓も切れているため
+   * 手動再送で重複起票しうる。ワンタップで送らず確認を挟み、利用者が「GitHub 側に作成済みでないか
+   * 確認した」うえで送る形にする（4xx/5xx で失敗した項目は従来どおりワンタップ再送）。 */
+  function requestResend(item: QueuedIssue) {
+    if (item.errorCode === QUEUE_EXPIRED_ERROR_CODE) {
+      setConfirmingResendId(item.id);
+      return;
+    }
+    void handleResend(item.id);
   }
 
   return (
@@ -53,9 +65,26 @@ export function OfflineQueueList({ items, onResend, onDiscard }: OfflineQueueLis
                 {t.repoPicker.offlineQueueDiscardCancelButton}
               </button>
             </p>
+          ) : confirmingResendId === item.id ? (
+            <p className="offline-queue-item-confirm">
+              {t.repoPicker.offlineQueueResendConfirmMessage}{" "}
+              <button
+                type="button"
+                onClick={() => {
+                  setConfirmingResendId(null);
+                  void handleResend(item.id);
+                }}
+              >
+                {t.repoPicker.offlineQueueResendConfirmButton}
+              </button>{" "}
+              {/* キャンセル文言は破棄確認と同一のため既存キーを共有する。 */}
+              <button type="button" onClick={() => setConfirmingResendId(null)}>
+                {t.repoPicker.offlineQueueDiscardCancelButton}
+              </button>
+            </p>
           ) : (
             <div className="offline-queue-item-actions">
-              <button type="button" onClick={() => handleResend(item.id)} disabled={resendingId === item.id}>
+              <button type="button" onClick={() => requestResend(item)} disabled={resendingId === item.id}>
                 {resendingId === item.id ? t.repoPicker.offlineQueueResendingLabel : t.repoPicker.offlineQueueResendButton}
               </button>
               <button type="button" className="btn-link-danger" onClick={() => setConfirmingDiscardId(item.id)}>

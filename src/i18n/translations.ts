@@ -78,6 +78,8 @@ interface Translations {
     offlineQueueFailed: string;
     offlineQueueResendButton: string;
     offlineQueueResendingLabel: string;
+    offlineQueueResendConfirmMessage: string;
+    offlineQueueResendConfirmButton: string;
     offlineQueueDiscardButton: string;
     offlineQueueDiscardConfirmMessage: string;
     offlineQueueDiscardConfirmButton: string;
@@ -221,6 +223,9 @@ export const translations = {
       offlineQueueFailed: "送信に失敗した起票（手動対応が必要）:",
       offlineQueueResendButton: "再送",
       offlineQueueResendingLabel: "再送中...",
+      offlineQueueResendConfirmMessage:
+        "24 時間以上経過しています。GitHub 側に既に作成済みだった場合、再送すると重複して作成されます。それでも再送しますか？",
+      offlineQueueResendConfirmButton: "再送する",
       offlineQueueDiscardButton: "破棄",
       offlineQueueDiscardConfirmMessage: "この起票を破棄しますか？（元に戻せません）",
       offlineQueueDiscardConfirmButton: "破棄する",
@@ -456,6 +461,9 @@ export const translations = {
       offlineQueueFailed: "Failed to send (needs manual action):",
       offlineQueueResendButton: "Resend",
       offlineQueueResendingLabel: "Resending...",
+      offlineQueueResendConfirmMessage:
+        "More than 24 hours have passed. If it was already created on GitHub, resending will create a duplicate. Resend anyway?",
+      offlineQueueResendConfirmButton: "Resend anyway",
       offlineQueueDiscardButton: "Discard",
       offlineQueueDiscardConfirmMessage: "Discard this issue? This can't be undone.",
       offlineQueueDiscardConfirmButton: "Yes, discard",
