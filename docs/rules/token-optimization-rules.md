@@ -25,31 +25,56 @@ Claude Code のトークン消費を最小化し、セッションあたりの�
 
 | ファイル（例） | トークン概算 | 理由 |
 |---------|------------|------|
-| `agent-team-summary.md` | ~1,600 | 全タスクでサブエージェント使用 |
-| `completion-report-rules.md` | ~1,700 | 全セッションの完了報告構造 SSOT |
-| `core-principles.md` | ~1,400 | 全タスクの大原則（詳細は `core-principles-detail.md`） |
-| `datetime-rules.md` | ~1,250 | 日時表記 JST 統一 SSOT |
-| `lessons-core.md` | ~5,100 | クリティカル教訓（自己の 350 行/15 エントリ上限で別途機械管理） |
-| `pr-review-flow-summary.md` | ~2,100 | ほぼ全タスクで PR 作成 |
-| `session-compression-rules.md` | ~1,100 | 圧縮時の安全（詳細は `session-compression-rules-detail.md`） |
+| `agent-team-summary.md` | ~1,300 | 全タスクでサブエージェント使用 |
+| `completion-report-rules.md` | ~1,250 | 全セッションの完了報告構造 SSOT |
+| `core-principles.md` | ~1,100 | 全タスクの大原則（詳細は `core-principles-detail.md`） |
+| `datetime-rules.md` | ~800 | 日時表記 JST 統一 SSOT |
+| `lessons-core.md` | ~2,300 | クリティカル **行動規範** のみ（環境障害カタログは `lessons/cloud-environment.md` へ降格・#324） |
+| `pr-review-flow-summary.md` | ~1,350 | ほぼ全タスクで PR 作成（実行手順は `pr-review-watcher` スキル） |
+| `session-compression-rules.md` | ~800 | 圧縮時の安全（詳細は `session-compression-rules-detail.md`） |
 | `session-concurrency-rules.md` | ~1,000 | マルチセッション競合防止（R-1 ルーティン稼働のため Hot・詳細は `session-concurrency-rules-detail.md`） |
 | `session-safety-rules.md` | ~800 | セッション安全 |
 | `session-sprint-rules.md` | ~500 | スプリント運用の最小フォーム |
-| `user-confirmation-minimization.md` | ~3,800 | 確認要否の SSOT（プロジェクト例詳細は `user-confirmation-minimization-detail.md`） |
-| `user-instruction-issue-rules.md` | ~1,300 | ユーザー直接指示の Issue 化判断 |
-| `user-notification-triage.md` | ~2,100 | `@mention` 厳選 SSOT（詳細は `user-notification-triage-detail.md`） |
+| `user-confirmation-minimization.md` | ~2,700 | 確認要否の SSOT（プロジェクト例詳細は `user-confirmation-minimization-detail.md`） |
+| `user-instruction-issue-rules.md` | ~900 | ユーザー直接指示の Issue 化判断 |
+| `user-notification-triage.md` | ~1,500 | `@mention` 厳選 SSOT（分類ロジックの正本は `triage_notification.py`） |
 
 > **Warm 降格済み**: `progress-reporting-rules.md`（制作系の長時間処理時にスキルが Read）は **既定では Hot 層に含めない**。`session-concurrency-rules.md` は本リポジトリでは R-1 ルーティン稼働（マルチセッション並行運用）のため Hot 化済み（E-B #20・PR #176）。単一セッション運用のプロジェクトでは Warm のままでよい。Hot 化/降格する場合は `ESSENTIAL_RULES` を編集して `./tools/check_rules_sync.sh --fix` を実行する。
 
-### 削減効果・予算の推移（Issue #146 で再校正）
+### 削減効果・予算の推移（#146 → #324 で再校正）
 
-| 指標 | 当初（8ファイル構成時） | #146 棚卸し前（実測 2026-07-10） | #146 棚卸し後（実測） |
-|------|------|------|------|
-| `.claude/rules/` ファイル数 | 8（7 symlink + 1 例外） | 13 | 13（ファイル数は変更なし） |
-| `.claude/rules/` 総サイズ（`wc -c` 実測・1KB=1000B換算） | ~76KB | ~123KB（実測 123,038B） | ~95KB（実測 94,825B） |
-| 推定トークン数 | ~19,000 | ~31,000 | ~24,000 |
+| 指標 | 当初（8ファイル構成時） | #146 棚卸し前（2026-07-10） | #146 棚卸し後 | **#324 棚卸し後（2026-07-26）** |
+|------|------|------|------|------|
+| `.claude/rules/` ファイル数 | 8（7 symlink + 1 例外） | 13 | 13 | 13（変更なし） |
+| `.claude/rules/` 総サイズ（`wc -c` 実測・1KB=1000B換算） | ~76KB | ~123KB（123,038B） | ~95KB（94,825B） | **~65KB（65,335B）** |
+| 推定トークン数 | ~19,000 | ~31,000 | ~24,000 | **~16,300** |
 
-**予算の見直し（完了条件 OR 節を適用）**: 当初 76KB は 8 ファイル構成時の校正値。その後 `completion-report-rules.md`（#100 系）・`datetime-rules.md`（#75）・`lessons-core.md`（lessons 3層化）・`session-concurrency-rules.md`（R-1・#176）・`session-sprint-rules.md`・`user-instruction-issue-rules.md`・`user-notification-triage.md` が個別 Issue で正当化されて追加され、13 ファイル構成に増えた。個々の追加判断は妥当だが、累積の再校正がなかったため 76KB→123KB まで肥大化した（メタ肥大化）。#146 の棚卸しで「プロジェクト例」テーブル・詳細プロセス記述を各ファイルの `-detail.md`（Warm 層）へ抽出し実測 94,825B（~95KB）まで圧縮した。**新しい Hot 層予算を 13 ファイル構成の実測値に合わせ ~95KB（~24,000 トークン）に改定する**（現状値がほぼ予算ちょうどのため、今後の追記マージンはほぼ無い）。今後ファイルを追加する際は `session-compression-rules.md`「新規ルールファイル追加時の必須手順」の Hot 予算チェックに従うこと。
+**#146 の経緯（メタ肥大化）**: 当初 76KB は 8 ファイル構成時の校正値。その後 7 ファイルが個別 Issue で正当化されて追加され 13 ファイル構成になった。個々の追加判断は妥当だったが累積の再校正がなく 76KB→123KB まで肥大化。#146 で「プロジェクト例」テーブル・詳細プロセス記述を各 `-detail.md`（Warm 層）へ抽出し 95KB まで圧縮した。
+
+**#324 の再校正（当時の到達値 ~65KB / ~16,300 トークン。現行予算は下の増減ログを参照）**: #146 の直後から再増加が始まり（95KB→98KB）、同 Issue が「追記マージンはほぼ無い」と明記した状態を超過していた。Anthropic「[The new rules of context engineering for Claude 5 generation models](https://claude.com/blog/the-new-rules-of-context-engineering-for-claude-5-generation-models)」の progressive disclosure 原則に沿って再棚卸しし、**Hot に残すのは「判断基準・不変の境界・実観測ベースの行動規範」だけ** とした。降格の判断軸は「代替の強制レイヤ（ハーネス / スキル / ツール / ツール description）が既にあるか」。
+
+**削減対象外（意図的に残す）**: ① A-1〜A-6 の既約境界外リスト ② 実観測ベースの行動規範 lessons（記事の削除基準 "specific, demonstrable failure mode" に照らすと残す側）③ Haiku サブエージェント向けの明示的な出力ルール（Claude 5 世代ではないため「判断に委ねる」の適用外）。これらを削らない前提での到達値が 65KB であり、以後の追加は `session-compression-rules.md`「新規ルールファイル追加時の必須手順」の Hot 予算チェックに従う。
+
+#### 予算の増減ログ（1 行 1 追加・#146 型のメタ肥大化を防ぐため累積を可視化する）
+
+| 日付 | 実測 | 差分 | 追加の正当化 / 相殺 |
+|---|---:|---:|---|
+| 2026-07-26 | 65,335 B | 基準 | #324 の再棚卸し後の到達値 |
+| 2026-07-26 | 65,867 B | +532 | #325: CP-1 とスコープ厳守の衝突解決規則（毎ターン矛盾解決コストを払っていたため常駐が必要） |
+| 2026-07-26 | **67,246 B** | +1,377 | #328: 圧縮時のネスト CLAUDE.md 挙動 + オートメモリの行動規範（「クラウドでは永続化手段として当てにしない」）。**仕様の詳細は `session-compression-rules-detail.md` へ移設済み**（Hot には行動規範のみ） |
+
+**現行予算は ~67KB / ~16,800 トークン**。増減ログが 3 行を超えて増え続けるようなら、個々の追加が妥当でも累積として再棚卸しの合図とみなす（これが #146 で見落とした点）。
+
+### 棚卸し手段としての `/doctor`（#327）
+
+Claude Code 公式の診断コマンドを定期棚卸しに使う。実行は `workflow-health-check` スキルの Step 6-0 に組み込み済み。
+
+| 実行形態 | 何を返すか |
+|---|---|
+| CLI `claude doctor` | **インストール健全性のみ**（native/npm 併存・パス破損・更新チャネル）。スキル / CLAUDE.md のサイズ適正化は含まれない（v2.1.220 実測・2026-07-26） |
+| セッション内 `/doctor` | 設定・スキル・CLAUDE.md を含むフルチェックアップと修正 |
+
+**出力は判断材料の 1 つとして扱う**。汎用ツールの「削れる」判定と、運用規律が主体である本リポジトリ Hot 層の必要性判定は一致しないことがある。削除の可否は「代替の強制レイヤ（ハーネス / スキル / ツール / 本体システムプロンプト）が実在するか」で決める。
 
 ### スキルが Read すべきルールファイル対応表
 

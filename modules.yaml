@@ -108,11 +108,11 @@ modules:
       - lessons-management.md
       - lessons-core.md
       - harness-escalation.md
+      - improvement-lane-map.md
     skills:
       - retrospective
       - retro-try-handler
       - self-improvement-loop
-      - improvement-groomer
       - checkpoint
       - skill-creator
     tools:
@@ -163,6 +163,13 @@ modules:
       - discussion_specs/skill_inventory_audit.json
       - discussion_specs/sp_estimation_redesign.json
       - discussion_specs/workflow_base_audit.json
+
+  # ── ベース還流（任意・ベースリポジトリ側での運用が前提）──
+  base-harvest:
+    enabled: true
+    description: "apply-base の逆方向。下流リポジトリの汎用ハーネス改善を kai-kou/claude-code-base へ還流する（実行はベース側セッションが前提のため、下流リポジトリでは通常 enabled:false で prune してよい）"
+    skills:
+      - base-harvest
 
   # ── Claude Code 仕様追随（任意）────────────────────────
   claude-code-spec-sync:

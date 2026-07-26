@@ -82,4 +82,5 @@ fi
 echo "[bootstrap] done. 次のステップ:"
 echo "  - docs/project-mission.md にミッション・KPI を記入"
 echo "  - CLAUDE.md の応答スタイル / PR 自律化方針を確認"
-echo "  - GH_TOKEN を Claude.ai 環境変数に設定、他の env は gh variable set で登録"
+echo "  - env は Claude.ai の環境設定に登録（GH_TOKEN は未設定でよい＝プロキシが認証を注入）"
+echo "    ※ gh variable set 経由の登録はローカル実行専用（クラウドからは 403）"

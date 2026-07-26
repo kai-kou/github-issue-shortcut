@@ -844,7 +844,20 @@ def main() -> None:
 
     real_gh = find_real_gh()
     if not real_gh:
-        sys.stderr.write("[gh-shim] 実 gh が見つかりません（PATH に gh 本体が必要）\n")
+        msg = "[gh-shim] 実 gh が見つかりません（PATH に gh 本体が必要）\n"
+        if is_cloud():
+            # 実 gh 本体が無いと本シムは repo スコープ REST 変換すら実行できない
+            # （subprocess.run([real_gh, ...]) の対象が無い）。GH_TOKEN 等を使った
+            # urllib/curl 直叩きも「GitHub access is not enabled for this session」で
+            # 同じくプロキシに 403 で拒否される（実測・#313）ため、代替は MCP のみ。
+            msg += (
+                "[gh-shim] このクラウド実行環境には gh 本体が無いため repo スコープ REST 変換も "
+                "実行できません。GH_TOKEN を使った urllib/curl 直叩きもプロキシに 403 で拒否されます"
+                "（\"GitHub access is not enabled for this session\"）。"
+                "mcp__github__* ツールを使ってください"
+                "（SSOT: docs/rules/github-mcp-fallback-patterns.md）\n"
+            )
+        sys.stderr.write(msg)
         sys.exit(127)
 
     if argv and argv[0] == "--shim-doctor":

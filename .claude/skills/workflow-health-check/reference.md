@@ -1,5 +1,11 @@
 # workflow-health-check 詳細リファレンス
 
+> 🔴 **GitHub 操作の経路（必読・L-114）**: クラウド実行環境では `gh` がプリインストールされず、
+> 導入しても repo スコープ REST が 403 になる。**本ファイル内の `gh ...` コマンドはローカル実行専用** で、
+> クラウドでは `mcp__github__*` に読み替える（対応表: `docs/rules/github-mcp-fallback-patterns.md` §2。
+> ラベル一覧/作成・マイルストーン・release 作成・variables は MCP に等価が無く **クラウドでは実行不可**・同 §2.5）。
+
+
 > `SKILL.md` は日次の軽量版（Step 1〜2）を中心に構成している。本ファイルは
 > **完全版限定の Step 3〜6・週次レポート雛形・実行コマンド例** を保持する
 > （週次の監査スロットで完全版として起動された時のみ Read する）。
@@ -81,23 +87,46 @@ retro-try Issue の消化率・重複状況・パイプラインカバレッジ�
 公式ベストプラクティス「CLAUDE.md が長すぎると Claude が半分無視する」（[best-practices](https://code.claude.com/docs/en/best-practices)）に基づき、CLAUDE.md と常駐ルール（`.claude/rules/` symlink 群）のトークン肥大化を監査する。**report-only（自動編集しない）** — 削除候補を提示するのみで、CLAUDE.md の編集はユーザー判断または別 Issue で実施する（rule-loading 構造変更のリスク回避）。
 
 ```
-6-a: CLAUDE.md（プロジェクトの主要指示ファイル）行数チェック
-  └─ wc -l CLAUDE.md を取得
+6-0: /doctor による棚卸し（Claude Code 公式の診断コマンド・#327）
+  └─ 対話セッションなら /doctor を実行する（スキル・CLAUDE.md のサイズ適正化を含むフルチェックアップ）
+  └─ 出力を 6-a〜6-d の判断材料の1つとして扱う（後述の注意を必ず適用する）
+
+6-a: CLAUDE.md（プロジェクトの主要指示ファイル）サイズチェック
+  └─ wc -c -l CLAUDE.md を取得
   └─ 600 行超 → Warning（「肥大化。プルーニング or @import 分割を検討」）
 
 6-b: プルーニング候補の提示（公式判定基準）
   └─ 各セクションについて「この行を消したら Claude がミスするか？」を自問
   └─ NO（= Claude が既に正しくやっている / 自明 / フックで強制済み）の行 → 削除 or hook 昇格の候補としてレポート
   └─ 重複記述（同一ルールが CLAUDE.md と docs/rules/*.md の両方に冗長定義）→ SSOT 化候補としてレポート
+  └─ 本体が既に持っている情報（本体システムプロンプトの汎用規範・本体が description 付きで
+     自動列挙するスキル一覧など）→ 削除候補としてレポート（#326 の判定軸）
 
 6-c: 常駐ルール合算サイズチェック
-  └─ .claude/rules/ の symlink 先合算行数を集計
-  └─ セッション開始時の自動読み込みトークン量として概算を report
+  └─ cat .claude/rules/*.md | wc -c で symlink 先の実体合算を集計
+  └─ token-optimization-rules.md の Hot 層予算（現行 ~65KB / ~16,300 トークン・#324 改定）と突き合わせ
+  └─ 予算超過 → Warning（Warm 降格 or 既存ファイルの追加圧縮を提案）
+  └─ 降格提案には必ず「代替の強制レイヤ（ハーネス / スキル / ツール）が実在するか」の確認を添える
 
 6-d: @import 分割の提案（report-only・自動実行しない）
   └─ CLAUDE.md 内で「大きく・低頻度更新・独立性が高い」セクション（例: プロジェクト定義のドメイン詳細節）を検出
   └─ `@docs/...md` インクルードでの分割候補としてレポート（実装はユーザー承認後に別 PR。圧縮時保持挙動・symlink 運用への影響評価が必要なため自動適用しない）
 ```
+
+> **`/doctor` の実測仕様（2026-07-26・Claude Code v2.1.220 で確認）**:
+> - **CLI 版 `claude doctor`** が返すのは **インストール健全性のみ**（native/npm の併存・パス破損・自動更新チャネル等）。
+>   スキルや CLAUDE.md のサイズ適正化は **含まれない**。`claude doctor --help` の実出力（逐語）:
+>   `Check the health of your Claude Code installation. Reads settings files in the current directory without a trust prompt. For a full checkup that can also fix issues, run /doctor in a session.`
+> - **セッション内 `/doctor`** が設定・スキル・CLAUDE.md を含むフルチェックアップと修正を担当する。
+>   公式ドキュメント（[memory](https://code.claude.com/docs/en/memory)）によれば、**checked-in の CLAUDE.md に対して
+>   trim を提案する**（v2.1.206 以降）: *コードベースから導出できる内容（ディレクトリ構成・依存リスト・
+>   アーキテクチャ概要）を削り、落とし穴・根拠・ツール既定と異なる規約を残す*。これは 6-b の判定軸と同方向。
+>   自律セッション（非対話）では起動できないことがあるため、その場合は 6-a〜6-d の機械チェックで代替し、
+>   「`/doctor` 未実行」をレポートに明記する（実行していないものを実行したと書かない・L-113）
+>
+> **出力の扱い**: `/doctor` は汎用ツールであり、**本リポジトリの Hot 層は運用規律（Issue ロック・通知トリアージ・
+> 完了報告構造）が主** で、汎用的な「削れる」判定と本プロジェクトの必要性判定は一致しないことがある。
+> 判断材料の 1 つとして扱い、削除の可否は 6-b / 6-c の判定軸（代替の強制レイヤが実在するか）で決める。
 
 > **安全方針（P-7）**: 本ステップは **監査・提案のみ**。CLAUDE.md の `@import` 分割や行削除は rule-loading 構造・セッション圧縮時保持挙動に影響するため、health-check では自動実行せず、検出結果を週次レポートに記載してユーザー/別 Issue の判断に委ねる。
 

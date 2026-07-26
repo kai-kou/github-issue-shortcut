@@ -16,18 +16,27 @@ description: 次にやるべきタスクを優先度順に自律判定して実�
 
 ### 1. レビュー待ち PR のチェック（最優先）
 
+**クラウド（一次経路）**: 本スクリプトは内部で gh を使うため、クラウドでは **必ず** `GH_UNAVAILABLE`（exit 3）
+になる（gh 未導入・repo REST も 403・L-114）。最初から MCP で確認する:
+
+```
+mcp__github__list_pull_requests(owner="{OWNER}", repo="{REPO}", state="open")
+→ 各 PR について mcp__github__pull_request_read(method="get" / "get_reviews" / "get_review_comments")
+→ needs_response / ready_to_merge をメインセッション側で判定する（判定基準は下記）
+```
+
+**ローカル実行用**:
+
 ```bash
-python3 tools/check_pending_pr_reviews.py --actionable-only --json
+python3 tools/check_pending_pr_reviews.py --mine --actionable-only --json
 ```
 
 - `ready_to_merge` → 即マージ
 - `needs_response` → 指摘対応再開
-- `needs_prompt` → 催促コメント投稿
+- `needs_prompt` → Layer 1 セルフレビュー実行 → 指摘解消 → マージ
 - `awaiting_review` → subscribe_pr_activity で待機継続
-- ⚠️ クラウドで `gh pr list` 自体が失敗した場合、本スクリプトは `NO_PENDING_PRS`（exit 0）を返さず
-  **exit code 3** で終了する（Issue #130）。exit code が 3 の場合は「0 件」と解釈せず、
-  `mcp__github__list_pull_requests(owner, repo, state="open")` + `mcp__github__pull_request_read`
-  で直接オープン PR を確認する（詳細: `docs/rules/github-mcp-fallback-patterns.md` §4）。
+- ⚠️ exit code 3 は「0 件」ではなく **取得失敗**（`NO_PENDING_PRS` と混同しない・Issue #130）。
+  詳細: `docs/rules/github-mcp-fallback-patterns.md` §4
 
 ### 2. 進行中 Issue の確認
 

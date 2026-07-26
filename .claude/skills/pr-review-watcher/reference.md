@@ -1,5 +1,11 @@
 # pr-review-watcher 詳細リファレンス
 
+> 🔴 **GitHub 操作の経路（必読・L-114）**: クラウド実行環境では `gh` がプリインストールされず、
+> 導入しても repo スコープ REST が 403 になる。**本ファイル内の `gh ...` コマンドはローカル実行専用** で、
+> クラウドでは `mcp__github__*` に読み替える（対応表: `docs/rules/github-mcp-fallback-patterns.md` §2。
+> ラベル一覧/作成・マイルストーン・release 作成・variables は MCP に等価が無く **クラウドでは実行不可**・同 §2.5）。
+
+
 > `pr-review-watcher` スキルの **詳細手順**（Step 1-7・GraphQL コマンド・トラブルシューティング・
 > 実行履歴・セッション復帰の機微）を切り出したもの（progressive disclosure・E-G #26）。
 > 日常の概要は `SKILL.md`、フロー全体の正本は `docs/rules/pr-review-flow.md` を参照。
@@ -53,6 +59,16 @@ python3 tools/check_pending_pr_reviews.py --actionable-only --json
 
 ## Step 1: レビュー状態の取得
 
+**クラウド（一次経路）**:
+
+```
+mcp__github__pull_request_read(method="get_reviews",         owner, repo, pullNumber)  # Approve/Changes Requested/Commented
+mcp__github__pull_request_read(method="get_comments",        owner, repo, pullNumber)  # PR コメント（issue comments）
+mcp__github__pull_request_read(method="get_review_comments", owner, repo, pullNumber)  # インラインレビューコメント
+```
+
+**ローカル実行用**:
+
 ```bash
 # レビュー（Approve/Changes Requested/Commented）
 gh api repos/{owner}/{repo}/pulls/{pr_number}/reviews \
@@ -64,10 +80,6 @@ gh api repos/{owner}/{repo}/issues/{pr_number}/comments \
 gh api repos/{owner}/{repo}/pulls/{pr_number}/comments \
   --jq '.[] | {user: .user.login, created_at, body, path, line}'
 ```
-
-> 🔴 クラウドでは gh の repo スコープ操作（REST + GraphQL）が 403 でブロックされるため、上記 `gh api`/`gh pr`
-> 系はクラウドで失敗する。PR 情報の取得は `mcp__github__pull_request_read`（method: get_reviews /
-> get_review_comments / get_comments）を一次経路にする（L-114・`docs/rules/github-mcp-fallback-patterns.md`）。
 
 ## Step 2: ステータス判定（外部レビュアー非依存）
 
@@ -92,6 +104,21 @@ gh api repos/{owner}/{repo}/pulls/{pr_number}/comments \
 2. **修正する場合**: ファイル編集 → `git add` → `git commit` → `git push`（メッセージ: `fix: {レビュアー}の指摘を反映 — {概要}`）
 3. **対応不要の場合**: スレッドに理由を記載
 4. **返信・Resolve（必須）**: 対応・スキップいずれもスレッドに返信して Resolve する
+
+**クラウド（一次経路）** — GraphQL を使わずに返信・Resolve まで完結する:
+
+```
+# インラインコメントへの返信（commentId は get_review_comments の応答 id）
+mcp__github__add_reply_to_pull_request_comment(owner, repo, pullNumber, commentId,
+    body="対応しました。{修正概要}（{commit_sha}）")
+# スキップ時: body="スキップします。理由: {理由}"
+
+# Resolve（threadId は get_review_comments の応答に含まれるスレッド識別子）
+mcp__github__resolve_review_thread(owner, repo, threadId)
+# 誤って解決した場合: mcp__github__unresolve_review_thread(owner, repo, threadId)
+```
+
+**ローカル実行用**:
 
 ```bash
 # インラインコメントへの返信
@@ -173,7 +200,7 @@ CI 失敗・人手コメントがある場合のみ対応してからマージ�
 
 | 事象 | 確認 | 対応 |
 |------|------|------|
-| CI チェック失敗 | `gh pr checks` / Actions ログ | 根本原因を特定して修正コミット（L-023・確認不要） |
+| CI チェック失敗 | **クラウド（一次経路）**: `mcp__github__actions_list` / `get_job_logs` / `get_check_run`（`gh pr checks` は GraphQL 依存でクラウド不可・§0）。（以下はローカル実行用）`gh pr checks` / Actions ログ | 根本原因を特定して修正コミット（L-023・確認不要） |
 | 人手レビューコメント | PR の未解決スレッド | 指摘対応（修正 or スキップ + 返信 + Resolve） |
 | 対象外ファイルのみの変更 | 変更が Markdown 等のみ | セルフレビューで対象外と判定 → 問題なし |
 

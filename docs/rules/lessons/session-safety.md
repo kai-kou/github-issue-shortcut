@@ -36,8 +36,7 @@ PR は存在せず（GitHub API 404）、ファイルにも未反映だった。
 **対策**（`session-safety-rules.md` の「git 操作の安全則」G-1〜G-3 + ルール5 に機械化）:
 - commit はヒアドキュメントを避け複数 `-m` フラグを使い、直後に `git diff HEAD~1 HEAD --stat` で着地確認する。
 - squash マージ後は `git fetch origin +main:refs/remotes/origin/main`（`+` で非 fast-forward にも追従）で remote-tracking ref を明示更新してから新ブランチを切る（二重 diff 防止）。
-- 完了報告の直前に `gh pr view <N> --json state,mergedAt` で `state=MERGED` を検証し、空結果は
-  `mcp__github__pull_request_read` でクロスチェックする。検証できるまで「マージ済み」と報告しない。
+- 完了報告の直前に `state=MERGED` を実結果で検証する。**クラウドは `mcp__github__pull_request_read(method="get", pullNumber=N)` が一次経路**（gh は未導入・repo REST も 403・L-114）。ローカルは `gh pr view <N> --json state,mergedAt`。あわせて `git log origin/main --oneline` でスカッシュコミットの着地も確認する。検証できるまで「マージ済み」と報告しない。
 
 **判定基準**: 「マージした / 完了した」と書こうとした瞬間が発動トリガー。状態確認の単一コマンド結果を
 鵜呑みにしない。

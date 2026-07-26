@@ -70,7 +70,7 @@
 ### lessons_guard.py（出口・機械強制の統合ツール）
 
 ```bash
-python3 tools/lessons_guard.py check          # Hot 層が上限内か検証（超過で exit 1・CI/フック用）
+python3 tools/lessons_guard.py check          # Hot 層の上限 + Hot/Warm 横断の L-NNN 番号重複を検証（超過/重複で exit 1・CI/フック用・#340）
 python3 tools/lessons_guard.py stats          # 各層の行数・エントリ数・分類を表示
 python3 tools/lessons_guard.py prune          # 物理削除候補を表示（dry-run）
 python3 tools/lessons_guard.py prune --apply  # 昇格済み実装済み 30 日経過エントリを物理削除
@@ -86,7 +86,7 @@ python3 tools/lessons_guard.py dedup          # タイトル類似の重複候�
 
 | レベル | 実装 | 挙動 |
 |--------|------|------|
-| **Lv3 フック**（主軸・実働） | `.claude/hooks/post-tool-use-validate.sh` | lessons-core.md を Write/Edit した直後に `lessons_guard.py check` を実行。上限超過なら exit 2 で警告し、是正（prune / Warm 降格）を促す。本ベースの機械強制の **最終ゲート** |
+| **Lv3 フック**（主軸・実働） | `.claude/hooks/post-tool-use-validate.sh` | lessons-core.md または Warm 層（`docs/rules/lessons/*.md`）を Write/Edit した直後に `lessons_guard.py check` を実行。上限超過または L-NNN 番号の Hot/Warm 横断重複があれば exit 2 で警告し、是正（prune / Warm 降格 / 番号振り直し）を促す。本ベースの機械強制の **最終ゲート**（#340） |
 | **Lv4 CI**（任意・派生環境向け） | Actions 有効な派生プロジェクトのみ | **本ベースは GitHub Actions を運用に使わない**（`.github/workflows/` を持たず、クラウド自律実行 + フックで完結する）ため、Lv4 CI は既定で設けず Lv3 フックを最終ゲートとする。Actions を使う派生プロジェクトは `lessons-core.md` / `tools/lessons_guard.py` の変更時に `python3 tools/lessons_guard.py check` を走らせる workflow を追加してよい |
 
 「ドキュメントに目標を書くだけ」では守られない（過去の失敗）。サイズ上限は Lv3 フックで **機械が物理的に拒否する**。

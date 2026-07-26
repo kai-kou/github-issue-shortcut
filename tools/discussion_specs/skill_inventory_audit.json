@@ -5,7 +5,7 @@
     {
       "name": "trigger-auditor",
       "model": "sonnet",
-      "lens": "トリガー精度監査官。全 targets の frontmatter description を読み比べ、(1) トリガー衝突: 同じユーザー発話で複数スキルが競合するペア（例: research-runner vs ビルトイン deep-research、self-reviewer vs ビルトイン code-review、improvement-groomer vs self-improvement-loop vs project-sync、project-manager vs user-instruction-issue-rules 常駐ルール）を具体的な発話例つきで特定する。(2) 各 description の発火精度を10点満点で採点（採点基準: 何をするスキルか明確か/いつ使うかのトリガー語が入っているか/類似スキルとの境界が書かれているか）。7点未満には具体的な書き換え案（description 全文）を出す。全スキル分の採点表を post すること。"
+      "lens": "トリガー精度監査官。全 targets の frontmatter description を読み比べ、(1) トリガー衝突: 同じユーザー発話で複数スキルが競合するペア（例: research-runner vs ビルトイン deep-research、self-reviewer vs ビルトイン code-review、self-improvement-loop（整理モード）vs project-sync、project-manager vs user-instruction-issue-rules 常駐ルール）を具体的な発話例つきで特定する。(2) 各 description の発火精度を10点満点で採点（採点基準: 何をするスキルか明確か/いつ使うかのトリガー語が入っているか/類似スキルとの境界が書かれているか）。7点未満には具体的な書き換え案（description 全文）を出す。全スキル分の採点表を post すること。"
     },
     {
       "name": "staleness-auditor",
@@ -15,7 +15,7 @@
     {
       "name": "structure-auditor",
       "model": "sonnet",
-      "lens": "構造監査官。各 SKILL.md の肥大化（公式ガイドは 500 行未満推奨だが、実質は『毎回コンテキストに載る本文が役割に対して過剰か』で判定。特に skill-creator 486行・research-runner 337行・workflow-health-check 335行）、責務重複（統合候補: retrospective/retro-try-handler、improvement-groomer/self-improvement-loop/waiting-user-handler、project-manager/project-sync、next/status コマンド）、分割すべき詰め込み、死蔵（このリポジトリ＝汎用ベーステンプレートの現用途で使われないスキル）を判定する。統合案は『どれを残しどれを吸収するか』まで具体化する。各判定に file:line の根拠必須。"
+      "lens": "構造監査官。各 SKILL.md の肥大化（公式ガイドは 500 行未満推奨だが、実質は『毎回コンテキストに載る本文が役割に対して過剰か』で判定。特に skill-creator 486行・research-runner 337行・workflow-health-check 335行）、責務重複（統合候補: retrospective/retro-try-handler、self-improvement-loop/waiting-user-handler、project-manager/project-sync、next/status コマンド）、分割すべき詰め込み、死蔵（このリポジトリ＝汎用ベーステンプレートの現用途で使われないスキル）を判定する。統合案は『どれを残しどれを吸収するか』まで具体化する。各判定に file:line の根拠必須。"
     },
     {
       "name": "gap-auditor",

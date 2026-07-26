@@ -1,5 +1,11 @@
 # retro-try-handler スキル — 詳細テンプレート集（reference）
 
+> 🔴 **GitHub 操作の経路（必読・L-114）**: クラウド実行環境では `gh` がプリインストールされず、
+> 導入しても repo スコープ REST が 403 になる。**本ファイル内の `gh ...` コマンドはローカル実行専用** で、
+> クラウドでは `mcp__github__*` に読み替える（対応表: `docs/rules/github-mcp-fallback-patterns.md` §2。
+> ラベル一覧/作成・マイルストーン・release 作成・variables は MCP に等価が無く **クラウドでは実行不可**・同 §2.5）。
+
+
 > SKILL.md の各 Step が参照する詳細コマンド・実装手順・テンプレートをまとめた補助ドキュメント。
 > 該当 Step を実行する直前に該当セクションだけを Read する。
 >
@@ -285,7 +291,26 @@ python3 "${CLAUDE_PROJECT_DIR}/tools/slack_notify.py" pr \
 ## G. フィルタコマンド（参考・ローカル環境向け gh CLI 例）
 
 クラウドでは同等のクエリを `mcp__github__list_issues`（labels フィルタ）または `mcp__github__search_issues` で代替する。
+🔴 複数ラベルの絞り込みは `list_issues(labels=[A,B])` が **OR** になる点に注意（gh の `--label A --label B` は AND）。
+「Claude 担当のみ」「高優先度のみ」は、絞り込み効果が高い方の単一ラベルで取得し、応答の `labels` を見て
+残りの条件を client-side で AND 判定する（SSOT: `docs/rules/github-mcp-fallback-patterns.md` §2.1）。
 
+**クラウド（一次経路）**:
+```
+# 全 Try Issue
+mcp__github__list_issues(owner, repo, state="OPEN", labels=["type:retro-try"], perPage=100)
+
+# Claude 担当のみ（"assignee:claude" で取得 → 応答の labels に "type:retro-try" を含むものだけ client-side で残す）
+mcp__github__list_issues(owner, repo, state="OPEN", labels=["assignee:claude"], perPage=100)
+
+# 高優先度のみ（"priority:high" で取得 → 応答の labels に "type:retro-try" を含むものだけ client-side で残す）
+mcp__github__list_issues(owner, repo, state="OPEN", labels=["priority:high"], perPage=100)
+
+# 特定パイプラインのみ（タイトル検索。{pipeline} を実際のパイプライン名に置き換える）
+mcp__github__search_issues(query="repo:{owner}/{repo} is:issue is:open label:type:retro-try \"[Retro][{pipeline}]\" in:title")
+```
+
+（以下はローカル実行用・gh CLI 到達可能時）
 ```bash
 # 全 Try Issue を取得
 gh issue list -R kai-kou/github-issue-shortcut --label "type:retro-try" --state open --limit 1000

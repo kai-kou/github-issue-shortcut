@@ -1,27 +1,48 @@
 # クラウドでの GitHub 操作: 公式 MCP 一次経路パターン（SSOT）
 
 > **このファイルは「クラウド実行環境で GitHub をどう操作するか」の唯一の正本（SSOT）である。**
-> 旧版は「`gh` 不在時（FileNotFoundError）の代替」を前提にしていたが、実態は **`gh` は存在するのに
-> egress プロキシが一部操作を 403 でブロックする** という別問題である（2026-06-30 実機検証・Issue #121）。
-> プロキシの許可範囲は短期間に変化し続けている:
+> 旧版は「`gh` 不在時（FileNotFoundError）の代替」を前提にしていたが、実態は **egress プロキシが
+> GitHub API 経路を 403 でブロックする** という別問題である（2026-06-30 実機検証・Issue #121）。
+> 可否は短期間に変化し続けている:
 > **06-30（#121）→ 07-02 でブロック拡大（#133）→ 07-13 文言変化（#227）→ 07-14 で repo スコープ REST が
-> 403 から許可に転換（#254）**。この変動性ゆえに、静的な「できる/できない」暗記ではなく
-> **gh シム（`tools/gh_shim.py`・§1.5）による自動変換 + 403 検知時のガイダンス** を防御の中核とする。
+> 403 から許可に転換（#254）→ 07-26 で repo スコープ REST が再び 403 へ回帰（#338）**。
+> この変動性ゆえに、静的な「できる/できない」暗記ではなく
+> **MCP 一次経路 + gh シム（`tools/gh_shim.py`・§1.5）の 403 検知ガイダンス** を防御の中核とする。
 
 ## 0. 結論（最重要・常駐）
 
-クラウド実行環境（`CLAUDE_CODE_REMOTE=true`）の GitHub 操作経路は次の序列で使う（2026-07-14 実測・Issue #254）:
+クラウド実行環境（`CLAUDE_CODE_REMOTE=true`）の GitHub 操作経路は次の序列で使う（2026-07-26 実測・Issue #338）:
 
-1. ✅ **repo スコープ REST**: `gh api repos/{o}/{r}/...` が read/write とも動作する（**2026-07-14 に 403 → 許可へ転換**。
-   issues/pulls/labels/milestones/branches/releases/contents/reviews/comments・POST/PATCH/DELETE・`--paginate` を実測確認）。
-   プロキシがセッションの GitHub App 認証を注入するため token 設定は不要。
-2. ✅ **gh シム（`.claude/bin/gh` → `tools/gh_shim.py`）**: GraphQL 依存の高レベルコマンド
-   （`gh issue/pr list` 等）を repo スコープ REST へ透過変換する。SessionStart フックが PATH 先頭に注入
-   済みのため、**主要な gh コマンドはクラウドでもそのまま動く**（§1.5）。
-3. ✅ **公式 MCP（`mcp__github__*`）**: 従来どおり全 repo スコープ操作が動作する安定経路。
-   REST が 403 に回帰した場合の受け皿でもある（フック・スクリプト内からは呼べない点に注意・§2.5）。
-4. ✅ **git 操作は別系統で生存**: `git clone https://github.com/...`・`git fetch/pull/push`（origin）は
-   git プロキシ経由で動作する。
+1. ✅ **公式 MCP（`mcp__github__*`）が一次経路**: Issue・PR・レビュー・マージ・ファイル・search・
+   Actions read が安定動作する（Anthropic サーバ経由で egress プロキシを通らないため、
+   プロキシポリシーの変動に影響されない）。フック・スクリプト内からは呼べない点に注意（§2.5）。
+2. ✅ **git 操作は別系統で生存**: `git clone https://github.com/...`・`git fetch/pull/push`（origin）は
+   **git プロキシ**（API プロキシとは別）経由で動作する。
+3. ⚠️ **gh CLI は当てにしない**: **`gh` はクラウドにプリインストールされていない**（公式仕様。
+   `apt-get install -y gh` で導入自体は可能・Ubuntu universe 2.45.0）。ただし **導入しても
+   repo スコープ REST が 403 のセッションでは実益がない**（下記）。gh シム（`.claude/bin/gh`）は
+   ローカル互換の維持と 403 時の MCP 代替ガイダンス発生器として残す（§1.5）。
+4. ⚠️ **repo スコープ REST（`gh api repos/{o}/{r}/...`）はセッション依存**: 07-14 は許可、
+   **07-26 は 403**。使う前提で設計せず、失敗を前提にフェイルファストする（§4）。
+
+### 🔴 403 の切り分け（2026-07-26 実測・最重要）
+
+`gh api user` は **200**（`login` が返る）、`gh api rate_limit` も **200** なのに
+`gh api repos/{o}/{r}` は **403** になる。つまり **403 の原因は「認証」ではなく「リポジトリが
+GitHub API アクセス付きでセッションに attach されていないこと」** である。
+
+```
+403: {"message":"GitHub access is not enabled for this session.
+      An org admin must connect the Claude GitHub App for this organization."}
+```
+
+- 公式ドキュメントいわく「プロキシは GitHub API とリリースアセットのリクエストを、**セッションに
+  attach されたリポジトリに限定** する（環境のネットワークアクセスレベルとは独立）」。
+- スコープ外リポジトリの 403 は別文言で、`add_repo` を `access:"push"` で呼ぶよう案内される
+  （`access:"read"` は git clone/fetch のみで **API アクセスは付かない**）。
+- ただし `add_repo(access:"push")` は auto mode classifier にブロックされることがある（07-26 実測）。
+  ブロックされたら回避せず MCP を使う。
+- したがって **「403 = トークン権限不足」も「403 = gh 未導入」も誤診**。gh を入れても直らない。
 
 依然 403 のまま（= シムがフェイルファスト + MCP 等へのガイダンスを付与する領域）:
 
@@ -35,38 +56,51 @@
 なお `gh auth status` はブロック（403）はされず exit 0 で完走するが、stderr に「GH_TOKEN invalid」の
 失敗表示が出るため、**認証可否の判定には使わない**（2026-07-13 再確認）。
 
-## 1. 実機検証マトリクス（2026-07-14・Issue #254。旧: 2026-07-13・#227 / 2026-07-02・#133 / 2026-06-30・#121）
+## 1. 実機検証マトリクス（2026-07-26・Issue #338。旧: 07-14 #254 / 07-13 #227 / 07-02 #133 / 06-30 #121）
 
 | 操作 | 結果 | 備考 |
 |------|------|------|
-| `gh --version` | ✅ | 2.45.0 が存在 |
-| `gh auth status` | ⚠ exit 0 | stderr に「The token in GH_TOKEN is invalid」と失敗表示。**認証可否の判定に使わない**（git ls-remote / MCP / `gh api user` で実到達を確認する） |
-| `gh api user`・`gh api rate_limit` | ✅ | 非 repo REST で生存する 2 パス |
-| `gh api repos/{o}/{r}`（repo REST read 全般） | ✅ | **2026-07-14 に 403 → 許可へ転換**。issues / pulls（head フィルタ・paginate 含む）/ labels / milestones / branches / releases / contents / reviews / comments / git refs / events を実測確認 |
-| `gh api repos/{o}/{r}/...`（repo REST write） | ✅ | POST /issues（ラベル付き作成）を実測確認。POST/PATCH/DELETE 系が動作 |
-| `gh issue list/view/create/comment/edit/close`・`gh pr list/view/create/merge/comment`・`gh label list`・`gh repo view`・`gh release list` | ✅（シム変換） | 素の gh は GraphQL で 403 のまま。**gh シム（§1.5）が REST へ透過変換** して動作させる |
-| `gh api graphql -f query=...`・シム未変換の GraphQL 系（`gh pr checks/diff`・`gh gist list`・`gh status` 等） | ❌ 403 | 「This GraphQL query is not enabled for this session — only the pinned set of PR-review operations is served. Use REST via `gh api repos/{owner}/{repo}/...` instead.」（2026-07-14 文言・プロキシ自身が REST を案内） |
+| `gh` のプリインストール | ❌ なし | **公式仕様**（"The `gh` CLI isn't pre-installed."）。PATH 上にあるのはシムだけの状態が既定 |
+| `apt-get install -y gh` | ✅ 可能 | Ubuntu noble universe の 2.45.0。GitHub release asset（tarball）取得も到達可。**ただし下記のとおり導入しても repo API は 403 なので実益がない** |
+| `gh auth status` | ⚠ exit 0 | stderr に「The token in GH_TOKEN is invalid」と失敗表示（GraphQL 依存）。**認証可否の判定に使わない**（`gh api user` / git ls-remote / MCP で実到達を確認する） |
+| `gh api user`・`gh api rate_limit` | ✅ 200 | 非 repo REST で生存する 2 パス。**ここが 200 = プロキシの認証注入は効いている**（403 を認証問題と誤診しない根拠） |
+| `gh api repos/{o}/{r}`（repo REST read 全般） | ❌ 403 | **07-14 の許可から回帰**。issues / pulls / labels とも 403「GitHub access is not enabled for this session. An org admin must connect the Claude GitHub App for this organization.」= リポジトリが API アクセス付きで attach されていない（§0 の切り分け参照） |
+| `gh api repos/{o}/{r}/...`（repo REST write） | ❌ 403 | read が 403 のため write も同様（07-14 は POST /issues 成功を実測していた） |
+| `gh issue list/view`・`gh pr list/view`・`gh label list`・`gh repo view`（シム変換） | ❌ 403 | シムは REST へ変換するが、その REST 自体が 403。シムは stderr に `[gh-shim] repo スコープ REST がプロキシで遮断 → MCP へ切替` を付与（設計どおりのフェイルファスト） |
+| `gh api graphql -f query=...`・GraphQL 依存コマンド（素の `gh issue/pr list`・`gh pr checks/diff`・`gh gist list`・`gh status` 等） | ❌ 403 | 「This GraphQL query is not enabled for this session — only the pinned set of PR-review operations is served. Use REST via `gh api repos/{owner}/{repo}/...` instead.」（MCP の PR レビュー系だけが pinned で通る） |
+| `curl` / `urllib` で `api.github.com/repos/...` 直叩き | ❌ 403 | `Authorization` ヘッダ有無・`Bearer proxy-injected` 指定・実 `GH_TOKEN` のいずれでも同一 403。**直叩きはフォールバックにならない** |
+| スコープ外リポジトリの API | ❌ 403 | 「Use `add_repo` to request access. … call add_repo again with access:"push"」。`access:"read"` は git clone/fetch のみで API は付かない |
+| `add_repo(access:"push")` による API attach | ❌ | auto mode classifier にブロックされることがある（07-26 実測）。回避せず MCP を使う |
 | `gh search repos/issues/code/prs`・`gh api search/...` | ❌ 403 | 「sessions are bound to their configured repositories」 |
 | `gh api users/{u}`・`notifications`・`user/repos` | ❌ 403 | 同上 |
 | `gh variable list`・`gh secret list`・`gh api repos/{o}/{r}/actions/variables` | ❌ 403 | 「Access to this GitHub Actions path is not permitted through this proxy」 |
 | `gh run list`・`gh workflow list`・`gh api repos/{o}/{r}/actions/runs`・`/commits/{ref}/check-runs`・`/commits/{ref}/status` | ❌ | プロキシは通過するが GitHub App トークン権限不足「Resource not accessible by integration」→ MCP `actions_list` / `get_job_logs` / `get_check_run` |
-| urllib → `api.github.com/...`（ブロック対象パス） | ❌ 403 | 同一プロキシを通るため gh と同じ結果 |
 | `gh repo clone {o}/{r}` | ❌ exit 1 | 内部で API 解決を伴うため失敗 → `git clone https://github.com/...` |
-| `git clone/fetch/pull/push origin`・`git ls-remote` | ✅ | git プロキシ経由（別系統） |
-| `mcp__github__*`（Issue・PR・レビュー・マージ・ファイル・search・Actions read） | ✅ | 従来どおり全て動作（07-13 に `get_me` / `list_issues` / `list_pull_requests` / `actions_list` / `search_issues` / `list_releases` / `get_label` / `issue_write` / `create_pull_request` / `merge_pull_request` を実測確認） |
+| `git clone/fetch/pull/push origin`・`git ls-remote` | ✅ | **git プロキシ経由（API プロキシとは別系統）**。07-26 も `git ls-remote origin` 成功を実測 |
+| `mcp__github__*`（Issue・PR・レビュー・マージ・ファイル・search・Actions read） | ✅ | 従来どおり動作（07-26 に `list_pull_requests` / `issue_write` を実測確認）。**API プロキシを通らない** ため repo REST の 403 と無関係に生存する |
+| `tools/check_pending_pr_reviews.py` 等の gh 依存スクリプト | ✅ 設計どおり | gh 失敗を `gh_unavailable` / `GH_UNAVAILABLE`（exit 3）で明示し、サイレント縮退しない（§4） |
 
-> 🔴 **プロキシ挙動は変動する（4 回/2 週間で変化）**: 上表は 2026-07-14 時点の実測。再検証は
-> `gh --shim-doctor`（ライブ疎通マトリクス・§1.5）で 30 秒で行える。挙動変化を検知したら本表と
-> L-114 を更新すること（CP-2）。
+> 🔴 **可否は変動する（5 回/1 か月で変化）**: 上表は 2026-07-26 時点の実測。
+> **「07-14 に許可されたから今も使える」と暗記しない**。
+> 再検証は `curl -o /dev/null -w '%{http_code}' https://api.github.com/repos/{o}/{r}` の HTTP コードを見るのが最短
+> （`gh --shim-doctor` は実 gh の導入が前提のため、既定のクラウドセッションでは使えない）。
+> 挙動変化を検知したら本表と L-114 を更新すること（CP-2）。
 
-## 1.5 gh シム（`tools/gh_shim.py`・Issue #254）— 403 排除の中核
+## 1.5 gh シム（`tools/gh_shim.py`・Issue #254）— ローカル互換 + MCP 誘導シグナル
 
 **クラウドの gh 403 を「事前変換 + 事後ガイダンス」で排除する PATH ラッパー**。SessionStart フック
 （`session-start.sh`）が `.claude/bin` を PATH 先頭に注入し、`gh` 呼び出しをシムが受ける。
 
+> 🔴 **クラウドでは実 gh が無いのが既定**（公式仕様・§1）。その場合シムは変換もできず
+> `[gh-shim] 実 gh が見つかりません` + MCP 代替案内を出して終わる。**gh を導入しても repo REST が
+> 403 なら状況は変わらない**ため、`apt install gh` を解決策として試さない（#318 / #338）。
+> シムの現在の主価値は ① ローカル実行での挙動不変（即 exec）② クラウドで gh を呼んだ既存スクリプトに
+> 「MCP へ切り替えよ」という機械可読なシグナルを与えること、の 2 点。
+
 | レイヤー | 動作 |
 |---------|------|
 | ローカル（`CLAUDE_CODE_REMOTE` ≠ true） | 実 gh へ即 `exec`（挙動不変・オーバーヘッドゼロ） |
+| 実 gh 不在（クラウド既定） | 変換不能。`実 gh が見つかりません` + MCP 代替ガイダンスを出力 |
 | 変換（クラウド） | GraphQL 依存コマンド（`issue list/view/create/comment/edit/close`・`pr list/view/create/merge/comment`・`label list`・`repo view`・`release list`）を repo スコープ REST へ透過変換。`--json`（gh 互換フィールド名: `headRefName`・`reviewRequests` 等）・`--jq`・`--label` AND・`--head`・`--paginate` 相当を再現 |
 | パススルー + アノテート（クラウド） | 変換対象外・未対応フラグは実 gh へパススルーし、403 系エラーを検知したら **エラーカテゴリ別の MCP 代替ガイダンスを stderr に付与**（exit code は gh のまま）。repo スコープコマンドには `-R {slug}` を自動注入（クラウドの origin は git プロキシ URL のため gh が repo を推定できない） |
 | 診断 | `gh --shim-doctor`（ライブ疎通マトリクス）/ `gh --shim-self-test`（オフライン自己テスト） |
@@ -209,11 +243,10 @@ git push -u origin <branch>                                           # ✅（pu
 
 ## 4. Python スクリプト・フックからの GitHub アクセス
 
-フック・`tools/*.py`・シェルスクリプトの内部からは MCP を呼べない（§2.5）ため、この層の一次経路は
-**repo スコープ REST（`gh api repos/{o}/{r}/...`）**、または PATH に `.claude/bin` が入っていれば
-gh シム経由の高レベルコマンドである（2026-07-14〜・Issue #254）。`gh pr list` 等の GraphQL 依存
-コマンドをシムなしの素の gh で呼ぶと 403 になる。以下の失敗シグナリング原則は、**プロキシが REST を
-再び 403 化した場合（回帰）にも現状把握を壊さないための安全網** として維持する。
+フック・`tools/*.py`・シェルスクリプトの内部からは MCP を呼べない（§2.5）。したがって
+**この層はクラウドで GitHub API に到達する手段を持たない**（実 gh は不在、repo スコープ REST は 403・
+2026-07-26 実測）。この層の設計は **「取りに行く」ではなく「取れなかったことを正確に伝える」** が正解であり、
+以下の失敗シグナリング原則が実際の一次動作になる（呼び出し元の Claude が MCP で引き取る）。
 
 - 取得系（read）: スクリプトが `gh` で失敗（403/非 0）したら、メインセッションの `mcp__github__*` ツールで直接操作する。
 - GraphQL 系: **urllib で `api.github.com/graphql` を直叩きしない**（同一プロキシで 403）。MCP の等価ツールへ置換する。
@@ -246,6 +279,20 @@ gh シム経由の高レベルコマンドである（2026-07-14〜・Issue #254
 - `gh pr create` に `--head {現在のブランチ}` `--base main` を付与する
 
 クラウドかどうかは `CLAUDE_CODE_REMOTE` で判定できる（`true` ならクラウド = MCP 一次経路）。
+
+### 5.1 `GH_TOKEN` / `GITHUB_TOKEN` の 2 モード（公式仕様・誤読しやすい）
+
+| モード | 条件 | 挙動 |
+|--------|------|------|
+| パススルー | 環境設定で自分のトークンを設定した | 値がそのままコンテナに渡る。`gh` とスクリプトはそれを直接使う |
+| プロキシ注入 | どちらも未設定 | コンテナが両変数を **プレースホルダ文字列 `proxy-injected`** にし、プロキシが送信時に実認証情報へ差し替える。`gh` はトークン無しで動くが、**`GITHUB_TOKEN` を直読みするスクリプトはプレースホルダを掴む** |
+
+判定は `echo $GH_TOKEN`（`proxy-injected` なら注入モード）。
+
+- **どちらのモードでも repo スコープ REST の 403 は解消しない**（403 は attach の問題・§0）。
+  実測でも `Bearer proxy-injected` / 実トークン / ヘッダ無しの 3 パターンすべて同一 403 だった。
+- **`GH_TOKEN` の値を解決策として触らない**。トークンを差し替えても 403 は変わらず、
+  セッション環境変数の書き換えはユーザーのアカウント設定（A-6）に属する。
 
 ## 6. 参照
 

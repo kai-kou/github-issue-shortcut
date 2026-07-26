@@ -33,8 +33,8 @@ fi
 
 # PR 存在確認の gh 非依存経路（#133）。git プロトコルはクラウドでも生存する（L-114）ため、GitHub が
 # 公開する PR ref（refs/pull/<N>/head）にブランチ先端 SHA があれば「PR 作成済み」と判定できる。
-# これにより、gh が使えない環境（シムのみ・実バイナリ無し）でも PR 作成済みのセッション終了時に
-# 毎回警告が出る誤検知を防ぐ。
+# これにより gh が使えない環境（クラウド既定・シムのみ）でも、PR 作成済みセッションの終了時に
+# 毎回 PR 確認を求める誤検知を防ぐ。
 # 注: refs/pull/* はクローズ済み PR も含むため、「PR を作ったが未マージのまま閉じた」ブランチでも
 # 警告は出ない。本フックの目的は「PR 作成を忘れていないか」の検知なので許容する。
 head_sha=$(git rev-parse HEAD 2>/dev/null || echo "")
@@ -45,25 +45,13 @@ if [[ -n "$head_sha" ]]; then
   fi
 fi
 
-# gh の解決。Stop フックは SessionStart が注入した PATH を継承しないことがあるため、リポジトリ同梱の
-# gh シム（.claude/bin/gh）も明示的に探索する。さらにシムは実 gh バイナリを必要とし、無い環境では
-# exit 127 になるため、`gh --version` で「実際に使えるか」まで確認する（#133）。
-REPO_ROOT="$(cd "$HOOK_DIR/../.." && pwd)"
-if [[ -x "$REPO_ROOT/.claude/bin/gh" ]] && ! command -v gh >/dev/null 2>&1; then
-  PATH="$REPO_ROOT/.claude/bin:$PATH"
-fi
-gh_usable=false
-if command -v gh >/dev/null 2>&1 && timeout 10s gh --version >/dev/null 2>&1; then
-  gh_usable=true
-fi
-
 # リポジトリ slug（owner/repo）を動的に導出する。
 # 雛形プレースホルダ kai-kou/github-issue-shortcut をハードコードすると、bootstrap で置換し忘れた
 # プロジェクトで PR チェックが機能しない（実際に発生・L-103 再発の温床）。
 # 優先順: GITHUB_REPOSITORY → gh repo view → origin URL パース。
 REPO_SLUG="${GITHUB_REPOSITORY:-}"
 # クラウドでは gh repo view が 403（GraphQL・L-114）のため試行せず origin URL パースへ進む
-if [[ -z "$REPO_SLUG" ]] && [[ "${CLAUDE_CODE_REMOTE:-}" != "true" ]] && [[ "$gh_usable" == "true" ]]; then
+if [[ -z "$REPO_SLUG" ]] && [[ "${CLAUDE_CODE_REMOTE:-}" != "true" ]] && command -v gh >/dev/null 2>&1; then
   REPO_SLUG=$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null || echo "")
 fi
 if [[ -z "$REPO_SLUG" ]]; then
@@ -78,7 +66,7 @@ fi
 # owner にドットを含むものも弾く（GitHub の owner 名にドットは不可。`host/repo` の単一セグメント
 # URL を `github.com/single` 等と誤パースした場合を検知する）。
 if [[ -z "$REPO_SLUG" || "$REPO_SLUG" != */* || "${REPO_SLUG%%/*}" == *.* ]]; then
-  hook_block "⚠️ PR確認できません: リポジトリ名（owner/repo）を自動検出できませんでした（GITHUB_REPOSITORY 未設定・gh 未導入・origin 不正のいずれか）。\`gh pr list --head ${current_branch} --state all\` を手動実行して PR が作成されているか確認してください。"
+  hook_block "⚠️ PR確認できません: リポジトリ名（owner/repo）を自動検出できませんでした（GITHUB_REPOSITORY 未設定・origin 不正のいずれか）。\`git remote -v\` で origin を確認したうえで、mcp__github__list_pull_requests（クラウド一次経路）または \`gh pr list --head ${current_branch} --state all\`（ローカル）で PR が作成されているか確認してください。"
 fi
 REPO_OWNER="${REPO_SLUG%%/*}"
 
@@ -106,11 +94,10 @@ elif [[ $git_ls_exit -eq 2 ]]; then
   # --exit-code: exit 2 = マッチする ref なし = ブランチが存在しない（ネットワークは正常）
   branch_check_status="not_found"
 else
-  # 判定不能（timeout/認証/ネットワーク等） → gh api フォールバック
-  # ブランチ名に / を含む場合のためURL エンコードを適用
-  # クラウドでも repo スコープ REST は 2026-07-14 実測で許可（プロキシ挙動変化・Issue #254）。
-  # 403 に回帰した場合は空が返り unknown のまま PR チェックへ進む（安全側）。
-  if [[ "$gh_usable" == "true" ]]; then
+  # 判定不能（timeout/認証/ネットワーク等） → gh api フォールバック（ローカル実行専用）
+  # ブランチ名に / を含む場合のためURL エンコードを適用。
+  # クラウドでは gh 自体が未導入で repo スコープ REST も 403 のため試行しない（L-114 / #342）。
+  if [[ "${CLAUDE_CODE_REMOTE:-}" != "true" ]] && command -v gh >/dev/null 2>&1; then
     branch_api_result=$(timeout 10s gh api \
       "repos/${REPO_SLUG}/branches/$(printf -- '%s' "$current_branch" | jq -Rr @uri)" \
       --jq '.name' 2>/dev/null || echo "")
@@ -126,20 +113,30 @@ fi
 # unknown（両方失敗）はサイレントスキップせず PR チェックに進む（L-050 対策）
 if [[ "$branch_check_status" == "not_found" ]]; then exit 0; fi
 
+# --- クラウド: PR 存在確認は Claude が MCP で行う（ハーネスからは判定できない・L-114 / #342）---
+# クラウドではフックから MCP を呼べず、gh も未導入・repo スコープ REST も 403 のため、
+# ハーネス側で PR の有無を判定する手段が存在しない。これは障害ではなく既定の運用なので、
+# 「確認できません」という異常表現ではなく Claude への実行指示として渡す。
+if [[ "${CLAUDE_CODE_REMOTE:-}" == "true" ]]; then
+  hook_block "📋 PR 存在確認をお願いします（クラウドではハーネスから判定できない仕様。gh の導入では解決しません）: ${VERIFY_HINT}
+- PR が既にある場合: 確認結果（PR 番号・state）を踏まえてそのまま終了してよい
+- PR が無い場合: pr-review-flow.md に従いセルフレビュー → PR 作成まで進める"
+fi
+
+# --- 以下はローカル実行専用（gh が GitHub に直接到達できる環境）---
 # PR存在チェック: gh api で確認（timeout付き・リトライ付き）
 # --method GET を明示指定（-f フラグ使用時のデフォルト POST を回避）
 # state=all + jq フィルタ: open PR と merged PR のみカウント（closed/abandoned PR は除外）
 
-# gh が使えない環境（未導入、または gh シムのみで実 gh バイナリが無い）では gh を案内しても
-# 機能しないため、クラウドの一次経路（MCP）での確認へ誘導する（#133・L-114）。
-if [[ "$gh_usable" != "true" ]]; then
-  hook_block "⚠️ PR確認できません: この環境では gh CLI が利用できません（未導入、または gh シムのみで実 gh バイナリが無い）。${VERIFY_HINT}。作成されていない場合は pr-review-flow.md に従い PR を作成してください（GitHub UI: https://github.com/${REPO_SLUG}/pulls）。"
+# ローカルで gh が未導入の場合は実行可能な代替手段を案内して終了。
+# 固定文言「gh をインストールしてください」だけでは実行不能なため GitHub UI も併記する（#313 / #318）。
+if ! command -v gh >/dev/null 2>&1; then
+  hook_block "⚠️ PR確認できません: gh が未導入のため PR 存在確認ができません。gh をインストールするか GitHub UI（https://github.com/${REPO_SLUG}/pulls）でブランチ ${current_branch} の PR を確認してください。作成されていない場合はpr-review-flow.mdに従いPRを作成してください。"
 fi
 
 total="unknown"
-# repo スコープ REST はクラウドでも 2026-07-14 実測で許可（プロキシ挙動変化・Issue #254）。
-# クラウド・ローカルとも gh api で実確認する。403 に回帰した場合は結果が空になり
-# unknown 分岐（MCP 検証への誘導）へ落ちる（サイレント素通りしない・従来の安全側維持）。
+# ローカル実行では gh が GitHub に直接到達できるため repo スコープ REST で実確認する。
+# 失敗時は結果が空になり unknown 分岐へ落ちる（サイレント素通りしない・安全側維持）。
 for attempt in 1 2; do
   gh_err=$(mktemp)
   result=$(timeout 15s gh api --method GET "repos/${REPO_SLUG}/pulls" \
@@ -171,8 +168,7 @@ if [[ "$total" == "0" ]]; then
   fi
 elif [[ "$total" == "unknown" ]]; then
   # 判定不能時（timeout/認証/レート制限/ネットワーク等）はサイレントスキップせず警告を出す（L-050 対策）
-  # クラウドでは gh の repo 操作が常に 403 になるため、ここは MCP 検証（VERIFY_HINT）へ誘導する（L-114）
-  hook_block "⚠️ PR確認できません: ブランチ ${current_branch} のPR存在確認でエラー（クラウドでは gh の repo 操作が 403／ローカルでは timeout/認証/レート制限等）が発生しました。${VERIFY_HINT}。作成されていない場合はpr-review-flow.mdに従いPRを作成してください。"
+  hook_block "⚠️ PR確認できません: ブランチ ${current_branch} のPR存在確認でエラー（timeout/認証/レート制限/ネットワーク等）が発生しました。${VERIFY_HINT}。作成されていない場合はpr-review-flow.mdに従いPRを作成してください。"
 fi
 
 exit 0
