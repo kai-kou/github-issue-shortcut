@@ -40,7 +40,7 @@
 **対策**: push 委譲後は必ず `mcp__github__get_file_contents` / `list_commits` で結果を検証する。
 push が重要ならフォアグラウンド実行する。
 
-> 行動規範としての要点は `docs/rules/agent-team-summary.md`「バックグラウンドエージェント」節に
+> 行動規範としての要点は `docs/rules/agent-team-summary.md`「サブエージェント使い分けと並列化」節に
 > 1 行で常駐済み（Hot 層の重複を解消・#324）。
 
 ---

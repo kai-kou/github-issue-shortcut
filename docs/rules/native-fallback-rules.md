@@ -149,4 +149,5 @@ CLI 新機能が Web で未提供と判明したら（実試行の失敗で検�
 | `.claude/skills/discussion-review/SKILL.md` | native-default の準拠実装（ネイティブ既定 + claude -p 休眠フォールバック + fan-out 最終退避） |
 | `.claude/skills/research-runner/SKILL.md` | isolation-by-design の準拠実装（Step 3b・エンジン選択ポリシー） |
 | `docs/rules/agent-team-summary.md` | フォールバック連鎖のログ必須規範（サイレント禁止の出典） |
-| `docs/rules/lessons-core.md` L-100 / L-117 | cwd 隔離の根拠 / claude CLI 不在タスクモードの制約 |
+| `docs/rules/lessons-core.md` L-100 | cwd 隔離の根拠（Hot 層） |
+| `docs/rules/lessons/cloud-environment.md` L-117 | claude CLI 不在タスクモードの制約（Warm 層） |

@@ -7,6 +7,11 @@ HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib/hook_block.sh
 source "$HOOK_DIR/lib/hook_block.sh"
 
+# git の認証プロンプト無効化。session-start.sh は CLAUDE_CODE_REMOTE!=true で即 exit するため、
+# ローカル実行の Stop フックには GIT_TERMINAL_PROMPT が伝搬しない。credential helper 未設定の
+# origin に対して以降の fetch / ls-remote が /dev/tty のプロンプトへ落ちるのを防ぐ。
+export GIT_TERMINAL_PROMPT=0 GIT_ASKPASS=true
+
 input=$(cat)
 
 # 再帰防止
@@ -26,8 +31,13 @@ if [[ -z "$current_branch" ]] || [[ "$current_branch" == "main" ]]; then exit 0;
 # squash マージ直後は origin/main のツリーがブランチ先端と一致するため、この判定で拾える
 # （マージコミットの祖先関係に依存しないので squash 運用でも機能する）。
 # 明示 refspec で origin/main を同期する（G-1・非明示形式だと追跡ブランチが古いまま判定しうる）。
-timeout 10s git fetch --quiet origin "+refs/heads/main:refs/remotes/origin/main" >/dev/null 2>&1 || true
-if git rev-parse --verify --quiet origin/main >/dev/null 2>&1 && git diff --quiet origin/main HEAD 2>/dev/null; then
+# fetch が失敗したら追跡 ref は古いままなので、この早期 exit は使わない（古い origin/main と
+# ツリー等価になっただけの状態を「取り込み済み」と誤判定しない）。
+main_fetch_ok=true
+timeout 10s git fetch --quiet origin "+refs/heads/main:refs/remotes/origin/main" >/dev/null 2>&1 || main_fetch_ok=false
+if [[ "$main_fetch_ok" == "true" ]] \
+  && git rev-parse --verify --quiet origin/main >/dev/null 2>&1 \
+  && git diff --quiet origin/main HEAD 2>/dev/null; then
   exit 0
 fi
 

@@ -84,7 +84,7 @@ GitHub API アクセス付きでセッションに attach されていないこ�
 > **「07-14 に許可されたから今も使える」と暗記しない**。
 > 再検証は `curl -o /dev/null -w '%{http_code}' https://api.github.com/repos/{o}/{r}` の HTTP コードを見るのが最短
 > （`gh --shim-doctor` は実 gh の導入が前提のため、既定のクラウドセッションでは使えない）。
-> 挙動変化を検知したら本表と L-114 を更新すること（CP-2）。
+> 挙動変化を検知したら本表と L-114（`docs/rules/lessons/cloud-environment.md`）を更新すること（CP-2）。
 
 ## 1.5 gh シム（`tools/gh_shim.py`・Issue #254）— ローカル互換 + MCP 誘導シグナル
 
@@ -114,9 +114,9 @@ GitHub API アクセス付きでセッションに attach されていないこ�
 
 ## 2. コマンド別 代替パターン（gh → MCP）
 
-gh シム（§1.5）と repo スコープ REST で大半の gh 操作はクラウドでもそのまま動く（2026-07-14〜）。
-以下の MCP 対応表は、**REST が 403 に回帰した場合の受け皿**、および **シム/REST に等価がない操作
-（search・Actions read・resolve_review_thread 等）の一次経路** として維持する。
+**2026-07-26 実測では repo スコープ REST が 403 へ回帰しており、以下の MCP 対応表がクラウドの一次経路である**
+（§0/§1 参照）。gh シム（§1.5）と repo スコープ REST は、許可へ再転換した場合の高速経路・ローカル実行の
+互換経路として維持する。search・Actions read・resolve_review_thread 等はいずれの時期でも MCP が唯一経路。
 
 | やりたいこと（旧 gh コマンド） | クラウド一次経路（MCP） |
 |----------------|----------------|
@@ -299,7 +299,7 @@ git push -u origin <branch>                                           # ✅（pu
 | ドキュメント / ツール | 関係 |
 |------------------------|------|
 | `CLAUDE.md`「gh CLI / GitHub 操作」節 | 要約（本ファイルが SSOT） |
-| `docs/rules/lessons-core.md` L-114 | クラウド gh ブロックの Hot 層 lesson |
-| `docs/rules/lessons-core.md` L-079 | git push が 403/413/502 のときのフォールバック |
+| `docs/rules/lessons/cloud-environment.md` L-114 | クラウド gh ブロックの lesson（Warm 層・`lessons-core.md` には索引 1 行） |
+| `docs/rules/lessons/cloud-environment.md` L-079 | git push が 403/413/502 のときのフォールバック |
 | `docs/rules/env-vars.md` | GitHub Variables がクラウド 403 化した後の env 供給・設定経路（§2.4 の詳細） |
 | `.claude/skills/apply-base/SKILL.md` | ベース取得を git clone / MCP 経路で行う（gh api contents 非依存） |
