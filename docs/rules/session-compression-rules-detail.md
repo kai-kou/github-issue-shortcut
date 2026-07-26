@@ -84,7 +84,7 @@ PostCompact hook の stdout はセッションコンテキストに挿入され�
 | **長大な入力データをコンテキストに置かない** | 圧縮サマリーに入力全文が残ると次セッションのコンテキストを浪費する | 大きなファイルは Read 都度アクセス・コンテキストに置き続けない |
 | **サブエージェントへの委譲結果を要約で返す** | サブエージェント全文を親コンテキストに置くと膨張する | サブエージェントは 1,000〜2,000 トークンのサマリーを返す（`agent-team-summary.md`） |
 
-**L-101（`tool call could not be parsed`）との関係**: L-101 は大コンテキスト + 長い thinking の組み合わせで発生しやすい（`lessons-core.md`）。圧縮品質が悪いと圧縮後のセッションが直後に再圧縮を繰り返す（サマリーが肥大していると圧縮効果が薄い）。上記の原則でコンテキスト品質を保つことが根本対策。
+**L-101（`tool call could not be parsed`）との関係**: L-101 は大コンテキスト + 長い thinking の組み合わせで発生しやすい（`docs/rules/lessons/cloud-environment.md`）。圧縮品質が悪いと圧縮後のセッションが直後に再圧縮を繰り返す（サマリーが肥大していると圧縮効果が薄い）。上記の原則でコンテキスト品質を保つことが根本対策。
 
 ---
 
@@ -108,3 +108,22 @@ PostCompact hook の stdout はセッションコンテキストに挿入され�
 # 不足を自動修正
 ./tools/check_rules_sync.sh --fix
 ```
+
+## オートメモリ（auto memory）の詳細仕様（実機検証 2026-07-26・#328）
+
+Hot 層（`session-compression-rules.md`）には「クラウドでは当てにしない」という行動規範のみを置き、仕様の詳細は本節に置く。
+
+| 項目 | 内容（公式: [How Claude remembers your project](https://code.claude.com/docs/en/memory)） |
+|---|---|
+| 既定 | **ON**。無効化は `/memory` のトグル（`autoMemoryEnabled` を `~/.claude/settings.json` に保存）／プロジェクト単位は `.claude/settings.json` の `"autoMemoryEnabled": false`／環境変数 `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1` |
+| 保存先 | `~/.claude/projects/<project>/memory/`（`<project>` は git リポジトリから導出。worktree・サブディレクトリ間で共有）。`autoMemoryDirectory` で変更可（絶対パスか `~/` 始まり） |
+| 構成 | `MEMORY.md`（索引）+ トピックファイル（`debugging.md` 等） |
+| 読み込み範囲 | **`MEMORY.md` の先頭 200 行 / 25KB のみ** が毎セッション読み込まれる。超過分は読み込まれず、Claude Code が索引の短縮を促す（v2.1.210 以降）。トピックファイルは必要時に Read（= メモリ側の progressive disclosure） |
+| 共有範囲 | **マシンローカル**。*"Files are not shared across machines or cloud environments."* |
+| サブエージェント | 親のオートメモリは継承されない（`fork` を除く）。サブエージェント側は frontmatter の `memory` フィールドで独自ディレクトリを持つ |
+| 書き込み時刻 | frontmatter を持つメモリファイルには `modified`（ISO 8601）が自動記録される（v2.1.214 以降） |
+| CLAUDE.md との役割分担 | CLAUDE.md = **人が書く指示**（規約・ワークフロー・アーキテクチャ）／オートメモリ = **Claude が書く学び**（ビルドコマンド・デバッグ知見・好みの発見） |
+
+**本ベースでの扱い**: クラウド実行環境が主戦場のため、永続化は従来どおり Issue / PR コメント + `CLAUDE.md` / `.claude/rules/` に依存する。設定は既定（ON）のまま変更しない（ローカル実行時には有用なため）。
+
+> **未評価の論点（クラウドでの ON 維持コスト）**: クラウドでもセッション **内** の保存・読み出し動作自体は発生しうるため、`MEMORY.md` の読み書きにトークンを消費する可能性がある（コンテナ破棄で成果は次セッションに残らない）。「クラウドでは無効化した方が得か」は **実測していない**。判断材料が要るなら、`CLAUDE_CODE_DISABLE_AUTO_MEMORY=1` の有無で「Saved N memories」の発生頻度と消費トークンを比較してから決める（現時点では既定維持＝変更しないことを選択している）。

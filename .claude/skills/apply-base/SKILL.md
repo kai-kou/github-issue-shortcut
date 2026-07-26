@@ -3,6 +3,12 @@ name: apply-base
 description: kai-kou/claude-code-base の汎用ルール・スキル定義・ハーネス一式を現在のリポジトリへ反映（適用・同期）する。「claude-code-base の内容を反映して」「claude-code-base を適用して」「ベースを反映して」「ベース設定を取り込んで」「claude-code-base で初期化して」「claude-code-base のアップデートを確認して適用して」「ベースのアップデート内容を確認して」等と依頼された時に使用する。前回適用時点からの更新内容（コミット一覧・手動手順が必要な更新）の確認も本スキルが担う。private リポジトリのベースを git clone（クラウドでは gh の repo スコープ操作が 403 でブロックされるため git/MCP 経路）で取得して適用するため、ユーザーがコマンドを打つ必要はない。
 ---
 
+> 🔴 **GitHub 操作の経路（必読・L-114）**: クラウド実行環境では `gh` がプリインストールされず、
+> 導入しても repo スコープ REST が 403 になる。**本ファイル内の `gh ...` コマンドはローカル実行専用** で、
+> クラウドでは `mcp__github__*` に読み替える（対応表: `docs/rules/github-mcp-fallback-patterns.md` §2。
+> ラベル一覧/作成・マイルストーン・release 作成・variables は MCP に等価が無く **クラウドでは実行不可**・同 §2.5）。
+
+
 # claude-code-base 適用スキル（apply-base）
 
 現在のリポジトリ（カレントの作業リポジトリ）に、`kai-kou/claude-code-base` の
@@ -30,7 +36,7 @@ git ls-remote https://github.com/kai-kou/claude-code-base.git HEAD >/dev/null 2>
 
 - ベースに到達できない場合は `docs/rules/problem-investigation-protocol.md` の手順で自己解決を試みる（GH_TOKEN の有無確認等）。それでも不可ならユーザーへ認証を依頼する（A-6 該当時のみ）。
 - ⚠️ `gh auth status` はクラウドで stderr に「token invalid」と出すが終了コードは 0 で、かつ repo 操作は別途 403 になる。**認証可否の判定に `gh auth status` を使わない**（git ls-remote / MCP で実到達を確認する）。
-- 🔴 **タスク実行モードによっては `git ls-remote` 自体が 403 になる（L-117）**: GitHub Issue/PR 対応のリモートタスク（システムプロンプトに「Repository Scope」が単一リポジトリで明示される形態）では、`mcp__claude-code-remote__add_repo` が提供されず、クロスリポ git 操作自体が遮断される（GH_TOKEN/ネットワーク設定の問題ではない）。この場合は GH_TOKEN 依頼に進まず、「このタスク実行モードでは claude-code-base に到達できない。`claude-code-base を反映して` を通常の claude.ai/code セッション（チャット形式）で実行してほしい」とユーザーへ案内し、本タスクでの適用は断念する。
+- 🔴 **タスク実行モードによっては `git ls-remote` 自体が 403 になる（L-117）**: GitHub Issue/PR 対応のリモートタスク（システムプロンプトに「Repository Scope」が単一リポジトリで明示される形態）では、`mcp__Claude_Code_Remote__add_repo` が提供されず、クロスリポ git 操作自体が遮断される（GH_TOKEN/ネットワーク設定の問題ではない）。この場合は GH_TOKEN 依頼に進まず、「このタスク実行モードでは claude-code-base に到達できない。`claude-code-base を反映して` を通常の claude.ai/code セッション（チャット形式）で実行してほしい」とユーザーへ案内し、本タスクでの適用は断念する。
 
 ## 2. 適用の実行（コア手順）
 

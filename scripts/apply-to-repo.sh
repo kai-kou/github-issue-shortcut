@@ -132,19 +132,42 @@ log "対象     : $TARGET_SLUG ($TARGET)"
 log "name     : $PROJECT_NAME"
 $DRY_RUN && log "*** DRY-RUN モード（コピーは行いません）***"
 
-# --- 2. ベースの取得（gh があれば利用、無ければ git）---
+# --- 2. ベースの取得（git が一次経路。gh はローカル互換のフォールバック）---
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 CLONE_DIR="$TMP/base"
 
 fetch_base() {
+  # git を一次経路にする（git は GitHub API プロキシとは別系統で常時生存し、
+  # クラウドでは gh がプリインストールされないのが既定・L-114）
+  log "git でベースを取得します"
+  local url="https://github.com/${BASE_REPO}.git"
+  # credential helper 未設定のローカル環境で private base を clone しようとすると、git が
+  # /dev/tty から認証情報を要求して無限に待つ（`curl ... | bash` でも tty を直接開くため止まる）。
+  # 決定論的に失敗させて gh フォールバックへ落とす。
+  export GIT_TERMINAL_PROMPT=0 GIT_ASKPASS=true
+  if git clone --depth 1 --branch "$REF" "$url" "$CLONE_DIR" >/dev/null 2>&1; then
+    return 0
+  fi
+  # ref がタグ/SHA でブランチ clone が失敗した場合。
+  # fetch/checkout が失敗したら die する（意図しない default ブランチ適用を防ぐ）
+  rm -rf "$CLONE_DIR"
+  if git clone --depth 1 "$url" "$CLONE_DIR" >/dev/null 2>&1; then
+    git -C "$CLONE_DIR" fetch --depth 1 origin "$REF" >/dev/null 2>&1 \
+      || die "指定された ref ($REF) のフェッチに失敗しました"
+    git -C "$CLONE_DIR" checkout -q FETCH_HEAD 2>/dev/null \
+      || die "指定された ref ($REF) のチェックアウトに失敗しました"
+    return 0
+  fi
+  # git が通らない環境（ローカルで gh 認証のみ通っている等）の互換フォールバック。
+  # クラウドでは実 gh が無いためシムが即エラーを返し、次の die に落ちる
+  rm -rf "$CLONE_DIR"
   if command -v gh >/dev/null 2>&1; then
-    log "gh でベースを取得します"
+    log "git での取得に失敗したため gh を試します"
     if gh repo clone "$BASE_REPO" "$CLONE_DIR" -- --depth 1 --branch "$REF" >/dev/null 2>&1; then
       return 0
     fi
-    # branch 指定 clone が ref（タグ/SHA）で失敗した場合のフォールバック。
-    # fetch/checkout が失敗したら die する（silent に default ブランチを適用しない）
+    rm -rf "$CLONE_DIR"
     if gh repo clone "$BASE_REPO" "$CLONE_DIR" -- --depth 1 >/dev/null 2>&1; then
       git -C "$CLONE_DIR" fetch --depth 1 origin "$REF" >/dev/null 2>&1 \
         || die "指定された ref ($REF) のフェッチに失敗しました"
@@ -153,19 +176,7 @@ fetch_base() {
       return 0
     fi
   fi
-  log "git でベースを取得します"
-  local url="https://github.com/${BASE_REPO}.git"
-  if git clone --depth 1 --branch "$REF" "$url" "$CLONE_DIR" >/dev/null 2>&1; then
-    return 0
-  fi
-  # ref がタグ/SHA でブランチ clone が失敗した場合。
-  # fetch/checkout が失敗したら die する（意図しない default ブランチ適用を防ぐ）
-  git clone --depth 1 "$url" "$CLONE_DIR" >/dev/null 2>&1 \
-    || die "ベースの取得に失敗しました（$BASE_REPO@$REF）。認証（GH_TOKEN）と ref を確認してください"
-  git -C "$CLONE_DIR" fetch --depth 1 origin "$REF" >/dev/null 2>&1 \
-    || die "指定された ref ($REF) のフェッチに失敗しました"
-  git -C "$CLONE_DIR" checkout -q FETCH_HEAD 2>/dev/null \
-    || die "指定された ref ($REF) のチェックアウトに失敗しました"
+  die "ベースの取得に失敗しました（$BASE_REPO@$REF）。ref と、クラウドなら対象リポジトリがセッションに attach されているかを確認してください（git 経路が一次・gh はクラウドでは未インストールが既定）"
 }
 fetch_base
 [ -d "$CLONE_DIR/.claude" ] || die "取得したベースに .claude/ がありません。--base / --ref を確認してください"

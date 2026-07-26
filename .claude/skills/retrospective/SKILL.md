@@ -4,6 +4,12 @@ description: 各ワークフロー実行後に Agent Teams（3役割の並列サ
 effort: medium
 ---
 
+> 🔴 **GitHub 操作の経路（必読・L-114）**: クラウド実行環境では `gh` がプリインストールされず、
+> 導入しても repo スコープ REST が 403 になる。**本ファイル内の `gh ...` コマンドはローカル実行専用** で、
+> クラウドでは `mcp__github__*` に読み替える（対応表: `docs/rules/github-mcp-fallback-patterns.md` §2。
+> ラベル一覧/作成・マイルストーン・release 作成・variables は MCP に等価が無く **クラウドでは実行不可**・同 §2.5）。
+
+
 # レトロスペクティブスキル
 
 ワークフロー完了後に KPT レトロスペクティブを自動実施し、Try アイテムを Issue 化する汎用スキル。
@@ -198,6 +204,11 @@ mcp__github__list_issues(owner, repo, state="OPEN", labels=["type:retro-try"])  
 各パイプライン（プロジェクト定義）からは、完了報告（最終ステップ）の **後に** 本スキルを呼び出す（`pipeline` / `entity_id` / `pr_url` / `execution_summary` を渡す）。本スキルが作成した Try Issue の対応フロー → `reference.md` の J（実際の実装は `retro-try-handler` スキルが担う）。
 
 ## 既存スキルとの関係
+
+> レーン境界（改善 Issue / 振り返り / 監査・衛生）の SSOT は `docs/rules/improvement-lane-map.md`。
+> 本スキルは **振り返りレーン** の上流（KPT 生成・Try 起票）で、`type:retro-try` の実装は下流の
+> `retro-try-handler` が担う。`type:improvement` の起票・棚卸し・実装は改善 Issue レーン
+> （`self-improvement-loop`）の担当で、本スキルは扱わない。
 
 | 関連スキル | 関係 |
 |-----------|------|

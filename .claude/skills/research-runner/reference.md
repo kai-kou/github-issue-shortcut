@@ -1,5 +1,11 @@
 # research-runner 詳細リファレンス
 
+> 🔴 **GitHub 操作の経路（必読・L-114）**: クラウド実行環境では `gh` がプリインストールされず、
+> 導入しても repo スコープ REST が 403 になる。**本ファイル内の `gh ...` コマンドはローカル実行専用** で、
+> クラウドでは `mcp__github__*` に読み替える（対応表: `docs/rules/github-mcp-fallback-patterns.md` §2。
+> ラベル一覧/作成・マイルストーン・release 作成・variables は MCP に等価が無く **クラウドでは実行不可**・同 §2.5）。
+
+
 > `research-runner` スキルの **フォールバック分岐の詳細手順**（Step 3.6 / Step 4・
 > 失敗モード一覧）を切り出したもの（progressive disclosure・#165）。
 > 主エンジン（ネイティブ `/deep-research`）が成功する大多数のケースでは本ファイルを読む必要はない。

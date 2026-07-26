@@ -13,10 +13,19 @@ PR 作成・AI レビュー監視・自動マージに関するカテゴリ別�
 **根本原因**: PR 作成コマンドの成否を検証していない（Time-of-Check の欠落）。
 
 **対策**: PR 作成の **直後に必ず存在確認** する。`pr-review-flow-summary.md` の必須フォーム。
+
+クラウド（一次経路・L-114）:
+```
+mcp__github__list_pull_requests(owner="kai-kou", repo="github-issue-shortcut",
+                                head="kai-kou:{branch}", state="all")
+```
+
+ローカル実行用:
 ```bash
 gh pr list --head {branch} -R kai-kou/github-issue-shortcut --limit 1 --json number,url,state \
   --jq '.[0] | select(.url != null) | "PR #\(.number) \(.state): \(.url)"'
 ```
+
 存在確認が取れない場合は PR 作成を再試行する（マージへ進まない）。
 
 ---
@@ -51,7 +60,7 @@ Slack `@mention`・完了報告アウトカムへのレビュー対応混入は�
 
 ---
 
-## L-114: 高頻度で自動更新される git 追跡テレメトリを feature の WIP 自動コミットに相乗りさせない（2026-06-27）
+## L-120: 高頻度で自動更新される git 追跡テレメトリを feature の WIP 自動コミットに相乗りさせない（2026-06-27）
 
 **パターン**: 月次コスト集計（`content/analytics/cost_monthly/`）を Stop hook の `--flush` が
 毎セッション書き換え、直後の WIP 自動コミット `git add -A` がそれを作業中の feature ブランチへ

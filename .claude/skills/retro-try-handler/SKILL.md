@@ -217,6 +217,10 @@ Issue クローズ後、対応する lessons エントリを確認する。手�
 
 ## 既存スキルとの関係
 
+> レーン境界の SSOT は `docs/rules/improvement-lane-map.md`。本スキルは **振り返りレーン** の下流
+> （`type:retro-try` の実装）に限定され、`type:improvement` の消化は改善 Issue レーン
+> （`self-improvement-loop` 消化モード）が担当する（奪い合い防止・#160）。
+
 | 関連スキル | 関係 |
 |-----------|------|
 | `retrospective` | Try Issue を生成する上流スキル |

@@ -42,7 +42,7 @@
 | ☐ | **None/null/欠損キー/ファイル不在時の挙動を確認したか**（`.get()` フォールバック・空リスト・ファイル不在の 3 パターンを頭の中で実行する） | 目視 + 機械（一部） | **573 件**（2 位。KeyError・NoneType・undefined） |
 | ☐ | **挙動を変える編集をした場合、仕様・テスト・コードの意図が一致しているか**（Intent Gate: `INTENT: code does X / check expects Y / spec says Z` を確認。仕様と矛盾するテストを通すためにコードを黙って書き換えていないか。権威順 ユーザー明示 > 仕様 > テスト > 現行コード・`docs/rules/intent-gate-rules.md`） | 目視 | fable-method 反映（spec betrayal 防止） |
 | ☐ | 未コミット・未追跡・未 push がないか | 機械（フック） | フックでブロック済み |
-| ☐ | タスク外ファイルが diff に混入していないか（`git diff origin/main...HEAD --name-only`） | 目視 | CLAUDE.md「やってはいけないこと」 |
+| ☐ | タスク外ファイルが diff に混入していないか（`git diff origin/main...HEAD --name-only`） | 目視 | `core-principles.md` CP-1（スコープ外の改善は別 Issue を立ててから着手する） |
 | ☐ | リポジトリ名・パス・コマンドの typo（github-issue-shortcut の末尾 i 重複等） | 機械 | 実指摘あり（誤操作リスク） |
 | ☐ | 対象 Issue の Done Criteria（Issue 本文または最初のコミットメッセージのいずれかに記載）を diff が満たしているか（どちらにも未記載なら理由を1行記録してスキップ） | 目視 | self-reviewer SKILL.md Step 1 追加（verification loops 記事の spec validation 縮小採用・#297・#302） |
 

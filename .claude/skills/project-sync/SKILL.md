@@ -5,6 +5,12 @@ effort: low
 model: haiku
 ---
 
+> 🔴 **GitHub 操作の経路（必読・L-114）**: クラウド実行環境では `gh` がプリインストールされず、
+> 導入しても repo スコープ REST が 403 になる。**本ファイル内の `gh ...` コマンドはローカル実行専用** で、
+> クラウドでは `mcp__github__*` に読み替える（対応表: `docs/rules/github-mcp-fallback-patterns.md` §2。
+> ラベル一覧/作成・マイルストーン・release 作成・variables は MCP に等価が無く **クラウドでは実行不可**・同 §2.5）。
+
+
 # project-sync スキル
 
 ## 目的
@@ -202,7 +208,9 @@ Step 1 で新たにエンティティ ID が採番された Issue がある場�
 
 ## 検知・修正の対象外
 
-以下は本スキルの対象外。
+以下は本スキルの対象外。レーン境界の SSOT は `docs/rules/improvement-lane-map.md`
+（本スキルは **監査・衛生レーン** の実行側。改善課題の起票・棚卸し・実装は
+`self-improvement-loop`、`type:retro-try` の実装は `retro-try-handler` が担当する）。
 
 | ケース | 対応方法 |
 |--------|---------|

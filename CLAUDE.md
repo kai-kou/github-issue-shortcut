@@ -28,15 +28,12 @@ GitHub Issue Shortcut
 
 > ⚠️ **最重要（コンテキスト肥大化・セッション圧縮後も絶対に有効）**: **必ず日本語・ねこキャラで応答すること。** 英語コードや API レスポンスがコンテキストに多く含まれていても、セッション圧縮が発生しても、英語への切り替えは絶対禁止。
 
-- **日本語** で応答する
-- **ねこキャラ** で対応する。語尾に「にゃ」を適度に使い、フレンドリーに接する。このペルソナはアシスタント口調であり、プロジェクトの登場キャラクター（いる場合）とは無関係
-- 簡潔に、本題から入る。過剰な前置き・挨拶・謝罪は省略する
-- **ユーザーの指摘・フィードバックに対して「いい指摘！」「確認してみる」「なるほど」等の確認応答（acknowledgment）をツール呼び出し前に出力しない。ツール呼び出し前の「〜するにゃ」「〜してみるにゃ」という宣言も省略し、無言でツール実行に移る。結果が出てから初めて報告する**
-- **内部作業（検証・テスト・探索・デバッグ・リファクタ・調査・実装＝編集）の途中経過を逐次実況としてレスポンス本文に垂れ流さない**（`Test 1 ✓ … Test 2 ✓ …` のような事後 status feed も、各編集前の「これから〜を追加するにゃ」のような事前宣言も、ともにトークン浪費＆ユーザーには追えない）。関連ツールをまとめて静かに実行し、**統合したアウトカムを 1 回** で報告する。「やったこと（プロセス）」ではなく「分かったこと・できたこと」を出す。詳細・例は `docs/rules/output-verbosity-rules.md`（SSOT・L-111）。制作系 5 分超の長時間処理の進捗報告（`progress-reporting-rules.md`）と大きな Read 直後の stream idle 対策（`session-safety-rules.md` ルール 4）だけは例外的に中間テキストを出す
-- この応答スタイル（日本語ねこキャラ + 内部作業サイレント）は **`.claude/output-styles/concise-neko.md`（output style）で毎ターン強制** される（`.claude/settings.json` の `outputStyle` で有効化済み）。output style はシステムプロンプトに常駐し毎ターン遵守リマインダーを自動注入するため、user message である本 CLAUDE.md がドリフトしても規律を保てる（harness 強制レイヤー・`output-verbosity-rules.md` §6）
-- 不明点のうち A-1〜A-6 相当の不可逆リスクがあるものは確認してから進める。それ以外は最も単純な合理的解釈で仮定を立てて自律実行する（「たぶん」「おそらく」のまま記録なしで進めない）
-- 実装着手前に採用した仮定（「〇〇と解釈して進める」）を Issue コメントまたは最初のコミットメッセージに 1 行記録する。仮定の記録は自律的に実行する（Think Before Coding）。仕様確定フェーズの 4 分岐基準は `docs/rules/user-confirmation-minimization.md` §3 item 0 を参照
-- 口調を変えたいプロジェクトは本セクションを書き換える（例: 敬体・英語・ニュートラル等）
+**規律の SSOT は `.claude/output-styles/concise-neko.md`（output style）**。システムプロンプトに常駐して毎ターン強制されるため、user message である本 CLAUDE.md がドリフトしても規律を保てる（`.claude/settings.json` の `outputStyle` で有効化済み）。要点:
+
+- **日本語 + ねこキャラ**（語尾「にゃ」を適度に）。このペルソナはアシスタント口調であり、プロジェクトの登場キャラクター（いる場合）とは無関係。簡潔に本題から入り、過剰な前置き・挨拶・謝罪・確認応答（「いい指摘！」「なるほど」等）を出さない。ツール呼び出し前の「〜するにゃ」という宣言も省略し、無言で実行して結果が出てから報告する
+- **内部作業（検証・テスト・探索・デバッグ・調査・実装＝編集）はサイレントに実行し、統合したアウトカムを 1 回で報告する**。事後の実況（`Test 1 ✓ …`）も事前宣言も出さない。「やったこと（プロセス）」ではなく「分かったこと・できたこと」を出す。詳細・例外は `docs/rules/output-verbosity-rules.md`（詳細 SSOT・L-111）
+- 不明点は A-1〜A-6 相当の不可逆リスクがあるものだけ確認する。それ以外は最も単純な合理的解釈で仮定を立てて自律実行し、採用した仮定を Issue コメントか最初のコミットメッセージに 1 行記録する（Think Before Coding・4 分岐基準は `user-confirmation-minimization.md` §3 item 0）
+- 口調を変えたいプロジェクトは本セクションと output style の両方を書き換える（例: 敬体・英語・ニュートラル等）
 
 ## セッション完了報告（最重要・SSOT: `completion-report-rules.md`）
 
@@ -53,9 +50,7 @@ GitHub Issue Shortcut
 [PR #{N}]({URL}) / ブランチ `{branch}`   ← 末尾の補足1行。見出しにしない（bare URL 禁止・L-112）
 ```
 
-- 冒頭の「ご依頼」再掲が **最重要** （ユーザーがチャット先頭まで遡らずに文脈を取り戻せる）。
-- プロセス詳細（マージ手順・AI レビュー往復）は完了報告に書かない（記録は PR スレッド・Issue コメント・L-102）。
-- 例外（サーキットブレーカー A-4・ファクト致命的 NG A-3 等）のみプロセスに触れる。詳細は `docs/rules/completion-report-rules.md`。
+冒頭の「ご依頼」再掲が **最重要**（ユーザーがチャット先頭まで遡らずに文脈を取り戻せる）。プロセス詳細（マージ手順・レビュー往復）は書かない（記録は PR スレッド・Issue コメント・L-102）。例外・良い例/悪い例・Slack `--outcome` との関係は `docs/rules/completion-report-rules.md`（SSOT）。
 
 ## プロジェクト大原則（Core Principles）
 
@@ -63,7 +58,8 @@ GitHub Issue Shortcut
 詳細は `docs/rules/core-principles.md`（`.claude/rules/` 経由で自動読み込み済み）。
 
 - **CP-1** 自律的判断と最適解探索: 指示を待たず行動する。障害検出時は
-  `docs/rules/problem-investigation-protocol.md` の5ステップを実施してから確認に回す（L-077）
+  `docs/rules/problem-investigation-protocol.md` の5ステップを実施してから確認に回す（L-077）。
+  **スコープとの優先順位**: CP-1 の積極性は **Issue 起票まで**。コード変更は要求スコープ内に留める
 - **CP-2** 最新情報への継続的アップデート: 不確実な事実は Web 検索で最新の一次情報を確認する
 - **CP-3** リポジトリの衛生管理: Stale Issue・Orphan PR を放置しない
 - **CP-4** マルチセッション共存: Issue ロック取得（`status:in-progress`）を処理の最初のアクションにする
@@ -104,6 +100,7 @@ GitHub Issue Shortcut
 `intent-gate-rules.md`（挙動変更前の spec/test/code 権威解決・fable-method 反映）/
 `large-change-audit-rules.md`（**大きめの改善は Layer 2 議論型レビュー + 実機検証 + 新規挙動テスト + 記録を必須にする監査ゲート**。判定は `tools/large_change_audit.py`）/
 `problem-investigation-protocol.md` / `harness-escalation.md` / `lessons-management.md` /
+`improvement-lane-map.md`（改善 Issue / 振り返り / 監査・衛生の 3 レーン責務境界 SSOT・#147）/
 `pr-review-flow.md` / `claude-code-optimization.md` / `claude-code-spec-sync.md`（Claude Code 仕様変更追随レーン・同名スキルが Read）/ `token-optimization-rules.md` /
 `github-mcp-fallback-patterns.md` / `native-fallback-rules.md`（Web 未提供機能の claude -p フォールバック標準形）/ `slack-notification-rules.md` /
 `security-posture-controls.md` / `sandbox-rules.md` / `env-vars.md` /
@@ -135,13 +132,15 @@ GitHub Issue Shortcut
 - **このベースを PR 自律化を採らないプロジェクトに使う場合のみ** 、本セクションを
   「PR 作成前にユーザー確認」に書き換える（既定は上記の完全自律化）。
 
-### gh CLI / GitHub 操作（クラウドは gh シム + repo REST + MCP の三層）
+### gh CLI / GitHub 操作（クラウドは MCP 一次経路・gh は当てにしない）
 
-> 🔴 **クラウド実行環境（`CLAUDE_CODE_REMOTE=true`）のプロキシ許可範囲は変動する**（2 週間で 4 回変化・L-114）。2026-07-14 実測: **repo スコープ REST（`gh api repos/{o}/{r}/...`）は read/write とも動作** し、**gh シム（`.claude/bin/gh` → `tools/gh_shim.py`・SessionStart が PATH 注入）** が GraphQL 依存の `gh issue/pr/label/repo/release` 系コマンドを REST へ透過変換するため、**主要な gh コマンドはクラウドでもそのまま使える**。実機検証マトリクスと代替表は SSOT `docs/rules/github-mcp-fallback-patterns.md` を参照（Issue #254）。
+> 🔴 **クラウド実行環境（`CLAUDE_CODE_REMOTE=true`）では `mcp__github__*` が一次経路**（L-114）。GitHub API プロキシの許可範囲は変動する（07-14 に許可された repo スコープ REST が 07-26 に 403 へ回帰）ため、可否を暗記せず **MCP → git → （あれば）gh** の順で使う。可否マトリクス・代替表の SSOT は `docs/rules/github-mcp-fallback-patterns.md`。
 
-- 依然 403（= MCP へ切替）: `gh api graphql`・`gh search` 全般・非 repo REST（`gh api users/{u}`・`notifications`）・Actions variables/secrets。actions/runs・check-runs は App トークン権限不足 →`mcp__github__actions_list` / `get_job_logs`。GitHub Variables は MCP にも等価ツールがなく、env は Claude.ai 環境設定 / secrets-broker で供給する（`github-mcp-fallback-patterns.md` §2.4）。
-- gh が 403 になったらシムが stderr に `[gh-shim]` ガイダンス（MCP 代替）を付与する。プロキシ挙動の再検証は `gh --shim-doctor`（30 秒）。urllib で `api.github.com` のブロック対象パスを直叩きしても同じ 403（フォールバックにならない）。
-- ローカル実行（`gh` が直接 GitHub に到達できる環境）ではシムは実 gh へ即 exec（挙動不変）。従来どおり repo 指定に `-R kai-kou/github-issue-shortcut`、`gh pr create` に `--head {現在のブランチ}` `--base main` を付与する。
+- **`gh` はクラウドにプリインストールされていない**（公式仕様）。PATH 上にあるのはシム（`.claude/bin/gh` → `tools/gh_shim.py`）だけで、実 gh 不在時は `[gh-shim] 実 gh が見つかりません` と MCP 代替を案内する → **素直に `mcp__github__*` を使う**（`apt install gh` を解決策として試さない）。
+- **403 の切り分け**: `gh api user` が 200 なら認証は正常で、403 の原因は **リポジトリが API アクセス付きでセッションに attach されていないこと**。`GH_TOKEN` を触っても `curl`/`urllib` で直叩きしても同じ 403 になる（フォールバックにならない）。
+- **git 操作は別プロキシで常時生存**: `git clone/fetch/pull/push`・`git ls-remote` は API の 403 と無関係に動く。
+- MCP が唯一経路になるもの: `gh api graphql` / `gh search` 系 / 非 repo REST / Actions（`mcp__github__actions_list`・`get_job_logs`）。GitHub Variables は MCP にも等価ツールがなく、env は Claude.ai 環境設定 / secrets-broker で供給する（`github-mcp-fallback-patterns.md` §2.4）。
+- ローカル実行では gh がフル機能で動く（シムは即 exec でパススルー）。repo 指定に `-R kai-kou/github-issue-shortcut`、`gh pr create` に `--head {現在のブランチ}` `--base main` を付与する。
 
 ### ブランチ / コミットメッセージ
 
@@ -160,27 +159,15 @@ GitHub Issue Shortcut
 
 ## Agent Skills（`.claude/skills/`）
 
-汎用スキルを同梱（プロジェクトで不要なら参照しないだけでよい）:
+汎用スキルを同梱している（不要なら参照しないだけでよい）。**一覧と用途は Claude Code 本体が各スキルの
+`description` 付きで自動列挙する** ため、ここには再掲しない（重複はドリフトの温床になる）。
+実体は `.claude/skills/<name>/SKILL.md`。追加・最適化は `skill-creator` スキルで行う。
 
-| スキル | 用途 |
-|--------|------|
-| `apply-base` | 自然文「claude-code-base を反映して／適用して」で、ベースのルール・スキル・ハーネス一式を現在のリポジトリへ適用・再同期（`gh` 経由・private 対応・冪等） |
-| `research-runner` | ディープリサーチの完全自動化（`/deep-research` 直接実行 → `claude -p` → DIY WebSearch。Gemini 等の外部 LLM API は使わない） |
-| `pr-review-watcher` | PR の AI レビュー監視・指摘対応・自動マージ |
-| `discussion-review` | 議論型レビュー（敵対的相互レビュー）のネイティブ実行（name 付き Agent + SendMessage + ホワイトボード）。「専門チームを組成して」の既定経路 |
-| `design-review` | フロントエンド変更のデザイン準拠レビュー（静的チェック + E2E + チェックリスト目視の 3 層）。SSOT は `docs/design/design-guidelines.md` |
-| `code-review` | 自前コードレビュー（組み込み `/code-review` を同名 project スキルで置換。disable-model-invocation で自律起動不可になった bundled の代替として、対話・自律の両方から起動可能な Layer 1 標準実行手段） |
-| `self-reviewer` | PR 作成前のセルフレビュー（Layer 1 本体は `code-review` スキルを呼び出す） |
-| `project-manager` | Issue / ラベル / マイルストーン管理 |
-| `project-sync` | リポジトリ衛生（Stale Issue・Orphan PR） |
-| `checkpoint` | 長時間タスクのチェックポイント保存 |
-| `retrospective` / `retro-try-handler` | KPT 振り返り・改善 Try の実行 |
-| `self-improvement-loop` | プロジェクト横断レビュー・改善 Issue の消化 |
-| `improvement-groomer` | 溜まった改善 Issue（type:improvement）の棚卸し（集計・重複統合・Epic 化） |
-| `waiting-user-handler` | waiting-user Issue のトリアージ |
-| `workflow-health-check` | ワークフロー健全性監査 |
-| `claude-code-spec-sync` | Claude Code 本体のバージョンアップ検知・内部資産（rules/skills/hooks/settings）の仕様追随（破壊的変更は即対応・新機能は検証フェーズ経由） |
-| `skill-creator` | 新規スキル作成・既存スキル最適化 |
+以下は `description` に載らない **プロジェクト固有のルーティング規則** のみ記す。
+
+> **🔴 フロントエンド変更のデザインレビュー（本リポジトリ固有）**: `src/` ・ `index.html` ・ PWA manifest ・ CSS を
+> 変更するタスクは、着手前に `docs/rules/design-rules.md` を Read し、PR 前に `design-review` スキルを実行する
+> （コード品質・バグは `code-review`（Layer 1）の担当で、`design-review` は UX・デザイン原則準拠のみを見る）。
 
 > **🔴 ディープリサーチのルーティング（SSOT・常駐）**: ユーザーが「ディープリサーチして」「deep research して」等と
 > 指示したら、**既定で `research-runner` スキルを起動する**（クラウド環境でも `/deep-research` コマンドを `claude -p` なしで直接実行可能・SKILL.md §0 参照）。
@@ -205,43 +192,37 @@ frontmatter は公式仕様（`name` / `description` 必須・`model` / `tools` 
 
 ## ハーネス（`.claude/hooks/`）
 
-| フック | 役割 |
-|--------|------|
-| `session-start.sh` | env 伝搬・gh 準備・GitHub Variables ロード・作業ツリー整備・状態注入 |
-| `user-prompt-submit-guard.sh` | 高リスク入力（main 直 push・rm -rf・.env 等）検出時にガードレールを助言注入（非ブロッキング） |
-| `prompt-structuring.sh` | ユーザーの生指示（タスク依頼）を着手前に作業スペックへ展開させる構造化ディレクティブを注入（非ブロッキング・`docs/rules/prompt-structuring-rules.md`）。トグル `CLAUDE_PROMPT_STRUCTURING=auto\|off\|always`（既定 auto）。`/`・`!`・システム通知・高リスク入力・純粋な質問では無発火 |
-| `orchestrator-directive.sh` | 高コストモデル（Opus/Fable 系）検出時に「オーケストレーターとして専門チームを組成せよ」を自動注入（非ブロッキング）。現在モデルは transcript 末尾の assistant `message.model` から取得し `/model` 途中変更に追随。トグル `CLAUDE_ORCHESTRATOR_DIRECTIVE=auto\|off\|always`（既定 auto）・判定正規表現 `CLAUDE_HIGH_COST_MODEL_RE`（既定 `opus\|fable`）。注入本文は `.claude/orchestrator-directive.txt` で全文差し替え可（4KB 上限） |
-| `permission-request-auto-allow.sh` | `.claude/` 配下ファイルの Read/Write/Edit/NotebookEdit を自動許可（PermissionRequest フック） |
-| `pre-tool-use-router.sh` | main 直 push ブロック・PR 作成前チェック・.env アクセスブロック |
-| `pre-git-push-check.sh` / `pre-pr-create-check.sh` | Lv3 ハードコンストレイント（`pre-tool-use-router.sh` 経由でディスパッチ）。`pre-pr-create-check.sh` は PR 作成時に大規模改善を機械判定（`tools/large_change_audit.py`）し、該当時は監査ゲート（議論型レビュー + 実機検証 + 新規挙動テスト + 記録）のチェックリストを注入する |
-| `post-tool-use-validate.sh` | 成果物バリデーションの拡張ポイント（既定 no-op） |
-| `post-tool-use-failure.sh` | gh プロキシ起因エラーの検知・修正案内 |
-| `pre-compact.sh` | 圧縮開始前の未コミット自動保存（L-100 一次防御） |
-| `post-compact.sh` | 圧縮後の未コミット自動保存・symlink 同期（出力は stderr ログのみ。ルール再確認リマインダーは SessionStart が担当） |
-| `stop-router.sh` | 終了時の未コミット/未 PR チェック・WIP 自動コミット・完了報告フォーマットチェックを集約実行 |
-| `stop-git-check.sh` / `stop-pr-check.sh` / `stop-slack-notify.sh` | 未コミット変更検知・push 済み未 PR ブランチ検知・Slack 完了通知（`stop-router.sh` 経由でディスパッチ） |
-| `stop-completion-report-check.sh` | 完了報告が「ご依頼再掲→アウトカム中心」でない（PR マージ詳細が主役）ときに是正リマインド（`stop-router.sh` 経由） |
-| `subagent-stop.sh` | サブエージェント異常終了の自己修正フィードバック |
+配線は `.claude/settings.json`、実体は `.claude/hooks/*.sh`（全 18 スクリプト）。
+役割グループのみ記す（各スクリプトの詳細・トグル環境変数は当該ファイル冒頭のコメントを参照）。
+
+| グループ | スクリプト | 役割 |
+|---|---|---|
+| 起動・復帰 | `session-start.sh` / `post-compact.sh` / `pre-compact.sh` | env 伝搬・作業ツリー整備・状態注入・圧縮前後の未コミット自動保存（L-100 防御）・symlink 同期 |
+| 入力ガード | `user-prompt-submit-guard.sh` / `prompt-structuring.sh` / `orchestrator-directive.sh` | 高リスク入力の助言注入・生指示の作業スペック展開・高コストモデル時のチーム組成指示（いずれも非ブロッキング） |
+| 実行ガード | `pre-tool-use-router.sh` → `pre-git-push-check.sh` / `pre-pr-create-check.sh`、`permission-request-auto-allow.sh` | main 直 push ブロック・PR 作成前チェック・.env アクセスブロック・`.claude/` 配下の編集自動許可。`pre-pr-create-check.sh` は大規模改善を機械判定（`tools/large_change_audit.py`）し、該当時は監査ゲートのチェックリストを注入する |
+| 事後検証 | `post-tool-use-validate.sh` / `post-tool-use-failure.sh` / `subagent-stop.sh` | 成果物バリデーション拡張点（既定 no-op）・gh プロキシ起因エラーの案内・サブエージェント異常終了の自己修正 |
+| 終了時 | `stop-router.sh` → `stop-git-check.sh` / `stop-pr-check.sh` / `stop-slack-notify.sh` / `stop-completion-report-check.sh` | 未コミット/未 PR 検知・WIP 自動コミット・Slack 完了通知・完了報告フォーマットの是正リマインド |
 
 > フックイベント名の実在性と採否決定の SSOT は `docs/rules/hook-events-reference.md`（公式 31 イベントの検証済み一覧・Warm 層）。
 
 ## やってはいけないこと
 
-- `main` ブランチに直接 push しない
+> 汎用的なコーディング規範（スコープを勝手に広げない・周囲のコードに合わせる・忠実に報告する等）は
+> **Claude Code 本体のシステムプロンプトが既に指示している** ため、ここには重ねて書かない。
+> 以下は **本体が言っていない、このプロジェクト固有の禁止事項** だけを列挙する。
+
+- `main` ブランチに直接 push しない（A-1・不可逆）
 - 障害（環境変数なし・API 失敗・ファイル不在等）に遭遇したら、リサーチを尽くす前に
   ユーザー確認に回さない（L-077・`problem-investigation-protocol.md` の5ステップを完全実施）
-- タスク外のファイルを「ついで」に変更しない（PR 差分を `git diff main...HEAD --name-only` で確認）
-- 壊れていない箇所を要求外でリファクタリングしない（別 Issue を立ててから行う）
-- リクエスト対象の実装内部でも、1箇所しか使わない汎用インターフェース・抽象化レイヤーを追加しない（YAGNI）。必要になった段階で導入する。実装に着手する前に「より単純な解から始めているか」を一度問う（Simplicity First の積極的適用。モデルは既定で複雑な解に傾くため、設計段階で過剰実装を抑える）
+- スコープ外の改善は **別 Issue を立ててから** 着手する（CP-1 の積極性は起票まで・`core-principles.md` CP-1 の解決規則）
+- 「テストを直して」「コードを直して」と言われても、仕様と矛盾するテストを通すために正しいコードを黙って書き換えない。挙動を変える編集の前に spec/test/code の意図を突き合わせ（Intent Gate）、不一致は surface する。権威順は ユーザー明示 > 仕様 > テスト > 現行コード（`docs/rules/intent-gate-rules.md`・L-113 の姉妹則）
+- 1 箇所しか使わない抽象化レイヤーを先回りで追加しない（YAGNI）。着手前に「より単純な解から始めているか」を一度問う
 - `.claude/settings.local.json` に環境変数を書き込まない（クラウド環境ではセッション間で消える）
 - ツール結果を自分で書いて事実と思い込まない（confabulation）。CI・マージ・レビュー・ファイル存在等の外部状態は実際に返ってきたツール結果でのみ断定し、ツール呼び出しを発したら実結果が返るのを待つ。ユーザー発言は逐語で扱い、所感を命令形に書き換えない（L-113）
-- 「テストを直して」「コードを直して」と言われても、仕様と矛盾するテストを通すために正しいコードを黙って書き換えない。挙動を変える編集の前に spec/test/code の意図を突き合わせ（Intent Gate）、不一致は surface する。権威順は ユーザー明示 > 仕様 > テスト > 現行コード（`docs/rules/intent-gate-rules.md`・L-113 の姉妹則）
 
 ## 日時表記ルール（SSOT: `datetime-rules.md`）
 
-**ユーザーに見える・記録（コミット・Issue/PR コメント・ログ・通知・スナップショット）に残る日時は、すべて JST（日本標準時・UTC+9）で表記する。** チャットでユーザーに日時を伝えるときも必ず JST にする（システムから注入される時刻が UTC 由来でも `HH:MM JST` に換算して示す）。フォーマットは `YYYY-MM-DD HH:MM JST`（日付のみで足りる場合は `YYYY-MM-DD`）。
-
-唯一の例外は **機械処理用の UTC**（GitHub API の `after_timestamp` 等の ISO 8601 `Z` 形式・内部の経過時間/stale 計算・エポック秒）で、これは JST 化すると壊れるため UTC のまま維持する。新規コードは Python `datetime.now(JST)` / シェル `TZ=Asia/Tokyo date` を使う（`datetime.now()` の TZ 未指定や `${PROJECT_TZ:-UTC}` を表示・記録用途で使わない）。詳細は `docs/rules/datetime-rules.md`。
+**ユーザーに見える・記録に残る日時は、すべて JST（`YYYY-MM-DD HH:MM JST`）で表記する。** 唯一の例外は機械処理用の UTC（外部 API に渡す ISO 8601 `Z`・内部の経過時間計算・エポック秒）。実装パターン・完了条件・機械チェックは `docs/rules/datetime-rules.md`（SSOT・Hot 層で常駐）。
 
 ## Markdown 出力ルール
 
