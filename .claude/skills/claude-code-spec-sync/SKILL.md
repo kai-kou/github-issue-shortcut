@@ -6,6 +6,12 @@ effort: medium
 disallowed-tools: AskUserQuestion
 ---
 
+> 🔴 **GitHub 操作の経路（必読・L-114）**: クラウド実行環境では `gh` がプリインストールされず、
+> 導入しても repo スコープ REST が 403 になる。**本ファイル内の `gh ...` コマンドはローカル実行専用** で、
+> クラウドでは `mcp__github__*` に読み替える（対応表: `docs/rules/github-mcp-fallback-patterns.md` §2。
+> ラベル一覧/作成・マイルストーン・release 作成・variables は MCP に等価が無く **クラウドでは実行不可**・同 §2.5）。
+
+
 # claude-code-spec-sync スキル
 
 > **必読（起動直後）**: `docs/rules/claude-code-spec-sync.md`（SSOT）を Read してから実行する。

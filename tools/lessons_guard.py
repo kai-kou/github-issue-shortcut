@@ -151,6 +151,15 @@ def count_lines(path: Path) -> int:
     return len(path.read_text(encoding="utf-8").splitlines())
 
 
+def find_duplicate_ids() -> dict[str, list[str]]:
+    """Hot + Warm 層横断で同一 L-NNN 番号が複数ファイルに存在する箇所を検出する。"""
+    by_id: dict[str, list[str]] = {}
+    for f in [CORE_FILE] + (sorted(WARM_DIR.glob("*.md")) if WARM_DIR.exists() else []):
+        for e in parse_entries(f):
+            by_id.setdefault(e.id, []).append(f.name)
+    return {lid: files for lid, files in by_id.items() if len(files) > 1}
+
+
 # ---------------- check ----------------
 def cmd_check(args) -> int:
     lines = count_lines(CORE_FILE)
@@ -158,11 +167,13 @@ def cmd_check(args) -> int:
     n_entries = len(entries)
     over_lines = lines > CORE_MAX_LINES
     over_entries = n_entries > CORE_MAX_ENTRIES
+    dup_ids = find_duplicate_ids()
 
-    status = "✅ OK" if not (over_lines or over_entries) else "❌ 上限超過"
+    status = "✅ OK" if not (over_lines or over_entries or dup_ids) else "❌ 上限超過/重複あり"
     print(f"[lessons_guard check] {status}")
     print(f"  lessons-core.md: {lines} 行 / 上限 {CORE_MAX_LINES} 行")
     print(f"  エントリ数      : {n_entries} 件 / 上限 {CORE_MAX_ENTRIES} 件")
+    print(f"  番号重複        : {len(dup_ids)} 件")
 
     if over_lines or over_entries:
         print()
@@ -171,8 +182,15 @@ def cmd_check(args) -> int:
         print("   2. 凍結/参照頻度の低いエントリを Warm 層（docs/rules/lessons/<category>.md）へ降格")
         print("   3. 重複を統合                   : python3 tools/lessons_guard.py dedup")
         print("  ※ 詳細は docs/rules/lessons-management.md を参照")
-        return 1
-    return 0
+
+    if dup_ids:
+        print()
+        print("  同一番号が複数ファイルに存在します（採番の一意性違反・#340）:")
+        for lid, files in sorted(dup_ids.items()):
+            print(f"   - {lid}: {', '.join(files)}")
+        print("  片方を未使用番号へ振り直し、参照元（grep）を追随更新してください。")
+
+    return 1 if (over_lines or over_entries or dup_ids) else 0
 
 
 # ---------------- stats ----------------

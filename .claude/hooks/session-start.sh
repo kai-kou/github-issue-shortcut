@@ -75,10 +75,19 @@ echo "[timezone] TZ=${TZ}: $(date '+%Y-%m-%d %H:%M %Z')" >&2
 export GIT_TERMINAL_PROMPT=0
 env_persist "export GIT_TERMINAL_PROMPT=0"
 
-# --- gh CLI ---
-# クラウドのネットワークポリシーは github.com releases 直 DL をブロックする場合があるため
-# apt universe を最優先。失敗時のみ github.com .deb にフォールバックする。
-if ! command -v gh &>/dev/null; then
+# --- gh CLI（クラウドでは導入しない・L-114 / Issue #342）---
+# クラウド実行環境は公式仕様として gh をプリインストールしない。apt で導入すること自体は可能だが、
+# repo スコープ REST が 403（リポジトリの API attach 不足）のため導入しても GitHub 操作はできない
+# （2026-07-26 実測・#338）。毎セッション apt を叩く時間を捨てるだけなので試行しない。
+# クラウドの GitHub 操作は mcp__github__* が一次経路（SSOT: docs/rules/github-mcp-fallback-patterns.md）。
+if [ "${CLAUDE_CODE_REMOTE:-}" = "true" ]; then
+  if command -v gh &>/dev/null && [ "$(command -v gh)" != "${_shim_dir}/gh" ]; then
+    echo "gh CLI: 実 gh を検出（クラウドでは repo スコープ操作が 403 になる想定。GitHub 操作は mcp__github__* を使う）" >&2
+  else
+    echo "gh CLI: クラウドでは未導入が既定（導入しない。GitHub 操作は mcp__github__* を使う・L-114）" >&2
+  fi
+elif ! command -v gh &>/dev/null; then
+  # ローカル実行のみ: gh があると tools/*.py が高速に動くため導入を試みる
   echo "Installing gh CLI via apt (universe)..." >&2
   (apt-get update -qq && apt-get install -y -qq gh) >/dev/null 2>&1 || {
     GH_LATEST=$(curl -fsSL --max-time 15 "https://api.github.com/repos/cli/cli/releases/latest" 2>/dev/null | jq -r '.tag_name // empty' | sed 's/^v//' || true)
@@ -88,7 +97,7 @@ if ! command -v gh &>/dev/null; then
       rm -f /tmp/gh.deb
     fi
   }
-  command -v gh &>/dev/null && echo "gh CLI installed" >&2 || echo "Warning: gh CLI installation failed." >&2
+  command -v gh &>/dev/null && echo "gh CLI installed" >&2 || echo "Warning: gh CLI installation failed（ローカル実行。MCP 経路は影響なし）" >&2
 else
   echo "gh CLI: already installed" >&2
 fi
@@ -108,7 +117,17 @@ if [ -z "${GH_TOKEN:-}" ]; then
     unset _token
   fi
 fi
-if [ -n "${GH_TOKEN:-}" ]; then
+# クラウドでは GH_TOKEN 未設定が正常（コンテナが proxy-injected プレースホルダを入れ、
+# プロキシが送信時に実認証情報へ差し替える・公式仕様）。未設定を警告しない。
+if [ "${CLAUDE_CODE_REMOTE:-}" = "true" ]; then
+  if [ "${GH_TOKEN:-}" = "proxy-injected" ]; then
+    echo "GitHub 認証: プロキシ注入モード（GH_TOKEN=proxy-injected・正常）" >&2
+  elif [ -n "${GH_TOKEN:-}" ]; then
+    echo "GitHub 認証: 環境設定の GH_TOKEN がパススルー（repo API の可否は attach 状態に依存・L-114）" >&2
+  else
+    echo "GitHub 認証: GH_TOKEN 未設定（クラウドでは正常。MCP 経路は影響を受けない）" >&2
+  fi
+elif [ -n "${GH_TOKEN:-}" ]; then
   echo "gh CLI: authenticated ($(timeout 10s gh api user --jq '.login' 2>/dev/null || echo 'token present'))" >&2
 else
   echo "Warning: GH_TOKEN not set. gh CLI will be unauthenticated." >&2
@@ -120,12 +139,14 @@ fi
 #
 # 取得経路は2系統（Issue #40）。ゲートは GH_TOKEN のみ（gh CLI の有無に依存しない）:
 #   ① gh CLI（あれば高速）  ② tools/gh_vars.py（urllib・トークンのみ・gh 不要）
-# ⚠️ クラウド（CLAUDE_CODE_REMOTE=true）では 2026-07-02 から egress プロキシが
-# actions/variables パスを 403 ブロックし ①② とも失敗する（Issue #133・
-# github-mcp-fallback-patterns.md §2.4）。クラウドの env は Claude.ai 環境設定 /
-# secrets-broker（後段ブロック）で供給される前提。403 は即時返るため試行コストは小さく、
-# ローカル実行・プロキシポリシー変更時のために本ブロックは維持する。
-if [ -n "${GH_TOKEN:-}" ]; then
+# 🔴 クラウド（CLAUDE_CODE_REMOTE=true）では 2026-07-02 以降 egress プロキシが actions/variables
+# パスを 403 ブロックし ①② とも必ず失敗する（Issue #133 / #342・github-mcp-fallback-patterns.md §2.4）。
+# MCP にも variables の等価ツールが無いため代替経路も存在しない。したがってクラウドでは
+# 試行自体をスキップし、env は Claude.ai 環境設定 / secrets-broker（後段ブロック）で供給する。
+# 本ブロックはローカル実行専用として維持する。
+if [ "${CLAUDE_CODE_REMOTE:-}" = "true" ]; then
+  echo "[env] GitHub Variables ロードはクラウドではスキップ（プロキシが 403・env は Claude.ai 環境設定 / secrets-broker から供給・L-114）" >&2
+elif [ -n "${GH_TOKEN:-}" ]; then
   _env_file="/tmp/github_variables.env"
   _loaded_via=""
   _gh_ok=false
@@ -174,11 +195,7 @@ for name, value in get_all_variables(repo=os.environ['GHV_REPO']).items():
     echo "GitHub Variables: loaded $(wc -l < "$_env_file") var(s) via ${_loaded_via}" >&2
   else
     : > "$_env_file"
-    if [ "${CLAUDE_CODE_REMOTE:-}" = "true" ]; then
-      echo "GitHub Variables: none loaded（クラウドでは actions/variables が 403 ブロック・2026-07-02 実測。env は Claude.ai 環境設定 / secrets-broker で供給する・github-mcp-fallback-patterns.md §2.4）" >&2
-    else
-      echo "GitHub Variables: none loaded (gh/gh_vars.py 双方とも取得不可 or 0 件 in ${REPO})" >&2
-    fi
+    echo "GitHub Variables: none loaded (gh/gh_vars.py 双方とも取得不可 or 0 件 in ${REPO})" >&2
   fi
   unset _env_file _bashrc _marker _tmprc _loaded_via _gh_ok
 fi

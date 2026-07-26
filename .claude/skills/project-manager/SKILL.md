@@ -4,6 +4,12 @@ description: GitHub プロジェクト（Milestones・Projects V2・Issues・Lab
 effort: medium
 ---
 
+> 🔴 **GitHub 操作の経路（必読・L-114）**: クラウド実行環境では `gh` がプリインストールされず、
+> 導入しても repo スコープ REST が 403 になる。**本ファイル内の `gh ...` コマンドはローカル実行専用** で、
+> クラウドでは `mcp__github__*` に読み替える（対応表: `docs/rules/github-mcp-fallback-patterns.md` §2。
+> ラベル一覧/作成・マイルストーン・release 作成・variables は MCP に等価が無く **クラウドでは実行不可**・同 §2.5）。
+
+
 # GitHub プロジェクト管理スキル
 
 GitHub Issues + Labels（+ Projects V2）でタスクを一元管理する。
@@ -34,7 +40,7 @@ GitHub Issues + Labels（+ Projects V2）でタスクを一元管理する。
 > 🔴 **クラウド実行環境では repo スコープの `gh`（REST + GraphQL）が egress プロキシに 403 でブロックされる（L-114）。**
 > Issue / PR 操作は GitHub MCP（`mcp__github__*`）を一次経路とし、以下の `gh` コマンド例は **ローカル環境向けの代替** として読む
 > （SSOT: `docs/rules/github-mcp-fallback-patterns.md`）。`gh project`（Projects V2 GraphQL）と `gh api repos/.../milestones` は
-> MCP に等価ツールがなく **クラウドでは実行不能** → ローカル実行のみとし、クラウドではスキップして Issue ラベルで代替する。
+> ⚠️ クラウドでは実行不可（MCP に等価ツールなし・§2.5）。ローカル実行または代替手段（Issue ラベルでの代替運用）が必要。
 
 ## ラベル体系（要約）
 
@@ -118,8 +124,9 @@ PR マージ時: Issue を close（PR 本文に "Closes #N"）→ Projects V2 �
 
 ### Projects V2 のステータス更新（使う場合・**ローカル実行のみ**）
 
-> 🔴 `gh project`（Projects V2 GraphQL）はクラウドで 403 かつ MCP に等価ツールがないため **クラウドでは実行不能**。
-> クラウドセッションではこのステップをスキップし、`status:*` Issue ラベルで代替する（built-in automation の close → Done は維持される）。
+> ⚠️ クラウドでは実行不可（MCP に等価ツールなし・§2.5）。`gh project`（Projects V2 GraphQL）はクラウドで 403 のため、
+> ローカル実行または代替手段が必要。クラウドセッションではこのステップをスキップし、`status:*` Issue ラベルで代替する
+> （built-in automation の close → Done は維持される）。
 
 ```bash
 # 1. フィールドID・オプションID を取得
@@ -183,7 +190,8 @@ gh project item-list PROJECT_NUMBER --owner kai-kou --format json
 ## 4. マイルストーン完了判定
 
 マイルストーン内の全 Issue が close されたら、完了基準を確認してマイルストーンを close する
-（**ローカル実行のみ**: milestones REST は MCP に等価ツールがなくクラウドでは 403。クラウドではスキップし、束ねた epic Issue のクローズで代替する）:
+（⚠️ クラウドでは実行不可（MCP に等価ツールなし・§2.5）: milestones REST はクラウドで 403 のため、
+ローカル実行または代替手段が必要。クラウドではスキップし、束ねた epic Issue のクローズで代替する）:
 
 ```bash
 gh api repos/kai-kou/github-issue-shortcut/milestones --jq '.[] | "\(.number): \(.title)"'

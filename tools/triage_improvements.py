@@ -2,7 +2,7 @@
 """
 triage_improvements.py - 改善 Issue 棚卸し（grooming）支援ツール
 
-improvement-groomer スキルの「重い処理」層。type:improvement の Issue を一括取得し、
+self-improvement-loop スキル（整理モード）の「重い処理」層。type:improvement の Issue を一括取得し、
 集計・カテゴリ自動分類・重複検出・priority/sp 欠損検出・Epic 候補抽出を行い、
 機械可読 JSON と人間可読 Markdown レポートを出力する。
 

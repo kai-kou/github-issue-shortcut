@@ -28,17 +28,17 @@ error_output=$(echo "$input" | jq -r '.tool_response // ""')
 # gh コマンドでなければスキップ
 if ! echo "$command" | grep -qE '^\s*gh '; then exit 0; fi
 
-# --- egress プロキシの 403 ブロック検出（L-114・2026-07-14 実測: repo REST は許可に変化） ---
-# クラウドでは GraphQL・search・非 repo REST・Actions variables/secrets が 403 になる。
-# 一方 repo スコープ REST（gh api repos/{o}/{r}/...）と gh シム変換対象コマンドは動作する
-# （Issue #254）。リトライ・urllib 直叩きでは解決しないため、生存経路へ切り替えるよう案内する。
+# --- egress プロキシの 403 ブロック検出（L-114・2026-07-26 実測: repo REST も 403 へ回帰） ---
+# クラウドでは GraphQL・search・非 repo REST・Actions variables/secrets に加え、
+# repo スコープ REST（gh api repos/{o}/{r}/...）も 403 になる（原因はリポジトリの API attach 不足で、
+# gh の再実行・導入・トークン差し替え・urllib 直叩きのいずれでも解決しない・Issue #338 / #342）。
 # シグネチャの SSOT は tools/gh_shim.py の ERROR_GUIDANCE（drift 注意）。ここでは既知文言
 # + 汎用 HTTP 403 を検出する（プロキシ文言は変動するため exact-match のみに依存しない）
-if echo "$error_output" | grep -qE 'GraphQL proxying is not enabled|GraphQL query is not enabled|connect the Claude GitHub App|sessions are bound to their configured repositories|Access to this GitHub Actions path is not permitted|Resource not accessible by integration|HTTP 403'; then
+if echo "$error_output" | grep -qE 'GraphQL proxying is not enabled|GraphQL query is not enabled|connect the Claude GitHub App|GitHub access is not enabled for this session|sessions are bound to their configured repositories|Access to this GitHub Actions path is not permitted|Resource not accessible by integration|HTTP 403'; then
   jq -n --arg cmd "$command" '{
     "hookSpecificOutput": {
       "hookEventName": "PostToolUseFailure",
-      "additionalContext": ("[proxy-error-detector] クラウドの egress プロキシが gh を 403 でブロックしました（L-114）。リトライ・urllib 直叩きでは解決しません。\nコマンド: " + $cmd + "\n\n→ 生存経路へ切替してください（代替表 SSOT: docs/rules/github-mcp-fallback-patterns.md §2）:\n  1. gh シム変換対象（issue/pr/label/repo/release の list/view/create 等）: PATH に .claude/bin が入っていればそのまま再実行で REST 変換される（tools/gh_shim.py・Issue #254）\n  2. repo スコープ REST: gh api repos/{owner}/{repo}/...（2026-07-14 実測で許可）\n  3. MCP: list_issues / list_pull_requests / issue_write / create_pull_request / merge_pull_request / get_file_contents / search_issues / actions_list / get_job_logs\n  - gh variable/secret はクラウド代替なし（env は Claude.ai 環境設定 / secrets-broker・同 §2.4）")
+      "additionalContext": ("[proxy-error-detector] クラウドで gh が 403 になりました（L-114）。gh のリトライ・導入・GH_TOKEN 差し替え・urllib/curl 直叩きのいずれでも解決しません（原因はリポジトリの API attach 不足）。\nコマンド: " + $cmd + "\n\n→ mcp__github__* へ切り替えてください（代替表 SSOT: docs/rules/github-mcp-fallback-patterns.md §2）:\n  - Issue/PR: list_issues / issue_read / issue_write / add_issue_comment / list_pull_requests / pull_request_read / create_pull_request / merge_pull_request\n  - ファイル: get_file_contents / create_or_update_file / push_files\n  - 検索・CI: search_issues / search_code / actions_list / get_job_logs\n  - git 操作（clone/fetch/push）は別プロキシで生存しているのでそのまま使える\n  - gh variable/secret はクラウド代替なし（env は Claude.ai 環境設定 / secrets-broker・同 §2.4）")
     }
   }'
   exit 0
@@ -57,12 +57,24 @@ if [ -z "$REPO_SLUG" ]; then
 fi
 [ -z "$REPO_SLUG" ] && REPO_SLUG="kai-kou/github-issue-shortcut"
 
+# クラウドでは gh を直す方向の案内をしない（gh 自体が使えないため・#342）。MCP へ誘導する。
+if [ "${CLAUDE_CODE_REMOTE:-}" = "true" ]; then
+  jq -n --arg cmd "$command" '{
+    "hookSpecificOutput": {
+      "hookEventName": "PostToolUseFailure",
+      "additionalContext": ("[proxy-error-detector] クラウドで gh コマンドが失敗しました。クラウドの GitHub 操作は mcp__github__* が一次経路で、gh のフラグ調整・再実行では解決しません（L-114）。\nコマンド: " + $cmd + "\n\n→ 対応する mcp__github__* ツールに置き換えてください（代替表: docs/rules/github-mcp-fallback-patterns.md §2）。PR 作成は mcp__github__create_pull_request（head/base を明示）。")
+    }
+  }'
+  exit 0
+fi
+
+# --- 以下はローカル実行向け（gh が到達できる環境での引数不足エラー）---
 # gh pr create のエラー
 if echo "$command" | grep -q 'gh pr create'; then
   jq -n --arg repo "$REPO_SLUG" '{
     "hookSpecificOutput": {
       "hookEventName": "PostToolUseFailure",
-      "additionalContext": ("[proxy-error-detector] gh pr create がプロキシ環境エラーで失敗しました。\n\n原因: プロキシ環境では git remote からリポジトリを自動検出できません。\n\n修正方法: 以下のフラグを追加してください\n  --head {現在のブランチ名} --base main\n\n修正例:\n  gh pr create --head claude/BRANCH_NAME --base main -R " + $repo + " ...\n\n→ CLAUDE.md の「### gh CLI」と .claude/skills/project-manager/SKILL.md に --head/--base 必須ルールを追記してください（未記載の場合）。")
+      "additionalContext": ("[proxy-error-detector] gh pr create が失敗しました。\n\n原因: git remote からリポジトリを自動検出できません。\n\n修正方法: 以下のフラグを追加してください\n  --head {現在のブランチ名} --base main\n\n修正例:\n  gh pr create --head claude/BRANCH_NAME --base main -R " + $repo + " ...")
     }
   }'
   exit 0
@@ -72,7 +84,7 @@ fi
 jq -n --arg cmd "$command" --arg repo "$REPO_SLUG" '{
   "hookSpecificOutput": {
     "hookEventName": "PostToolUseFailure",
-    "additionalContext": ("[proxy-error-detector] gh CLI コマンドがプロキシ環境エラーで失敗しました。\nコマンド: " + $cmd + "\n\n修正チェックリスト:\n1. -R " + $repo + " が付与されているか\n2. gh pr create の場合 --head {ブランチ名} --base main が付与されているか\n3. gh api の場合 repos/" + $repo + "/... のフルパスを使っているか\n\n→ 同じエラーが繰り返される場合、CLAUDE.md の「### gh CLI」に制約を追記してください。")
+    "additionalContext": ("[proxy-error-detector] gh コマンドが失敗しました。\nコマンド: " + $cmd + "\n\n修正チェックリスト:\n1. -R " + $repo + " が付与されているか\n2. gh pr create の場合 --head {ブランチ名} --base main が付与されているか\n3. gh api の場合 repos/" + $repo + "/... のフルパスを使っているか")
   }
 }'
 
