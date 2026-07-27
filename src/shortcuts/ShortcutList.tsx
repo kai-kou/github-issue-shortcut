@@ -1,19 +1,10 @@
-import { useEffect, useState, type MouseEvent } from "react";
+import { useMemo, type MouseEvent } from "react";
 import { useLanguage } from "../i18n/LanguageContext";
 import { buildLaunchUrl } from "./launchUrl";
-import { loadShortcutsCache, saveShortcutsCache, type Shortcut } from "./shortcutsCache";
-
-type ShortcutsState = { status: "loading" } | { status: "error" } | { status: "ready"; shortcuts: Shortcut[] };
-
-/** ローカルキャッシュ（#101・SWR）が現在ユーザーのものであれば起動直後から ready で表示し、
- * fetch 完了を待たせない（別ユーザーのキャッシュは userId 不一致で無視され loading 初期化になる）。 */
-function initialShortcutsState(userId: number): ShortcutsState {
-  const cached = loadShortcutsCache(userId);
-  return cached ? { status: "ready", shortcuts: cached } : { status: "loading" };
-}
+import { listShortcuts, type Shortcut } from "./shortcutsStore";
 
 interface ShortcutListProps {
-  /** ログイン中ユーザーの GitHub ユーザー ID。SWR キャッシュの所有者照合に使う（#101・別アカウント混入防止）。 */
+  /** ログイン中ユーザーの GitHub ユーザー ID。ローカル保存の所有者照合に使う（#101・別アカウント混入防止）。 */
   userId: number;
   /** タップされたプリセットをページ遷移せずにアプリ内で開く（#135）。処理した場合は true を返す。
    * false（未指定・リポジトリなしプリセット）のときは `<a href>` の通常遷移にフォールバックする。 */
@@ -30,29 +21,9 @@ interface ShortcutListProps {
  */
 export function ShortcutList({ userId, onLaunch }: ShortcutListProps) {
   const { t } = useLanguage();
-  const [state, setState] = useState<ShortcutsState>(() => initialShortcutsState(userId));
-
-  useEffect(() => {
-    let active = true;
-    fetch("/api/shortcuts", { credentials: "same-origin" })
-      .then(async (res) => {
-        if (!res.ok) throw new Error(`unexpected status: ${res.status}`);
-        return (await res.json()) as { shortcuts: Shortcut[] };
-      })
-      .then((data) => {
-        if (!active) return;
-        saveShortcutsCache(userId, data.shortcuts);
-        setState({ status: "ready", shortcuts: data.shortcuts });
-      })
-      .catch(() => {
-        // キャッシュ由来で既に ready なら、fetch 失敗（オフライン等）で表示を壊さず維持する
-        // （SWR: revalidate 失敗時は stale データを見せ続ける・#101）。
-        if (active) setState((prev) => (prev.status === "ready" ? prev : { status: "error" }));
-      });
-    return () => {
-      active = false;
-    };
-  }, [userId]);
+  // 正本が端末内（localStorage）になったため同期的に読める。ネットワーク待ち・取得失敗の
+  // 状態がなくなり、オフラインでも常に一覧が出る（P1・stateless-architecture.md §3）。
+  const shortcuts = useMemo(() => listShortcuts(userId), [userId]);
 
   /** 主ボタン・修飾キーなしのタップだけをアプリ内起動へ振り替える（#135）。
    * 「新しいタブで開く」「リンクをコピー」等のブラウザ標準動作と長押しメニューは `<a href>` のまま残す。 */
@@ -62,9 +33,7 @@ export function ShortcutList({ userId, onLaunch }: ShortcutListProps) {
     if (onLaunch(shortcut)) e.preventDefault();
   }
 
-  if (state.status === "loading") return null;
-  if (state.status === "error") return <p className="status-note">{t.shortcuts.homeListLoadError}</p>;
-  if (state.shortcuts.length === 0) return null;
+  if (shortcuts.length === 0) return null;
 
   return (
     <div className="card">
@@ -72,7 +41,7 @@ export function ShortcutList({ userId, onLaunch }: ShortcutListProps) {
         <strong>{t.shortcuts.homeListTitle}</strong>
       </p>
       <ul className="shortcut-quicklist">
-        {state.shortcuts.map((shortcut) => {
+        {shortcuts.map((shortcut) => {
           const label = shortcut.name || shortcut.title || shortcut.repo;
           const meta = [shortcut.repo, shortcut.labels.join(",")].filter(Boolean).join(" · ");
           return (
