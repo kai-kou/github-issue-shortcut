@@ -51,6 +51,23 @@ describe("GET /api/ready", () => {
     expect(body.checks.rateLimiter).toBe(false);
   });
 
+  it("reports not-ready when the E2E relaxed rate limit is enabled (本番へ紛れ込む事故の検知)", async () => {
+    // E2E の wrangler dev が使う緩和フラグ（上限 1000 件/分）が本番 vars にコピーされると、
+    // 不正利用対策が実質無効のまま 200 を返してしまう。それを readiness で落とす。
+    const ctx = createExecutionContext();
+    const res = await worker.fetch(
+      new Request("https://example.com/api/ready"),
+      { ...testEnv, ISSUE_RATE_LIMIT_RELAXED_ENABLED: "1" } as unknown as Env,
+      ctx,
+    );
+    await waitOnExecutionContext(ctx);
+    expect(res.status).toBe(503);
+    const body = (await res.json()) as { ready: boolean; checks: Record<string, boolean> };
+    expect(body.ready).toBe(false);
+    expect(body.checks.rateLimiterStrict).toBe(false);
+    expect(body.checks.rateLimiter).toBe(true); // バインディング自体は存在する
+  });
+
   it("reports an unusable TOKEN_KEY_VERSION instead of silently falling back to v1", async () => {
     // env を差し替えるため SELF ではなくハンドラを直接呼ぶ（SELF.fetch は env を受け取らない）。
     const ctx = createExecutionContext();

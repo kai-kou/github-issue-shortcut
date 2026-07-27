@@ -9,7 +9,8 @@ import {
   type QueuedIssue,
 } from "./offlineQueue";
 import { apiFetch } from "../auth/apiFetch";
-import { claimRequestId, releaseRequestId } from "./sentRequestIds";
+import { claimRequestId, markRequestIdSent, releaseRequestId } from "./sentRequestIds";
+import { claimSubmission, releaseSubmission } from "./submitGuard";
 import { submitErrorCode } from "./submitError";
 import { loadDraft, clearDraft } from "./draft";
 
@@ -36,15 +37,25 @@ function clearDraftIfMatching(entry: { repo: string; title: string; body: string
 type PostOutcome =
   | { outcome: "success" }
   | { outcome: "duplicate" }
+  /** 他経路（他タブ・SW）が送信中。今回は何もせず pending のまま次の機会に再判定する。 */
+  | { outcome: "deferred" }
   | { outcome: "network-error" }
   | { outcome: "failed"; code: string };
 
 /** キュー1件分の送信を試みる（自動再送・手動再送の両方から呼ぶ共通経路）。*/
 async function postQueuedEntry(entry: QueuedIssue): Promise<PostOutcome> {
+  // 同一内容の重複判定（FR-24・30 秒窓）は直接送信と共通のガードを通す。オフライン中に同じ内容を
+  // 押し直すとキューには別 id で 2 件積まれるため、id ガードだけでは復帰後の連続再送で 2 件作られる。
+  if (!(await claimSubmission(entry))) return { outcome: "duplicate" };
   // 同じ client_request_id の再送が別経路（他タブ・Service Worker）で走っていないかを端末内で
-  // 確認してから送る（B4-4・OQ-8・P3 でサーバーの request_ids から移設）。予約できなければ
-  // その送信は既に担当済みなので、実質的に成功（duplicate）として扱いキューから外す。
-  if (!(await claimRequestId(entry.id))) return { outcome: "duplicate" };
+  // 確認してから送る（B4-4・OQ-8・P3 でサーバーの request_ids から移設）。
+  const claim = await claimRequestId(entry.id);
+  if (claim !== "claimed") {
+    // 送信中（deferred）はキューに残して次の機会へ。送信済み（duplicate）だけをキューから外す
+    // （予約の存在だけを成功とみなすと、応答前に落ちた送信が黙って失われる）。
+    await releaseSubmission(entry);
+    return claim === "sent" ? { outcome: "duplicate" } : { outcome: "deferred" };
+  }
   let res: Response;
   try {
     res = await apiFetch("/api/issues", {
@@ -54,12 +65,16 @@ async function postQueuedEntry(entry: QueuedIssue): Promise<PostOutcome> {
     });
   } catch {
     // ネットワーク到達不能（まだオフライン）。次の再送を通すため予約を解放する。
-    await releaseRequestId(entry.id);
+    await Promise.all([releaseRequestId(entry.id), releaseSubmission(entry)]);
     return { outcome: "network-error" };
   }
-  if (res.ok) return { outcome: "success" };
+  if (res.ok) {
+    // ここではじめて「送信済み」を確定させる（以降 26 時間、同じ id の再送は重複として弾かれる）。
+    await markRequestIdSent(entry.id);
+    return { outcome: "success" };
+  }
   // 4xx/5xx は GitHub 側で作成されていないため、手動再送（D2-1）を通すために解放する。
-  await releaseRequestId(entry.id);
+  await Promise.all([releaseRequestId(entry.id), releaseSubmission(entry)]);
   return { outcome: "failed", code: await submitErrorCode(res) };
 }
 
@@ -80,9 +95,9 @@ export function useOfflineQueueSync() {
       if (flushingRef.current) return;
       flushingRef.current = true;
       try {
-        // 滞留が長すぎる pending は自動再送せず failed（queue_expired）へ落とす（#91）。サーバー側の
-        // 重複防止窓（26h）が切れた後に同じ client_request_id で送ると、既に作成済みの Issue を
-        // もう一度作りかねないため、ここから先はユーザーの確認（D2-1 の一覧）に委ねる。
+        // 滞留が長すぎる pending は自動再送せず failed（queue_expired）へ落とす（#91）。端末内の
+        // 重複防止窓（26h・sentRequestIds）が切れた後に同じ client_request_id で送ると、別経路が
+        // 既に作成済みの Issue をもう一度作りかねないため、ここから先はユーザーの確認（D2-1 の一覧）に委ねる。
         const { queue: current, expiredIds } = expireStaleOfflineQueue();
         if (expiredIds.length > 0) {
           startTransition(() => {
@@ -99,6 +114,10 @@ export function useOfflineQueueSync() {
           if (result.outcome === "network-error") {
             // まだオフライン。キューに残し、次の online イベントで再試行する。
             break;
+          }
+          if (result.outcome === "deferred") {
+            // 他経路が送信中。状態を変えずに次のエントリへ進む（次の flush で再判定される）。
+            continue;
           }
           if (result.outcome === "success" || result.outcome === "duplicate") {
             startTransition(() => applyAction({ type: "settle", id: entry.id, status: "removed" }));
@@ -143,7 +162,7 @@ export function useOfflineQueueSync() {
       startTransition(() => applyAction({ type: "settle", id, status: "failed", errorCode: result.code }));
       setQueue(markOfflineQueueFailed(id, result.code));
     }
-    // network-error（まだオフライン）は状態を変えず failed のまま残す。
+    // network-error（まだオフライン）・deferred（他経路が送信中）は状態を変えず failed のまま残す。
   }
 
   /** failed のキュー項目を破棄する（D2-1・#22）。呼び出し側で確認 UI を挟む想定。 */

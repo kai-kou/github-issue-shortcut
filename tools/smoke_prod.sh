@@ -4,7 +4,7 @@
 # 「本番の設定・プロビジョニング不良」を検知する層（#56）。
 #   - TOKEN_ENCRYPTION_KEY 不正 → /auth/login 500 / /api/ready で encryptionKey=false
 #   - GITHUB_CLIENT_ID 欠落     → /auth/login の client_id 空 / /api/ready で clientId=false
-#   - remote D1 未マイグレーション → /api/ready で database=false（/auth/callback 500 の主因）
+#   - レート制限バインディング未設定 / E2E 用の緩和フラグ混入 → /api/ready で rateLimiter / rateLimiterStrict=false
 #
 # 使い方: tools/smoke_prod.sh [BASE_URL]
 set -uo pipefail
@@ -20,7 +20,7 @@ req() { curl -sS -w $'\n%{http_code}' "$1" 2>/dev/null; }
 out=$(req "$BASE/api/health"); code="${out##*$'\n'}"
 if [ "$code" = "200" ]; then note "✅ /api/health 200"; else note "❌ /api/health $code"; fail=1; fi
 
-# 2. /api/ready → 200（鍵妥当性・Client ID・D1 テーブルの自己診断）
+# 2. /api/ready → 200（鍵妥当性・鍵バージョン・Client ID・レート制限バインディングの自己診断）
 out=$(req "$BASE/api/ready"); code="${out##*$'\n'}"; body="${out%$'\n'*}"
 if [ "$code" = "200" ]; then note "✅ /api/ready 200 $body"; else note "❌ /api/ready $code $body"; fail=1; fi
 

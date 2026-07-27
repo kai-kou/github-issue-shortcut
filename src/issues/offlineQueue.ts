@@ -18,7 +18,7 @@ export const QUEUE_EXPIRED_ERROR_CODE = "queue_expired";
 
 export type QueuedIssue = {
   /** キュー管理用 ID。最初の送信試行時に発行し、SW 側 Background Sync・クライアント側再送の
-   * 双方で同じ値を送り続けることで、サーバー側の長時間窓の重複防止（B4-4・OQ-8）に使う
+   * 双方で同じ値を送り続けることで、端末内の長時間窓の重複防止（B4-4・OQ-8・sentRequestIds.ts）に使う
    * client_request_id を兼ねる。 */
   id: string;
   repo: string;
@@ -92,7 +92,7 @@ export function isOfflineQueueEntryExpired(entry: QueuedIssue, now: number): boo
 
 /** pending のうち TTL 超過分を failed（`queue_expired`）へ落とした結果を返す純関数。
  * 期限切れを自動再送の対象から外し、ユーザーの手動確認（D2-1 の一覧・再送 / 破棄）へ委ねることで、
- * サーバー側の重複防止窓が切れた後の重複起票を防ぐ（#91）。 */
+ * 端末内の重複防止窓（`sentRequestIds.ts` の 26 時間）が切れた後の重複起票を防ぐ（#91）。 */
 export function expireStaleEntries(
   queue: QueuedIssue[],
   now: number,

@@ -15,22 +15,30 @@ const input = { repo: "kai-kou/alpha", title: "タイトル", body: "本文", la
 const NOW = 1_800_000_000_000;
 
 describe("submissionKey", () => {
-  it("treats the same content as the same key", () => {
-    expect(submissionKey(input)).toBe(submissionKey({ ...input, labels: ["bug"] }));
+  it("treats the same content as the same key", async () => {
+    expect(await submissionKey(input)).toBe(await submissionKey({ ...input, labels: ["bug"] }));
   });
 
-  it("distinguishes content that differs in any field", () => {
-    expect(submissionKey(input)).not.toBe(submissionKey({ ...input, title: "別のタイトル" }));
-    expect(submissionKey(input)).not.toBe(submissionKey({ ...input, body: "別の本文" }));
-    expect(submissionKey(input)).not.toBe(submissionKey({ ...input, repo: "kai-kou/beta" }));
-    expect(submissionKey(input)).not.toBe(submissionKey({ ...input, labels: [] }));
+  it("distinguishes content that differs in any field", async () => {
+    const base = await submissionKey(input);
+    expect(base).not.toBe(await submissionKey({ ...input, title: "別のタイトル" }));
+    expect(base).not.toBe(await submissionKey({ ...input, body: "別の本文" }));
+    expect(base).not.toBe(await submissionKey({ ...input, repo: "kai-kou/beta" }));
+    expect(base).not.toBe(await submissionKey({ ...input, labels: [] }));
   });
 
-  it("does not blur field boundaries (改行を含む値で隣のフィールドと混ざらない)", () => {
+  it("does not blur field boundaries (改行を含む値で隣のフィールドと混ざらない)", async () => {
     // repo="a", title="b\nc" と repo="a\nb", title="c" が同じキーになる素朴な連結を避ける。
-    const a = submissionKey({ repo: "a", title: "b\nc", body: "", labels: [] });
-    const b = submissionKey({ repo: "a\nb", title: "c", body: "", labels: [] });
+    const a = await submissionKey({ repo: "a", title: "b\nc", body: "", labels: [] });
+    const b = await submissionKey({ repo: "a\nb", title: "c", body: "", labels: [] });
     expect(a).not.toBe(b);
+  });
+
+  it("does not keep the issue title/body in the key (端末に平文を残さない)", async () => {
+    const key = await submissionKey(input);
+    expect(key).not.toContain(input.title);
+    expect(key).not.toContain(input.body);
+    expect(key).toMatch(/^[0-9a-f]{64}$/);
   });
 });
 
@@ -55,6 +63,13 @@ describe("claimSubmissionRecord", () => {
     const records: SubmissionRecord[] = [{ key: "k1", at: NOW }];
     const next = claimSubmissionRecord(records, "k2", NOW + 1_000);
     expect(next).toHaveLength(2);
+  });
+
+  it("ignores a future-dated record so a clock skew cannot block the content forever", () => {
+    // 端末の時計が進んだ状態で書かれた記録は now - at が負になる。単純な上限判定だけだと
+    // 「常に窓内」と評価され、時計が戻った後もその内容の送信が永久にブロックされる。
+    const records: SubmissionRecord[] = [{ key: "k", at: NOW + 60_000 }];
+    expect(claimSubmissionRecord(records, "k", NOW)).toEqual([{ key: "k", at: NOW }]);
   });
 
   it("drops expired records while claiming so the store cannot grow without bound", () => {
@@ -90,6 +105,7 @@ describe("pruneSubmissions", () => {
   it("keeps only records inside the window", () => {
     const records: SubmissionRecord[] = [
       { key: "expired", at: NOW - DUPLICATE_SUBMISSION_WINDOW_MS - 1 },
+      { key: "future", at: NOW + 1 },
       { key: "fresh", at: NOW - 1 },
     ];
     expect(pruneSubmissions(records, NOW)).toEqual([{ key: "fresh", at: NOW - 1 }]);

@@ -28,6 +28,8 @@
   "ratelimits": [
     {
       // 本番の上限: 起票 10 件/分（GitHub の二次制限 80 req/min の 1/8）。
+      // `period` を変えるときは `worker/index.ts` の ISSUE_RATE_LIMIT_WINDOW_SECONDS（429 の
+      // Retry-After に使う）も必ず合わせること（binding から period を読む API が無いため二重管理）。
       "name": "ISSUE_RATE_LIMIT",
       "namespace_id": "1001",
       "simple": { "limit": 10, "period": 60 }

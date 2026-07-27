@@ -298,10 +298,9 @@ export function RepoPicker({ prefill = null, userId, ref }: RepoPickerProps) {
     const guardInput = { repo: selected, title: input.title, body: input.body, labels: input.labels };
     // 同一内容の二重送信（再タップ・タイムアウトと思っての押し直し）を端末内で弾く（FR-24・P3）。
     // 送信ボタンの無効化だけでは、ほぼ同時の二重タップやシート再表示後の再送信を止めきれない。
-    if (!claimSubmission(guardInput)) {
-      // 直前の同一内容が既に GitHub 側で成功している。取り残された下書きが後のウィンドウ外での
-      // 二重作成を招かないよう、下書きはクリアする（B5-1 と整合）。
-      clearDraft();
+    // 下書きはここでクリアしない: 端末内の予約は「送信済み」の証明ではない（応答前にタブが破棄されると
+    // 予約だけが残る）ため、消すと入力を失う可能性がある（D-7・入力は絶対に失わせない）。
+    if (!(await claimSubmission(guardInput))) {
       setSubmitState({ status: "error", code: "duplicate_submission" });
       return;
     }
@@ -313,7 +312,7 @@ export function RepoPicker({ prefill = null, userId, ref }: RepoPickerProps) {
       });
       if (!res.ok) {
         // 失敗した内容の予約は解放する（残すと正当な再試行まで 30 秒ブロックしてしまう）。
-        releaseSubmission(guardInput);
+        await releaseSubmission(guardInput);
         setSubmitState({ status: "error", code: await submitErrorCode(res) });
         return;
       }
@@ -327,7 +326,7 @@ export function RepoPicker({ prefill = null, userId, ref }: RepoPickerProps) {
     } catch {
       // ネットワーク到達不能ならサーバーには届いていない。予約を残すと、キュー再送が始まる前に
       // ユーザーが押し直した正当な送信まで 30 秒ブロックしてしまうため解放する。
-      releaseSubmission(guardInput);
+      await releaseSubmission(guardInput);
       // fetch 自体の失敗（オフライン・ネットワーク断）はオフラインキュー（B4-2・FR-22）へ積む。
       // 下書き（B5-1）は再送が確定するまで消さずに残す（再送失敗時の手動復旧経路として機能する）。
       // フォームはクリアしない（D-7・入力は絶対に失わせない）: formKey を進めて再マウントしても

@@ -4,11 +4,11 @@ import type { Env } from "./types";
 import {
   codeChallengeS256,
   createCodeVerifier,
+  hmacSha256Base64url,
   isValidEncryptionKey,
   openVersioned,
   randomToken,
   sealVersioned,
-  sha256Base64url,
 } from "./crypto";
 import {
   buildAuthorizeUrl,
@@ -146,12 +146,14 @@ async function revokeTokenBestEffort(c: Context<{ Bindings: Env }>, bundle: Toke
 }
 
 /**
- * レート制限のキー（PR-4）。GitHub の数値ユーザー ID を **ハッシュ化** して渡し、
- * Cloudflare 側にはカウンタと不可逆な鍵だけが載るようにする（保持ゼロ方針・§8）。
+ * レート制限のキー（PR-4）。GitHub の数値ユーザー ID を **秘密鍵付きハッシュ（HMAC-SHA256）** にして渡し、
+ * Cloudflare 側にはカウンタと逆引き不能な鍵だけが載るようにする（保持ゼロ方針・§8）。
+ * 無塩ハッシュにしないのは、GitHub のユーザー ID が公開かつ実質連番で、総当たりで逆引きできてしまうため
+ * （それでは「ユーザー ID そのものは渡さない」というプライバシーポリシーの主張が成立しない）。
  * ID は AEAD で認証済みの Cookie 由来のため、他人になりすましてキーを分散させることはできない。
  */
-function rateLimitKey(bundle: TokenBundle): Promise<string> {
-  return sha256Base64url(`issue-rate-limit:${bundle.u}`);
+function rateLimitKey(env: Env, bundle: TokenBundle): Promise<string> {
+  return hmacSha256Base64url(env.TOKEN_ENCRYPTION_KEY, `issue-rate-limit:${bundle.u}`);
 }
 
 app.get("/api/health", (c) => c.json({ status: "ok" }));
@@ -168,9 +170,14 @@ app.get("/api/ready", (c) => {
     clientId: Boolean(c.env.GITHUB_CLIENT_ID),
     // レート制限バインディング（PR-4）の設定漏れは、起票が全て素通りする＝不正利用対策が
     // 効いていない状態になる。500 になるまで気づけないので ready で先に可視化する。
-    rateLimiter: typeof resolveIssueRateLimiter(c.env)?.limit === "function",
+    rateLimiter: typeof c.env.ISSUE_RATE_LIMIT?.limit === "function",
+    // E2E 用の緩和フラグ（上限 1000 件/分）が本番 vars に紛れ込むと、上限が実質無効のまま
+    // 200 を返してしまう。「効いていない状態」を検知するのがこのチェックの目的なので、
+    // 緩和モードで動いていること自体を not-ready として扱う。
+    rateLimiterStrict: c.env.ISSUE_RATE_LIMIT_RELAXED_ENABLED !== "1",
   };
-  const ready = checks.encryptionKey && checks.keyVersion && checks.clientId && checks.rateLimiter;
+  const ready =
+    checks.encryptionKey && checks.keyVersion && checks.clientId && checks.rateLimiter && checks.rateLimiterStrict;
   return c.json({ ready, checks }, ready ? 200 : 503);
 });
 
@@ -372,7 +379,7 @@ app.post("/api/issues", async (c) => {
   const bundle = await resolveTokens(c);
   if (bundle instanceof Response) return bundle;
 
-  const rateLimit = await resolveIssueRateLimiter(c.env).limit({ key: await rateLimitKey(bundle) });
+  const rateLimit = await resolveIssueRateLimiter(c.env).limit({ key: await rateLimitKey(c.env, bundle) });
   if (!rateLimit.success) {
     c.header("Retry-After", String(ISSUE_RATE_LIMIT_WINDOW_SECONDS));
     return c.json(jsonError("rate_limited", "too many issues submitted; please wait before retrying"), 429);

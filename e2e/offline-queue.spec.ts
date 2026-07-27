@@ -79,7 +79,7 @@ test.describe("オフラインキュー（モック GitHub・モバイルエミ�
     await page.unroute("**/api/issues");
 
     // 送信回数はブラウザが実際に投げた POST の数で数える。作成件数（/mock/issue-count）だけでは
-    // サーバー側の二重送信防止（issue_log の content_hash 窓）が二重送信を吸収してしまい、
+    // 端末内の二重送信防止（submitGuard の 30 秒窓）が二重送信を吸収してしまい、
     // クライアントのガードが壊れても 1 件のままになる＝ガードの回帰を検出できないため。
     let issuePostCount = 0;
     page.on("request", (req) => {
@@ -97,6 +97,70 @@ test.describe("オフラインキュー（モック GitHub・モバイルエミ�
     expect(issuePostCount, "online 二重発火でも起票 POST は 1 回だけ").toBe(1);
     const created = await (await request.get(`${MOCK_GITHUB_URL}/mock/issue-count`)).json();
     expect(created).toEqual({ count: 1 });
+  });
+
+  test("送信済みの client_request_id での再送はネットワークに出ない（端末内の冪等性キー・B4-4）", async ({
+    page,
+    request,
+  }) => {
+    await page.goto("/");
+    await page.getByRole("link", { name: /GitHub でログイン|Sign in with GitHub/ }).click();
+    await expect(page.getByText(/e2e-user/)).toBeVisible();
+
+    await page.getByRole("button", { name: "kai-kou/alpha" }).click();
+    await page.getByRole("textbox", { name: /タイトル|^Title$/ }).fill("冪等性キーの検証");
+
+    await page.route("**/api/issues", (route) => route.abort());
+    await page.getByRole("button", { name: /Issue を作成|Create issue/ }).click();
+    await expect(page.getByText(/送信待ちのオフラインキュー|Pending offline queue/)).toBeVisible();
+
+    // キューに積まれた client_request_id を控えておく（送信成功後はキューから消えるため）。
+    const sentId = await page.evaluate(() => {
+      const queue = JSON.parse(localStorage.getItem("issue-shortcut:offline-queue") ?? "[]") as { id: string }[];
+      return queue[0]?.id ?? "";
+    });
+    expect(sentId).not.toBe("");
+
+    await page.unroute("**/api/issues");
+    await page.evaluate(() => window.dispatchEvent(new Event("online")));
+    await expect(page.getByText(/送信待ちのオフラインキュー|Pending offline queue/)).toHaveCount(0, {
+      timeout: 10_000,
+    });
+    expect(await (await request.get(`${MOCK_GITHUB_URL}/mock/issue-count`)).json()).toEqual({ count: 1 });
+
+    // 送信済みの id を持つエントリをキューへ戻す（SW の Background Sync が同じリクエストを
+    // 再送した状況の再現）。タイトルだけ変えるのは、内容ベースの 30 秒窓ではなく **id 側の
+    // ガード**（IndexedDB・26 時間窓）が効いていることを分離して確かめるため。
+
+    let issuePostCount = 0;
+    page.on("request", (req) => {
+      if (req.method() === "POST" && req.url().includes("/api/issues")) issuePostCount += 1;
+    });
+
+    await page.evaluate((id) => {
+      localStorage.setItem(
+        "issue-shortcut:offline-queue",
+        JSON.stringify([
+          {
+            id,
+            repo: "kai-kou/alpha",
+            title: "冪等性キーの検証（再送）",
+            body: "",
+            labels: [],
+            queuedAt: Date.now(),
+            status: "pending",
+          },
+        ]),
+      );
+    }, sentId);
+    await page.reload();
+
+    // 予約済みの id なので送信されず、キューからは（送信済みとして）取り除かれる。
+    await expect(page.getByText(/送信待ちのオフラインキュー|Pending offline queue/)).toHaveCount(0, {
+      timeout: 10_000,
+    });
+    expect(issuePostCount, "送信済み id の再送は POST しない").toBe(0);
+    expect(await (await request.get(`${MOCK_GITHUB_URL}/mock/issue-count`)).json()).toEqual({ count: 1 });
   });
 
   test("4xx はキュー自動再送の対象外として扱われる", async ({ page }) => {
@@ -140,7 +204,7 @@ test.describe("オフラインキュー（モック GitHub・モバイルエミ�
     await expect(page.getByText(/送信待ちのオフラインキュー|Pending offline queue/)).toBeVisible();
 
     // 端末に残ったキューの queuedAt を TTL（24h）超過へ書き換え、数日放置された状態を再現する。
-    // サーバー側の重複防止窓（26h）が切れた後に自動再送すると重複起票しうるため、この状態では
+    // 端末内の重複防止窓（26h・sentRequestIds）が切れた後に自動再送すると重複起票しうるため、この状態では
     // 自動再送を止めてユーザーの確認に委ねるのが期待挙動（#91）。
     await page.unroute("**/api/issues");
     await page.evaluate(() => {

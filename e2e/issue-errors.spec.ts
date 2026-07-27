@@ -48,29 +48,10 @@ test.describe("起票エラー表示（モック GitHub・B5-2/FR-9）", () => {
     await expect(page.getByText(/リクエストが多すぎます|Too many requests/)).toBeVisible();
   });
 
-  test("アプリ側レート制限の 429（Retry-After 付き）も時間を置いて再試行する案内になる（PR-4）", async ({ page }) => {
-    await page.goto("/");
-    await page.getByRole("link", { name: /GitHub でログイン|Sign in with GitHub/ }).click();
-    await expect(page.getByText(/e2e-user/)).toBeVisible();
-
-    // 429 は Workers Rate Limiting binding が上限超過時に返す（P3）。E2E の wrangler dev は
-    // 緩い上限のバインディングを使う（全 spec が同一モックユーザーを共有するため）ので、
-    // ここでは応答だけを再現して UI の分岐（FR-9）を確認する。サーバー側の上限判定そのものは
-    // worker/issues.test.ts が実バインディングに対して検証している。
-    await page.route("**/api/issues", (route) =>
-      route.fulfill({
-        status: 429,
-        headers: { "Content-Type": "application/json", "Retry-After": "60" },
-        body: JSON.stringify({ error: { code: "rate_limited", message: "too many issues submitted" } }),
-      }),
-    );
-
-    await page.getByRole("button", { name: "kai-kou/alpha" }).click();
-    await page.getByRole("textbox", { name: /タイトル|^Title$/ }).fill("レート制限の表示");
-    await page.getByRole("button", { name: /Issue を作成|Create issue/ }).click();
-
-    await expect(page.getByText(/リクエストが多すぎます|Too many requests/)).toBeVisible();
-  });
+  // アプリ側レート制限（PR-4）の 429 は、応答 body の code が上の 403 と同じ `rate_limited` で、
+  // クライアントの分岐（submitError.ts）も表示文言も上のテストと完全に同一経路になる。E2E を足しても
+  // 新しい経路を通らないため、ここでは重複させない。サーバー側の 429 + Retry-After は
+  // worker/issues.test.ts が実際の Rate Limiting binding に対して検証している。
 
   test("422 は内容の見直しを促す表示になる（盲目リトライ禁止）", async ({ page }) => {
     await page.goto("/");

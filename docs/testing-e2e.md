@@ -63,7 +63,7 @@ headless シグナルで bot 検知・2FA が誘発され不安定になるた�
       ストップウォッチで 5 秒以内（`e2e/kpi.spec.ts` の外形計測はプロセス起動を含まない下限値）
 - [ ] 機内モードで起票 → キュー表示 → **アプリを完全に閉じた状態** から復帰し、Service Worker の
       Background Sync で自動再送が発火する（設定の残存は `tools/check_sw_background_sync.py` が
-      ガード。**重複の有無はサーバー側の冪等性キー（`request_ids`）+ `e2e/offline-queue.spec.ts` の
+      ガード。**重複の有無は端末内の冪等性キー（`src/issues/sentRequestIds.ts` の 26 時間窓）+ `e2e/offline-queue.spec.ts` の
       作成件数アサートで担保済みのため、実機で数え直す必要はない**）
 - [ ] 実指のタップで候補チップ・ラベルチェックボックスの誤タップが起きない（合成イベントは
       接触楕円を持たないため自動化不可）
@@ -133,7 +133,7 @@ tools/smoke_prod.sh   # 既定で本番 URL を検査。引数でプレビュー
 - `/api/ready` → 200（`TOKEN_ENCRYPTION_KEY` の 32 バイト妥当性・`GITHUB_CLIENT_ID` の存在・レート制限バインディングの有無を自己診断）
 - `/auth/login` → 302 で GitHub 認可 URL へ、かつ `client_id` が空でない
 
-`.github/workflows/smoke.yml` がスケジュール（6 時間ごと）+ 手動実行で本番に対して走らせ、本番デグレを早期検知する。**新しいマイグレーション・secret 変更・デプロイの後は、このスモークが緑であることをリリースの合否とする。**
+`.github/workflows/smoke.yml` がスケジュール（6 時間ごと）+ 手動実行で本番に対して走らせ、本番デグレを早期検知する。**secret / var / バインディングの変更・デプロイの後は、このスモークが緑であることをリリースの合否とする。**
 
 ## E2E の CI flaky 切り分け手順（#106）
 
