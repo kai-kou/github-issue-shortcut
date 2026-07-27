@@ -291,9 +291,9 @@ export function RepoPicker({ prefill = null, userId, ref }: RepoPickerProps) {
   async function submitIssue(input: IssueInput) {
     if (!selected) return;
     setSubmitState({ status: "submitting" });
-    // オフラインキューへ積む場合に SW 側 Background Sync 再送との重複防止キーとして使い回すため、
-    // 最初の送信試行の時点で発行する（失敗後に生成すると SW が既に再送した元リクエストと id が
-    // 揃わなくなる・B4-4）。
+    // オフラインキューへ積む場合に再送との重複防止キー（client_request_id）として使い回すため、
+    // 最初の送信試行の時点で発行する（失敗後に生成すると、別のタブが既に送った元リクエストと
+    // id が揃わなくなる・B4-4）。
     const clientRequestId = crypto.randomUUID();
     const guardInput = { repo: selected, title: input.title, body: input.body, labels: input.labels };
     // 同一内容の二重送信（再タップ・タイムアウトと思っての押し直し）を端末内で弾く（FR-24・P3）。

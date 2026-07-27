@@ -125,38 +125,24 @@ export default defineConfig({
         // /setup（GitHub App Setup URL 着地点）・/api/* も同様に Worker が都度処理すべきパスのため除外する。
         // 末尾スラッシュなし（例: 将来の /auth・/api 単体ルート）も除外できるよう (\/|$) で揃える。
         navigateFallbackDenylist: [/^\/auth(\/|$)/, /^\/setup(\/|$)/, /^\/api(\/|$)/],
-        // オフラインキュー（B4-2・FR-22）: ネットワーク到達不能時の起票 POST を Workbox Background
-        // Sync（IndexedDB キュー・約 24h 保持）に積み、オンライン復帰時に自動再送する。ページを閉じて
-        // いても再送される保証はこの SW 側の経路が担い、フォアグラウンドでの確実な UI 更新・キュー表示は
-        // クライアント側の再送経路（src/issues/useOfflineQueueSync.ts）が担う（二重化。経路をまたぐ
-        // 重複は client_request_id の端末内予約・src/issues/sentRequestIds.ts が吸収する）。
-        // 4xx/5xx はネットワーク成功レスポンスのため Background Sync のリトライ対象にならず、
-        // 要件どおり自動再送されない。
+        // オフラインキュー（B4-2・FR-22）の再送は **ページ側の経路に一本化している**
+        // （`src/issues/useOfflineQueueSync.ts`。キューの実体は localStorage・`offlineQueue.ts`）。
         //
-        // 🔴 既知の不具合（#177）: 下の `urlPattern` は Workbox が **URL 全体（url.href）** に対して
-        // 評価するため、`^/api/issues$` は同一オリジンのリクエストにも一致せず、この Background Sync
-        // ルートは現状 1 度も発火していない（＝「ページを閉じていても再送」は効いていない）。修正は
-        // SW 側の再送にも端末内の重複防止を効かせる仕組み（injectManifest 化）とセットで行う必要が
-        // あるため、P3 では現状維持とし #177 で扱う。
+        // 以前はここに Workbox Background Sync のルート（`issue-post-queue`）を置いていたが、
+        // 2 つの理由で撤去した（#177）。
         //
-        // P2（#164）以降、長時間オフラインだった端末の SW 再送は access token 失効で 401
-        // （token_expired）になりうる。SW からはリフレッシュできない（Web Locks で 1 本化した
-        // /auth/refresh はページ側の apiFetch が呼ぶ）が、同じ起票はクライアント側キュー
-        // （localStorage）にも pending で残っているため、次にページを開いたときの再送で
-        // リフレッシュ込みで送られる。client_request_id が同じなので二重起票にはならない。
-        runtimeCaching: [
-          {
-            urlPattern: /^\/api\/issues$/,
-            method: "POST",
-            handler: "NetworkOnly",
-            options: {
-              backgroundSync: {
-                name: "issue-post-queue",
-                options: { maxRetentionTime: 24 * 60 },
-              },
-            },
-          },
-        ],
+        // 1. **1 度も発火していなかった**: Workbox の RegExpRoute は正規表現を URL 全体（`url.href`）に
+        //    対して評価する。`/^\/api\/issues$/` は `https://host/api/issues` に一致しないため、
+        //    起票 POST はキューへ積まれていなかった。
+        // 2. **パターンを直すだけでは二重起票する**: P3（#165）でサーバー側の重複判定を廃止し、
+        //    照合を端末内（`src/issues/sentRequestIds.ts` の client_request_id 予約）へ移した。
+        //    Workbox の BackgroundSyncPlugin は自動でキューを再送するが、その再送はこの予約を
+        //    参照しないため、ページ側の再送と合わせて同じ起票が 2 件作られうる。SW から予約を
+        //    通すには injectManifest 化して SW を自前で書く必要があり、影響範囲が要件に見合わない。
+        //
+        // FR-22 の「オフライン・ネットワーク失敗時にキューし、回復時に再送できること」は、
+        // ページ側経路が満たす（次にアプリを開いた時点で `online` イベント / 初回 flush で再送される）。
+        // 4xx/5xx を自動再送しない要件も同経路が守る（failed としてキューに残し D2-1 の一覧で救済する）。
       },
     }),
     stripManifestFromSwPrecache(),
