@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { clearReposCache } from "../repos/reposCache";
-import { clearShortcutsCache } from "../shortcuts/shortcutsCache";
+import { clearShortcuts } from "../shortcuts/shortcutsStore";
 import { clearAllCachedLabels } from "../issues/repoLabelsCache";
 import { clearAuthCache, loadAuthCache, saveAuthCache } from "./authCache";
 
@@ -19,7 +19,7 @@ export type InstallState = boolean | null;
 export function clearAllUserCaches() {
   clearAuthCache();
   clearReposCache();
-  clearShortcutsCache();
+  clearShortcuts();
   clearAllCachedLabels();
 }
 
@@ -113,7 +113,7 @@ export function useAuthState(): AuthStateResult {
     // 別ユーザーの認証状態・リポジトリ/ショートカット一覧が次回起動時の SWR キャッシュに残らないようにする（#101/#119）。
     clearAuthCache();
     clearReposCache();
-    clearShortcutsCache();
+    clearShortcuts();
     await fetch("/auth/logout", { method: "POST", credentials: "same-origin" });
     clearAllCachedLabels();
     window.location.assign("/");

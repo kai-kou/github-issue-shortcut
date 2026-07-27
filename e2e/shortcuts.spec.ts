@@ -4,7 +4,7 @@ const MOCK_GITHUB_URL = "http://localhost:8788";
 
 // C1-1/C2-2 ショートカット作成ヘルパーの E2E（モック GitHub・モバイルエミュレーション）。
 // カバー範囲: 未ログイン時のログイン誘導、ログイン後のプリセット作成・URL 生成・一覧表示・
-// 編集・削除（サーバー保存の CRUD が /shortcuts 画面から一通り動くこと）。
+// 編集・削除（端末内保存の CRUD が /shortcuts 画面から一通り動くこと・P1 で localStorage 正本へ移行）。
 test.describe("ショートカット作成ヘルパー（モック GitHub・モバイルエミュレーション）", () => {
   test.beforeEach(async ({ request }) => {
     await request.post(`${MOCK_GITHUB_URL}/mock/config`, {

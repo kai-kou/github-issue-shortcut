@@ -9,12 +9,14 @@
     "GITHUB_CLIENT_ID": "Iv23livFCo9vcWDm0zyg"
   },
   "assets": {
-    // ASSETS binding は Worker から静的アセット（/manifest.webmanifest 等）を取得するために宣言する（#98）。
-    // directory は miniflare のテスト環境（vitest-pool-workers）が ASSETS を解決するために必要。
+    // directory は miniflare のテスト環境（vitest-pool-workers）が静的アセットを解決するために必要
+    // （docs/testing-e2e.md: これを消すとローカル unit テストが壊れる）。binding は Worker から
+    // アセットを取得する将来の用途のために残す（#98 の動的 manifest 撤去後は未使用）。
     "binding": "ASSETS",
     "directory": "./dist/client",
     "not_found_handling": "single-page-application",
-    "run_worker_first": ["/api/*", "/auth/*", "/setup", "/manifest.webmanifest"]
+    // manifest はユーザーごとの差し替えをやめ静的アセットのまま返す（P1・stateless-architecture.md §7）。
+    "run_worker_first": ["/api/*", "/auth/*", "/setup"]
   },
   "d1_databases": [
     {

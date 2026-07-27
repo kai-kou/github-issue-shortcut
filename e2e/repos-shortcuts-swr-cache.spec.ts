@@ -3,9 +3,10 @@ import { test, expect } from "@playwright/test";
 const MOCK_GITHUB_URL = "http://localhost:8788";
 
 // #101 の SWR（stale-while-revalidate）キャッシュ E2E（モック GitHub・モバイルエミュレーション）。
-// カバー範囲: 起動時に `/api/repos` `/api/shortcuts` の fetch が完了する前でも、直近訪問時に
-// 端末（localStorage）へ保存したキャッシュから即座にリポジトリ一覧・ショートカット一覧が表示され、
-// 「リポジトリを取得中」表示や非表示のまま待たされないこと（FR 根本原因の解消）。
+// カバー範囲: 起動時に `/api/repos` の fetch が完了する前でも、直近訪問時に端末（localStorage）へ
+// 保存したキャッシュから即座にリポジトリ一覧が表示され、「リポジトリを取得中」表示のまま
+// 待たされないこと（FR 根本原因の解消）。ショートカットは P1 で localStorage が正本になったため、
+// そもそもサーバーへ問い合わせないことを検証する。
 // あわせて、裏側では revalidate（最新 fetch）が進み、差分があれば反映されること、および
 // revalidate が失敗（オフライン等）してもキャッシュ表示のまま壊れないことも検証する。
 test.describe("起動時の即時表示（SWR キャッシュ・モック GitHub・モバイルエミュレーション）", () => {
@@ -104,44 +105,31 @@ test.describe("起動時の即時表示（SWR キャッシュ・モック GitHub
     await page.unroute("**/api/repos");
   });
 
-  test("2回目以降の起動は /api/shortcuts の応答を待たずキャッシュ由来のショートカット一覧が即座に表示される", async ({
-    page,
-  }) => {
+  test("ショートカット一覧はサーバーに問い合わせず端末内から即座に表示される（P1）", async ({ page }) => {
+    // P1（stateless-architecture.md §3）でショートカットの正本を localStorage へ移した。
+    // 起動時に /api/shortcuts を叩かない＝ネットワーク状態に関わらず即座に一覧が出ることを固める。
+    const shortcutApiRequests: string[] = [];
+    page.on("request", (req) => {
+      if (req.url().includes("/api/shortcuts")) shortcutApiRequests.push(req.url());
+    });
+
     await page.goto("/");
     await page.getByRole("link", { name: /GitHub でログイン|Sign in with GitHub/ }).click();
     await expect(page.getByText(/e2e-user/)).toBeVisible();
 
-    // ショートカットを1件作成する（ホーム画面のクイック一覧に表示される元データ）。
     await page.goto("/shortcuts");
-    await page.getByPlaceholder(/日報|Daily note/).fill("SWRチェック");
+    await page.getByPlaceholder(/日報|Daily note/).fill("ローカル保存チェック");
     await page.getByLabel(/リポジトリ（任意）|Repository \(optional\)/).selectOption("kai-kou/alpha");
     await page.getByRole("button", { name: /^保存$|^Save$/ }).click();
-    await expect(page.getByText("SWRチェック")).toBeVisible();
+    await expect(page.getByText("ローカル保存チェック")).toBeVisible();
 
-    try {
-      // 1回目のホーム訪問: 通常どおり fetch 完了後に一覧が表示され、端末にキャッシュされる。
-      await page.goto("/");
-      const quicklistItem = page.getByRole("link", { name: /SWRチェック/ });
-      await expect(quicklistItem).toBeVisible();
+    // 再訪: fetch を待たずにクイック一覧が見える。
+    await page.goto("/");
+    await expect(page.getByRole("link", { name: /ローカル保存チェック/ })).toBeVisible({ timeout: 800 });
+    await page.reload();
+    await expect(page.getByRole("link", { name: /ローカル保存チェック/ })).toBeVisible({ timeout: 800 });
 
-      // 2回目の訪問: /api/shortcuts の応答を大幅に遅延させる。
-      await page.route("**/api/shortcuts", async (route) => {
-        await new Promise((resolve) => setTimeout(resolve, 2500));
-        await route.continue();
-      });
-      await page.reload();
-
-      // fetch 未解決の短い猶予内でも、キャッシュ由来で即座にクイック一覧が見える
-      // （B: 従来は loading→null で非表示のままだった）。
-      await expect(page.getByRole("link", { name: /SWRチェック/ })).toBeVisible({ timeout: 800 });
-
-      await page.unroute("**/api/shortcuts");
-    } finally {
-      // 後続テスト・他 spec に汚染された D1 状態を残さないよう、作成したショートカットを削除する。
-      await page.goto("/shortcuts");
-      await page.getByRole("button", { name: /削除|Delete/ }).click();
-      await page.getByRole("button", { name: /削除|Delete/ }).click();
-      await expect(page.getByText(/まだショートカットがありません|No shortcuts yet/)).toBeVisible();
-    }
+    // ショートカット用のサーバー API は存在しない（呼ばれていないことを機械検証する）。
+    expect(shortcutApiRequests).toEqual([]);
   });
 });

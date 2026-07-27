@@ -155,7 +155,6 @@ interface Translations {
     placementGuideBody: string;
     placementGuideNote: string;
     homeListTitle: string;
-    homeListLoadError: string;
   };
 }
 
@@ -303,7 +302,6 @@ export const translations = {
       placementGuideNote:
         "この URL を単体でホーム画面のアイコンにしても、初期選択（プリセット）は反映されません（アプリはトップ画面で起動します・Android の仕様）。プリセット付きで開くには上記の方法を使ってください。",
       homeListTitle: "保存済みショートカット",
-      homeListLoadError: "ショートカットを読み込めませんでした",
     },
     terms: {
       title: "利用規約",
@@ -541,7 +539,6 @@ export const translations = {
       placementGuideNote:
         "Adding this URL to your home screen as a standalone icon won't keep the pre-selected fields—the app always launches on its main screen (an Android limitation). Use the methods above to open it with the preset applied.",
       homeListTitle: "Saved shortcuts",
-      homeListLoadError: "Could not load shortcuts",
     },
     terms: {
       title: "Terms of Service",
