@@ -131,6 +131,12 @@ export default defineConfig({
         // クライアント側の再送経路（src/issues/useOfflineQueueSync.ts）が担う（二重化。重複は
         // 既存の issue_log 照合・B4-3・#70 がサーバー側で吸収する）。4xx/5xx はネットワーク成功
         // レスポンスのため Background Sync のリトライ対象にならず、要件どおり自動再送されない。
+        //
+        // P2（#164）以降、長時間オフラインだった端末の SW 再送は access token 失効で 401
+        // （token_expired）になりうる。SW からはリフレッシュできない（Web Locks で 1 本化した
+        // /auth/refresh はページ側の apiFetch が呼ぶ）が、同じ起票はクライアント側キュー
+        // （localStorage）にも pending で残っているため、次にページを開いたときの再送で
+        // リフレッシュ込みで送られる。client_request_id が同じなので二重起票にはならない。
         runtimeCaching: [
           {
             urlPattern: /^\/api\/issues$/,

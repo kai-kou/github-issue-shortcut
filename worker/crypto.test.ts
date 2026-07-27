@@ -2,10 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   codeChallengeS256,
   createCodeVerifier,
-  decryptString,
-  encryptString,
-  hashSessionId,
+  KeyVersionMismatchError,
+  openVersioned,
   randomToken,
+  sealVersioned,
 } from "./crypto";
 
 // テスト用の 32 バイト鍵。全ゼロの base64（明らかにテスト用・秘密ではない・低エントロピー）。
@@ -22,16 +22,6 @@ describe("randomToken", () => {
   });
 });
 
-describe("hashSessionId", () => {
-  it("is deterministic and hides the raw id", async () => {
-    const id = randomToken(32);
-    const h1 = await hashSessionId(id);
-    const h2 = await hashSessionId(id);
-    expect(h1).toBe(h2);
-    expect(h1).not.toBe(id);
-    expect(h1).toMatch(/^[A-Za-z0-9_-]+$/);
-  });
-});
 
 describe("PKCE code challenge (S256)", () => {
   it("is deterministic and differs from the verifier", async () => {
@@ -44,29 +34,63 @@ describe("PKCE code challenge (S256)", () => {
   });
 });
 
-describe("AES-256-GCM encrypt/decrypt", () => {
-  it("round-trips plaintext without leaking it", async () => {
-    const plaintext = "gho_exampletoken_1234567890";
-    const blob = await encryptString(KEY, plaintext);
-    expect(blob).not.toContain(plaintext);
-    expect(await decryptString(KEY, blob)).toBe(plaintext);
-  });
-
+describe("AES-256-GCM の封入・開封", () => {
   it("uses a random IV so ciphertext differs each time", async () => {
-    const a = await encryptString(KEY, "same-plaintext");
-    const b = await encryptString(KEY, "same-plaintext");
+    const a = await sealVersioned(KEY, 1, "same-plaintext");
+    const b = await sealVersioned(KEY, 1, "same-plaintext");
     expect(a).not.toBe(b);
   });
 
   it("rejects tampered ciphertext", async () => {
-    const blob = await encryptString(KEY, "secret");
-    // 先頭文字（IV の一部）を反転する。末尾文字は base64url のパディングビットしか
-    // 変えずデコード結果が同一になりうるため、必ずバイトが変わる先頭を改ざんする。
-    const tampered = (blob[0] === "A" ? "B" : "A") + blob.slice(1);
-    await expect(decryptString(KEY, tampered)).rejects.toThrow();
+    const blob = await sealVersioned(KEY, 1, "secret");
+    // 2 文字目（IV の一部）を反転する。末尾文字は base64url のパディングビットしか
+    // 変えずデコード結果が同一になりうるため、必ずバイトが変わる前方を改ざんする。
+    const tampered = blob[0] + (blob[1] === "A" ? "B" : "A") + blob.slice(2);
+    await expect(openVersioned(KEY, 1, tampered)).rejects.toThrow();
   });
 
   it("rejects a key that is not 32 bytes", async () => {
-    await expect(encryptString("c2hvcnQ=", "x")).rejects.toThrow();
+    await expect(sealVersioned("c2hvcnQ=", 1, "x")).rejects.toThrow();
+  });
+});
+
+// 別の 32 バイト鍵（鍵ローテーションの検証用・全 1 バイトの base64）。
+const OTHER_KEY = "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=";
+
+describe("鍵バージョン付きの封入・開封（トークン Cookie・stateless-architecture.md §4）", () => {
+  it("round-trips plaintext with the current key version", async () => {
+    const plaintext = JSON.stringify({ a: "ghu_token", ae: 1234, r: "ghr_token", re: 5678, u: 42 });
+    const sealed = await sealVersioned(KEY, 1, plaintext);
+    expect(sealed).not.toContain("ghu_token");
+    expect(await openVersioned(KEY, 1, sealed)).toBe(plaintext);
+  });
+
+  it("refuses to open a value sealed with a different key version (＝鍵ローテーション後は再ログイン)", async () => {
+    const sealed = await sealVersioned(KEY, 1, "secret");
+    await expect(openVersioned(KEY, 2, sealed)).rejects.toBeInstanceOf(KeyVersionMismatchError);
+  });
+
+  it("opens a rotated value only with the matching version and key", async () => {
+    const sealed = await sealVersioned(OTHER_KEY, 2, "secret");
+    expect(await openVersioned(OTHER_KEY, 2, sealed)).toBe("secret");
+    // バージョンが合っていても鍵が違えば復号できない（GCM の認証タグで検出）。
+    await expect(openVersioned(KEY, 2, sealed)).rejects.toThrow();
+  });
+
+  it("detects a forged version byte (version is authenticated as AAD)", async () => {
+    const sealed = await sealVersioned(KEY, 1, "secret");
+    // 先頭バイト（バージョン）を 2 に差し替えた blob を組み立てる。
+    const bytes = Uint8Array.from(atob(sealed.replace(/-/g, "+").replace(/_/g, "/")), (ch) => ch.charCodeAt(0));
+    bytes[0] = 2;
+    let binary = "";
+    for (const b of bytes) binary += String.fromCharCode(b);
+    const forged = btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+    // バージョンは一致するが AAD 不一致（＝改ざん）として復号が失敗する。
+    await expect(openVersioned(KEY, 2, forged)).rejects.toThrow();
+  });
+
+  it("rejects an out-of-range key version", async () => {
+    await expect(sealVersioned(KEY, 0, "x")).rejects.toThrow();
+    await expect(sealVersioned(KEY, 256, "x")).rejects.toThrow();
   });
 });

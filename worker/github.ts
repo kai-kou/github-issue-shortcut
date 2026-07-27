@@ -78,6 +78,18 @@ export async function exchangeCodeForToken(params: {
   return data;
 }
 
+/**
+ * GitHub が refresh token 自体を拒否したことを表す（`bad_refresh_token` 等）。
+ * ネットワーク断・GitHub の 5xx といった **一過性の障害と区別する** ために型を分ける:
+ * 前者は再ログインしか回復手段がないが、後者で再ログインを強制すると単なる可用性の劣化になる。
+ */
+export class TokenRefreshRejectedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "TokenRefreshRejectedError";
+  }
+}
+
 /** リフレッシュトークンで access token を更新する（単回使用ローテーション・A1-2）。 */
 export async function refreshAccessToken(params: {
   oauthBase: string;
@@ -100,10 +112,48 @@ export async function refreshAccessToken(params: {
     }),
   });
   const data = (await res.json()) as GitHubTokenResponse;
-  if (!res.ok || data.error || !data.access_token) {
-    throw new Error(`GitHub token refresh failed: ${data.error ?? `HTTP ${res.status}`}`);
+  // GitHub は OAuth のエラーを 200 + `error` フィールドで返す。`error` が付いていれば
+  // トークンそのものが拒否された（＝再ログインが必要）。5xx・パース不能は一過性障害として扱う。
+  if (data.error) {
+    throw new TokenRefreshRejectedError(`GitHub token refresh rejected: ${data.error}`);
+  }
+  if (!res.ok || !data.access_token) {
+    throw new Error(`GitHub token refresh failed: HTTP ${res.status}`);
   }
   return data;
+}
+
+/**
+ * user access token を GitHub 側で失効させる（ログアウト・アカウント削除・FR-2/FR-12）。
+ *
+ * トークンは暗号化 Cookie に自己完結しているため、Cookie を消すだけでは「値をコピーされていた場合」に
+ * アクセスを止められない。GitHub の失効 API を呼んでトークン自体を殺すことでログアウトを実効化する。
+ * `DELETE /applications/{client_id}/token` は Basic 認証（client_id:client_secret）を要求する。
+ * ベストエフォート（失敗しても Cookie 破棄は続行する）のため、成否を boolean で返す。
+ */
+export async function revokeAccessToken(params: {
+  apiBase: string;
+  clientId: string;
+  clientSecret: string;
+  accessToken: string;
+}): Promise<boolean> {
+  try {
+    const res = await fetch(`${params.apiBase}/applications/${params.clientId}/token`, {
+      method: "DELETE",
+      headers: {
+        Authorization: `Basic ${btoa(`${params.clientId}:${params.clientSecret}`)}`,
+        Accept: "application/vnd.github+json",
+        "X-GitHub-Api-Version": API_VERSION,
+        "User-Agent": USER_AGENT,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ access_token: params.accessToken }),
+    });
+    // 204 = 失効済み。404 は「既に無効」なので成功とみなす。
+    return res.status === 204 || res.status === 404;
+  } catch {
+    return false;
+  }
 }
 
 export interface GitHubUser {

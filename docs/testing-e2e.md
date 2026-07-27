@@ -21,9 +21,13 @@ E2E が **構造的に検知できない** もの（実際に本番で 500 を�
 ログインフロー全体を実コード（ブラウザ ↔ Worker ↔ D1）で検証する。実 GitHub には触れない。
 
 - 対象: `/auth/login`（state + PKCE 生成）→ 認可（モック）→ `/auth/callback`（トークン交換・
-  ユーザー取得・トークン暗号化保存・セッション Cookie 発行）→ `/api/me`（ログイン表示）→ `/auth/logout`。
+  ユーザー取得・**暗号化トークン Cookie（`__Host-gh`）と期限 Cookie（`__Host-gh-exp`）の発行**）→
+  `/api/me`（ログイン表示）→ `POST /auth/refresh`（失効時の自動リフレッシュ・多タブ直列化）→ `/auth/logout`
+  （Cookie 破棄 + GitHub 側のトークン失効）。ステートレス認証まわりは `e2e/stateless-auth.spec.ts` が担当し、
+  「トークンが `document.cookie` から読めない」「失効 → 自動リフレッシュ → 起票継続」「多タブでもリフレッシュは
+  1 回」「期限 Cookie が改ざんされても 401 から回復する」を検証する。
 - 構成:
-  - `wrangler dev` がビルド済み SPA + Worker + ローカル D1（`migrations/` 適用）を配信。
+  - `wrangler dev` がビルド済み SPA + Worker + ローカル D1（`migrations/` 適用。P2 以降 D1 に個人データは無く、重複防止・レート制限のみ）を配信。
   - `e2e/mock-github.mjs` がモック IdP（authorize / access_token / user）を提供。
   - Worker の `GITHUB_OAUTH_BASE` / `GITHUB_API_BASE`（`worker/github.ts` で差し替え可能・
     既定は実 GitHub）をモックに向ける。本番挙動は変えない。
@@ -157,7 +161,7 @@ CI で E2E が落ちた
 ### 新規 E2E を足すときの再発防止
 
 - 起票（`POST /api/issues`）を含む spec は、上記 webServer の override 前提で書く（追加設定不要）。
-- テスト間で共有される状態（D1 のショートカット行・localStorage）は `afterEach` / `finally` で必ず片付ける（`e2e/repos-shortcuts-swr-cache.spec.ts` の `finally` が模範）。
+- テスト間で共有される状態（localStorage・モック GitHub の設定/カウンタ）は `afterEach` / `finally` で必ず片付ける（`e2e/repos-shortcuts-swr-cache.spec.ts` の `finally` が模範）。
 - プレースホルダ等の **表示文言をセレクタに使うテキストと衝突させない**（例: name プレースホルダ「日報」を title セレクタ `/バグ報告|Bug report/` と別語にした回帰・strict mode 違反回避）。
 
 ## Workers Builds の「テスト → ビルド」順と unit テストの制約（#107）

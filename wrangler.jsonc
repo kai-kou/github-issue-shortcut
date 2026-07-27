@@ -6,7 +6,11 @@
   // GitHub App の Client ID は公開値（認可 URL に出る）。secret ではないため vars に置き、
   // デプロイでダッシュボードの plaintext var が上書き消去される問題を防ぐ。Client Secret / 暗号鍵は Workers Secrets。
   "vars": {
-    "GITHUB_CLIENT_ID": "Iv23livFCo9vcWDm0zyg"
+    "GITHUB_CLIENT_ID": "Iv23livFCo9vcWDm0zyg",
+    // トークン Cookie の鍵バージョン（1〜255）。TOKEN_ENCRYPTION_KEY をローテーションするときに
+    // +1 する。旧鍵で発行された Cookie は復号されず再ログインになるだけで、端末内のデータ
+    // （下書き・ショートカット）は失われない（docs/design/stateless-architecture.md §4）。
+    "TOKEN_KEY_VERSION": "1"
   },
   "assets": {
     // directory は miniflare のテスト環境（vitest-pool-workers）が静的アセットを解決するために必要

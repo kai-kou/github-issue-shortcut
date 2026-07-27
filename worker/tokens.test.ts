@@ -1,152 +1,105 @@
 import { env } from "cloudflare:test";
-import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { encryptString } from "./crypto";
-import { applySchema, getTokens, nowSeconds, saveTokens, upsertUser } from "./store";
-import { getValidAccessToken } from "./tokens";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import type { TokenBundle } from "./tokenCookie";
+import { isAccessTokenFresh, ReauthRequiredError, refreshTokenBundle } from "./tokens";
 import type { Env } from "./types";
 
 const testEnv = env as unknown as Env;
-const db = testEnv.DB;
-const KEY = testEnv.TOKEN_ENCRYPTION_KEY;
 
-beforeAll(async () => {
-  await applySchema(db);
-});
+const NOW = 1_800_000_000;
+
+function bundle(overrides: Partial<TokenBundle> = {}): TokenBundle {
+  return { a: "old-access", ae: NOW - 10, r: "old-refresh", re: NOW + 86_400, x: NOW + 86_400, u: 424242, ...overrides };
+}
+
+function jsonResponse(status: number, body: unknown): Response {
+  return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+}
 
 afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-function jsonResponse(body: unknown): Response {
-  return new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
-}
-
-async function makeUserWithTokens(opts: { accessExpiresAt: number; withRefreshToken?: boolean }): Promise<string> {
-  const userId = await upsertUser(db, { id: Math.floor(Math.random() * 1e9), login: "u", avatar_url: "" });
-  await saveTokens(db, userId, {
-    accessEnc: await encryptString(KEY, "old_access_token"),
-    accessExpiresAt: opts.accessExpiresAt,
-    refreshEnc: opts.withRefreshToken === false ? null : await encryptString(KEY, "old_refresh_token"),
-    refreshExpiresAt: nowSeconds() + 1_000_000,
+describe("isAccessTokenFresh", () => {
+  it("treats a token expiring within the buffer as stale", () => {
+    expect(isAccessTokenFresh(bundle({ ae: NOW + 3600 }), NOW)).toBe(true);
+    expect(isAccessTokenFresh(bundle({ ae: NOW + 30 }), NOW)).toBe(false); // 60 秒バッファ内
+    expect(isAccessTokenFresh(bundle({ ae: NOW - 1 }), NOW)).toBe(false);
   });
-  return userId;
-}
+});
 
-describe("getValidAccessToken", () => {
-  it("returns the stored access token without refreshing when still valid", async () => {
-    const userId = await makeUserWithTokens({ accessExpiresAt: nowSeconds() + 3600 });
+describe("refreshTokenBundle（単回使用ローテーション・§5）", () => {
+  it("rotates both tokens and recomputes the expiries from the response", async () => {
+    const fetchSpy = vi.fn(async () =>
+      jsonResponse(200, {
+        access_token: "new-access",
+        expires_in: 28800,
+        refresh_token: "new-refresh",
+        refresh_token_expires_in: 15897600,
+      }),
+    );
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const refreshed = await refreshTokenBundle(testEnv, bundle(), NOW);
+    expect(refreshed).toEqual({
+      a: "new-access",
+      ae: NOW + 28800,
+      r: "new-refresh",
+      re: NOW + 15897600,
+      // 絶対期限はリフレッシュで延長しない（盗まれた Cookie の無期限延命を防ぐ）。
+      x: NOW + 86_400,
+      u: 424242,
+    });
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the existing refresh token when GitHub does not rotate it", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse(200, { access_token: "new-access" })));
+
+    const refreshed = await refreshTokenBundle(testEnv, bundle(), NOW);
+    expect(refreshed.r).toBe("old-refresh");
+    expect(refreshed.re).toBe(NOW + 86_400);
+    // expires_in 不在時は GitHub App の既定 TTL（8 時間）へフォールバックする。
+    expect(refreshed.ae).toBe(NOW + 8 * 60 * 60);
+  });
+
+  it("raises ReauthRequiredError when there is no refresh token (GitHub は呼ばない)", async () => {
     const fetchSpy = vi.fn();
     vi.stubGlobal("fetch", fetchSpy);
 
-    await expect(getValidAccessToken(testEnv, userId)).resolves.toBe("old_access_token");
+    await expect(refreshTokenBundle(testEnv, bundle({ r: null }), NOW)).rejects.toBeInstanceOf(ReauthRequiredError);
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  it("transparently refreshes an expired access token and persists the rotation", async () => {
-    const userId = await makeUserWithTokens({ accessExpiresAt: nowSeconds() - 10 });
-    const fetchSpy = vi.fn(async () =>
-      jsonResponse({
-        access_token: "new_access_token",
-        expires_in: 28800,
-        refresh_token: "new_refresh_token",
-        refresh_token_expires_in: 15897600,
-      }),
-    );
+  it("raises ReauthRequiredError when GitHub rejects the refresh token (自動リトライしない)", async () => {
+    const fetchSpy = vi.fn(async () => jsonResponse(200, { error: "bad_refresh_token" }));
     vi.stubGlobal("fetch", fetchSpy);
 
-    await expect(getValidAccessToken(testEnv, userId)).resolves.toBe("new_access_token");
-    expect(fetchSpy).toHaveBeenCalledTimes(1);
-
-    // 次の呼び出しは DB に保存済みの新トークンをそのまま使い、再リフレッシュしない。
-    await expect(getValidAccessToken(testEnv, userId)).resolves.toBe("new_access_token");
+    await expect(refreshTokenBundle(testEnv, bundle(), NOW)).rejects.toBeInstanceOf(ReauthRequiredError);
+    // 単回使用トークンのため、失敗しても同じトークンで再試行してはならない。
     expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
 
-  it("serializes concurrent refreshes so the single-use refresh token is consumed only once", async () => {
-    const userId = await makeUserWithTokens({ accessExpiresAt: nowSeconds() - 10 });
-    let calls = 0;
-    const fetchSpy = vi.fn(async () => {
-      calls++;
-      // GitHub 呼び出しに時間がかかることをシミュレートし、その間に
-      // 競合リクエストのポーリングが実際に発生する状況を再現する。
-      await new Promise((resolve) => setTimeout(resolve, 250));
-      return jsonResponse({
-        access_token: "new_access_token",
-        expires_in: 28800,
-        refresh_token: "new_refresh_token",
-        refresh_token_expires_in: 15897600,
-      });
-    });
-    vi.stubGlobal("fetch", fetchSpy);
-
-    const [a, b] = await Promise.all([
-      getValidAccessToken(testEnv, userId),
-      getValidAccessToken(testEnv, userId),
-    ]);
-
-    expect(a).toBe("new_access_token");
-    expect(b).toBe("new_access_token");
-    expect(calls).toBe(1);
+  it("carries the GitHub user id through the rotation (重複防止キーが変わらない)", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse(200, { access_token: "new-access" })));
+    const refreshed = await refreshTokenBundle(testEnv, bundle({ u: 777 }), NOW);
+    expect(refreshed.u).toBe(777);
   });
 
-  it("throws when the access token is expired and no refresh token is available", async () => {
-    const userId = await makeUserWithTokens({ accessExpiresAt: nowSeconds() - 10, withRefreshToken: false });
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(() => {
-        throw new Error("fetch should not be called");
-      }),
-    );
-
-    await expect(getValidAccessToken(testEnv, userId)).rejects.toThrow();
+  it("does not extend the absolute expiry (盗まれた Cookie を無期限に延命させない)", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse(200, { access_token: "new-access" })));
+    const refreshed = await refreshTokenBundle(testEnv, bundle({ x: NOW + 100 }), NOW);
+    expect(refreshed.x).toBe(NOW + 100);
   });
 
-  it("releases the lock on refresh failure so a later call can retry", async () => {
-    const userId = await makeUserWithTokens({ accessExpiresAt: nowSeconds() - 10 });
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => {
-        throw new Error("network error");
-      }),
-    );
-    await expect(getValidAccessToken(testEnv, userId)).rejects.toThrow("network error");
+  it("rethrows a transient failure instead of forcing a re-login (GitHub 5xx・ネットワーク断)", async () => {
+    // 一過性の障害で Cookie を破棄すると、まだ有効な refresh token を持つ利用者を追い出してしまう。
+    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse(503, {})));
+    await expect(refreshTokenBundle(testEnv, bundle(), NOW)).rejects.not.toBeInstanceOf(ReauthRequiredError);
 
-    // ロックが解放されているはずなので、次の呼び出しは今度こそ成功する。
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => jsonResponse({ access_token: "recovered_access_token", expires_in: 28800 })),
-    );
-    await expect(getValidAccessToken(testEnv, userId)).resolves.toBe("recovered_access_token");
-  });
-
-  it("keeps the existing refresh token when GitHub omits a new one in the response", async () => {
-    const userId = await makeUserWithTokens({ accessExpiresAt: nowSeconds() - 10 });
-    const before = await getTokens(db, userId);
-    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse({ access_token: "new_access_token", expires_in: 28800 })));
-
-    await getValidAccessToken(testEnv, userId);
-
-    const after = await getTokens(db, userId);
-    expect(after?.refreshEnc).toBe(before?.refreshEnc);
-  });
-
-  it("does not make a waiting caller wait out the full poll budget when the refresh fails", async () => {
-    const userId = await makeUserWithTokens({ accessExpiresAt: nowSeconds() - 10 });
-    const fetchSpy = vi.fn(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 50));
-      throw new Error("invalid_grant");
-    });
-    vi.stubGlobal("fetch", fetchSpy);
-
-    const start = Date.now();
-    const results = await Promise.allSettled([
-      getValidAccessToken(testEnv, userId),
-      getValidAccessToken(testEnv, userId),
-    ]);
-    const elapsedMs = Date.now() - start;
-
-    expect(results.every((r) => r.status === "rejected")).toBe(true);
-    // ポーリング予算（30 秒）を待ちきらず、ロック解放を検知して自ら再試行しているはず。
-    expect(elapsedMs).toBeLessThan(5000);
+    vi.stubGlobal("fetch", vi.fn(async () => {
+      throw new TypeError("network error");
+    }));
+    await expect(refreshTokenBundle(testEnv, bundle(), NOW)).rejects.not.toBeInstanceOf(ReauthRequiredError);
   });
 });
