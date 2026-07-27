@@ -58,9 +58,9 @@ D1: 廃止
 | `sessions` | 廃止 | トークン Cookie 自体がセッションを兼ねる |
 | `tokens` | **暗号化 Cookie** | §4 |
 | `shortcuts` | localStorage | 端末間同期を失う（§6） |
-| `issue_log`（30 秒窓の重複防止） | localStorage | 同一端末の二重タップ・再送が本質的なケース |
-| `request_ids`（26 時間窓の重複防止） | IndexedDB | Service Worker の Background Sync と共有する必要があるため localStorage ではなく IndexedDB |
-| `rate_limits` / `shortcut_rate_limits` | Workers Rate Limiting binding | クライアントには置けない（改変可能なので防御にならない） |
+| `issue_log`（30 秒窓の重複防止） | localStorage（`src/issues/submitGuard.ts`・P3 完了） | 同一端末の二重タップ・再送が本質的なケース |
+| `request_ids`（26 時間窓の重複防止） | IndexedDB（`src/issues/sentRequestIds.ts`・P3 完了） | Service Worker の Background Sync と共有する必要があるため localStorage ではなく IndexedDB |
+| `rate_limits` / `shortcut_rate_limits` | Workers Rate Limiting binding（P3 完了） | クライアントには置けない（改変可能なので防御にならない）。キーは GitHub 数値ユーザー ID のハッシュ |
 | Cron（`issue_log` 削除） | 廃止 | 消すべきデータが無くなる |
 
 ## 4. トークン Cookie の設計
@@ -81,7 +81,7 @@ JSON = { "a": "<access token>", "ae": <unix秒>, "r": "<refresh token>", "re": <
 - `Max-Age`: **ログインの絶対期限 `x`（30 日）** に合わせる。refresh token の有効期限（約 6 か月）ではない:
   Cookie 自体が自己完結型のクレデンシャルで失効レコードを持たないため、盗まれた Cookie がリフレッシュを
   繰り返して半年生き延びないよう上限を設ける（`x` はリフレッシュで延長しない）
-- `u`（GitHub の数値ユーザー ID）は、P3 まで D1 に残る重複防止・レート制限のキーに使う。AEAD で認証済みの
+- `u`（GitHub の数値ユーザー ID）は、レート制限のキー（HMAC でハッシュ化して Rate Limiting binding へ渡す）に使う。AEAD で認証済みの
   ため、クライアントが他人の ID を騙ることはできない
 - **ログアウト・アカウント削除では GitHub の失効 API（`DELETE /applications/{client_id}/token`）を呼ぶ**。
   Cookie を消すだけでは、値をコピーされていた相手を止められない
@@ -114,8 +114,10 @@ Cookie 化すると同じ競合が戻ってくるため、以下の三段構え�
 
 | 失うもの | 影響 | 判断 |
 |---------|------|------|
+| スクリプト経由の反復起票（同一内容の連投）のサーバー側抑止 | 正規の Cookie を持つ利用者が API を直接叩けば、レート制限の範囲内で同一内容を反復起票できる | 受容（P3・冪等性の判定材料をサーバーに置かない方針の帰結。上限は Rate Limiting binding が担保する） |
 | ショートカットの端末間同期 | 機種変更・ブラウザデータ削除で再作成が必要 | 受容（エクスポート / インポートは将来の任意機能） |
 | 複数端末をまたぐ重複起票の防止 | 別端末で同時に同一内容を起票すると 2 件できる | 受容（発生条件が極めて稀） |
+| 「サーバーには届いたがレスポンスが届かなかった」再送の抑止 | 送信直後に通信が切れた場合、端末からは成否を判別できないため再送で 2 件できる | 受容（P3・サーバー予約でしか判別できず、保持ゼロと両立しない）。キュー滞留 24 時間超は自動再送を打ち切り手動確認へ回す（#91）ことで露出を抑える |
 | 動的 manifest（#98 のユーザープリセット反映） | アイコン長押しメニューは汎用 3 件に戻る | **静的 manifest に戻す**（§7） |
 | サーバー側の起票成功率 KPI（`issue_log` ベース） | 実測値をサーバーで集計できない | 受容（KPI は E2E の実機計測に寄せる） |
 
@@ -148,8 +150,8 @@ Cookie 化すると同じ競合が戻ってくるため、以下の三段構え�
 |-------|------|---------|
 | **P1** ✅ | ショートカットのクライアント移行（完了・#163） | `/api/shortcuts` 廃止・localStorage を正本化・manifest を静的に戻す（§7） |
 | **P2** ✅ | 認証のステートレス化（完了・2026-07-27・#164） | 暗号化トークン Cookie（鍵バージョン付き）・`/auth/refresh`・Web Locks 直列化・`/api/me` を GitHub 直取得へ。`users` / `sessions` / `tokens` / `shortcuts` は D1 から削除済み |
-| **P3** | 重複防止とレート制限の移行 | 30 秒窓 / client_request_id をクライアントへ・Rate Limiting binding 導入 |
-| **P4** | D1 撤去と対外文書の更新 | バインディング / migrations / `store.ts` 削除・`observability` 設定・利用規約の改訂（PP / 要件定義は P2 で先行改訂済み。D1 撤去に伴う差分のみ追随する） |
+| **P3** ✅ | 重複防止とレート制限の移行（完了・2026-07-27・#165） | 30 秒窓を localStorage・client_request_id を IndexedDB へ・Rate Limiting binding 導入。`worker/store.ts` と保持期間 Cron を削除し、Worker から D1 の利用が消えた |
+| **P4** | D1 撤去と対外文書の更新 | バインディング / migrations 削除（`store.ts` は P3 で削除済み）・`observability` 設定・利用規約の改訂（PP / 要件定義は P2・P3 で先行改訂済み。D1 撤去に伴う差分のみ追随する） |
 
 ### 移行時のデータ
 
@@ -159,7 +161,7 @@ Cookie 化すると同じ競合が戻ってくるため、以下の三段構え�
 ## 10. 完了の定義
 
 - [ ] D1 バインディング・`migrations/`・`worker/store.ts` が存在しない
-- [ ] Worker が永続化 API（D1 / KV / R2 / DO）をひとつも使っていない
+- [x] Worker が永続化 API（D1 / KV / R2 / DO）をひとつも使っていない（P3）
 - [ ] ログイン → 起票 → ショートカット作成 → 再訪の E2E が通る
 - [ ] トークンが JS から読めない（`document.cookie` に現れない）ことをテストで担保
 - [ ] 鍵バージョンを変えると再ログインが要求され、それ以外のデータが壊れないことをテストで担保

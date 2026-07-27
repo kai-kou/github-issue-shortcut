@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   codeChallengeS256,
   createCodeVerifier,
+  hmacSha256Base64url,
   KeyVersionMismatchError,
   openVersioned,
   randomToken,
@@ -22,6 +23,29 @@ describe("randomToken", () => {
   });
 });
 
+
+describe("hmacSha256Base64url（レート制限キーの仮名化・S2）", () => {
+  const OTHER_KEY = "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+
+  it("is deterministic for the same key and message", async () => {
+    expect(await hmacSha256Base64url(KEY, "issue-rate-limit:424242")).toBe(
+      await hmacSha256Base64url(KEY, "issue-rate-limit:424242"),
+    );
+  });
+
+  it("differs per message and per key", async () => {
+    const base = await hmacSha256Base64url(KEY, "issue-rate-limit:1");
+    expect(base).not.toBe(await hmacSha256Base64url(KEY, "issue-rate-limit:2"));
+    // 鍵を知らなければ総当たりで元の ID を逆引きできない（無塩 SHA-256 との差）。
+    expect(base).not.toBe(await hmacSha256Base64url(OTHER_KEY, "issue-rate-limit:1"));
+  });
+
+  it("does not leak the source value", async () => {
+    const key = await hmacSha256Base64url(KEY, "issue-rate-limit:424242");
+    expect(key).not.toContain("424242");
+    expect(key).toMatch(/^[A-Za-z0-9_-]+$/);
+  });
+});
 
 describe("PKCE code challenge (S256)", () => {
   it("is deterministic and differs from the verifier", async () => {

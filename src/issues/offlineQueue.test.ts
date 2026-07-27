@@ -27,9 +27,9 @@ function entry(overrides: Partial<QueuedIssue> = {}): QueuedIssue {
 }
 
 describe("OFFLINE_QUEUE_TTL_MS", () => {
-  // クライアント TTL がサーバー側の重複防止窓（worker/index.ts の OFFLINE_QUEUE_DEDUPE_WINDOW = 26h）
+  // クライアント TTL が端末内の重複防止窓（sentRequestIds.ts の SENT_REQUEST_ID_WINDOW_MS = 26h）
   // 以上になると、窓が切れた後の自動再送で重複起票しうる（#91 のリスクシナリオ）。
-  it("stays shorter than the server-side dedupe window (26h)", () => {
+  it("stays shorter than the on-device dedupe window (26h)", () => {
     expect(OFFLINE_QUEUE_TTL_MS).toBeLessThan(26 * 60 * 60 * 1000);
   });
 });
