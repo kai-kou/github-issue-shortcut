@@ -22,7 +22,7 @@ GitHub Issues を個人タスク管理・アイデアキャプチャに使う文
 |------|------|
 | 起票所要時間（起動 → Issue 作成完了） | 10 秒以内（タイトルのみなら 5 秒以内） |
 | 起票までのタップ数（ショートカット起動時） | 3 タップ以内 |
-| 起票成功率（送信 → GitHub 反映） | 99% 以上（失敗時は入力内容を失わない）。定義: 送信試行（ユーザーが送信を実行した回数）に対する GitHub API 201 応答の割合。P2 でサーバー側の成否記録を廃止したため、E2E の実機計測（`e2e/kpi.spec.ts`）で代替する |
+| 起票成功率（送信 → GitHub 反映） | 99% 以上（失敗時は入力内容を失わない）。定義: 送信試行（ユーザーが送信を実行した回数）に対する GitHub API 201 応答の割合。サーバー側に成否記録を持たない（P2 で廃止・P3 で重複防止の記録も端末内へ移設）ため、E2E の実機計測（`e2e/kpi.spec.ts`）で代替する |
 | 初回セットアップ（ログイン → 初起票） | 5 分以内 |
 
 ### 1.3 プロダクト定義
@@ -133,7 +133,7 @@ LP にアクセス →「GitHub でログイン」→ GitHub の認可画面（�
 | FR-21 | メタデータ（リポジトリ・ラベル）をキーボード上部のチップ / ボトムシート UI で 1 タップ追加できること | SHOULD | M3 |
 | FR-22 | オフラインまたはネットワーク失敗時、起票リクエストをキューに保存し、回復時に再送できること（4xx/5xx の API エラーは再送対象外とし FR-9 で処理） | SHOULD | M3 |
 | FR-23 | 送信時に楽観的 UI で即時完了表示し、失敗時は下書き復元と再試行導線を提示すること | SHOULD | M3 |
-| FR-24 | 同一内容の二重送信を防止できること（送信中の再タップ抑止 + サーバー側で直近送信内容（issue_log）との重複照合。GitHub API に冪等性キーがないため）。オフラインキュー再送との整合は M3（B4-4・OQ-8 決定済み）で対応済み | MUST | M1 |
+| FR-24 | 同一内容の二重送信を防止できること（送信中の再タップ抑止 + 端末内に保持した直近送信内容との重複照合。GitHub API に冪等性キーがないため）。照合はサーバーではなく端末内で行う（P3・localStorage の 30 秒窓 + IndexedDB の client_request_id 26 時間窓）。オフラインキュー再送との整合は M3（B4-4・OQ-8 決定済み）で対応済み | MUST | M1 |
 | FR-25 | TWA（Bubblewrap）として Google Play で配布できること。manifest shortcuts がネイティブ App Shortcuts に変換されること | MAY | M4 |
 | FR-26 | 起票所要時間・成功率の計測イベントを送出できること。P2 でサーバー側の計測記録を廃止したため、実装はプライバシーポリシーへの追記とセットで行う | SHOULD | M2 |
 
@@ -153,7 +153,7 @@ LP にアクセス →「GitHub でログイン」→ GitHub の認可画面（�
 
 1. 起票画面は認証済みなら起動直後に入力可能な状態で表示される。コールドローンチでのキーボード自動表示は Android では不可能なため、入力欄の初回タップを起点に同期的に `focus()` してキーボードを開く（「起動 → 1 タップ → キーボード」。詳細は §7.2）。
 2. 送信は `POST /api/issues`（Worker が `POST /repos/{owner}/{repo}/issues` へプロキシ）。`X-GitHub-Api-Version: 2026-03-10` を pin し、assignee 単数パラメータは使用しないこと（MUST）。
-3. 送信中は送信ボタンを無効化し（二重タップ防止）、サーバー側でも直近送信内容（リポジトリ + タイトル + 本文のハッシュ・短時間ウィンドウ・issue_log）と照合して重複起票を防ぐこと（MUST・FR-24）。オフラインキュー（FR-22）の再送との整合は M3 で対応済み（`client_request_id` の 26 時間窓照合 + クライアント側 24 時間 TTL・OQ-8 決定済み）。
+3. 送信中は送信ボタンを無効化し（二重タップ防止）、端末内でも直近送信内容（リポジトリ + タイトル + 本文 + ラベル・短時間ウィンドウ・`src/issues/submitGuard.ts`）と照合して重複起票を防ぐこと（MUST・FR-24）。オフラインキュー（FR-22）の再送との整合は M3 で対応済み（`client_request_id` の 26 時間窓照合 + クライアント側 24 時間 TTL・OQ-8 決定済み）。照合先は P3 でサーバー（D1）から端末内（localStorage / IndexedDB）へ移した。
 4. 成功（201）: Issue 番号と URL を含む完了表示を出し、下書きをクリアする。
 5. 失敗: 入力内容を下書きとして保持したまま（MUST・FR-8）、エラー種別ごとに表示する（FR-9）。
    - 401 / トークン失効: 自動リフレッシュ → 失敗時は再ログイン導線（下書きはログイン往復後も復元）
@@ -208,8 +208,8 @@ Cloudflare Workers（単一 Worker）
 ├── API: Hono（/api/*, /auth/*）… run_worker_first
 │     ├── GitHub App 認可（state + PKCE・トークン交換・暗号化トークン Cookie の発行/書き戻し）
 │     └── Issue 作成プロキシ（POST /repos/{owner}/{repo}/issues・API version pin）
-├── D1: issue_log / request_ids / rate_limits（重複防止・レート制限のみ。P3 で撤去予定）
-│     └── users / sessions / tokens / shortcuts は廃止（P1・P2・個人データ保持ゼロ）
+├── Rate Limiting binding: 起票のレート制限（カウンタは Cloudflare 管理・キーはユーザー ID のハッシュ）
+│     └── D1 は全用途が廃止済み（P1〜P3・個人データ保持ゼロ。バインディング自体の撤去は P4）
 └── Workers Secrets: GitHub App client secret・トークン暗号鍵
 
 開発: wrangler v4（wrangler.jsonc）/ TypeScript / @cloudflare/vitest-pool-workers
@@ -218,25 +218,23 @@ CI/CD: GitHub Actions（test / lint）+ Workers Builds（git 連携・push で�
 ```
 
 - 単一 Worker + static assets 構成であること（MUST）。Pages は採用しない（投資凍結）。
-- **認証データをサーバーに保存しないこと（MUST・P2）**。トークンは暗号化 Cookie として端末に置き、Worker は復号して使うだけにする。残る D1 の用途は重複防止・レート制限のみで、これも P3 で端末内 / Workers Rate Limiting binding へ移す（`docs/design/stateless-architecture.md`）。
+- **認証データをサーバーに保存しないこと（MUST・P2）**。トークンは暗号化 Cookie として端末に置き、Worker は復号して使うだけにする。重複防止は端末内、レート制限は Workers Rate Limiting binding へ移し、**Worker は永続化 API（D1 / KV / R2 / DO）を使わない（MUST・P3）**（`docs/design/stateless-architecture.md`）。
 
-### 6.2 データモデル案（D1）
+### 6.2 データモデル（サーバーは永続化しない）
 
-| テーブル | 主な列 | 備考 |
+**サーバー側の永続データは存在しない（MUST・P3）**。かつて D1 に置いていたものはすべて移設済みで、
+Worker は永続化 API（D1 / KV / R2 / DO）を呼ばない（D1 バインディング・`migrations/` の撤去自体は P4）。
+
+| かつての D1 テーブル | 現在の置き場所 | 備考 |
 |------|------|------|
-| ~~users~~ / ~~sessions~~ / ~~tokens~~ | — | **廃止**（P2）。GitHub ユーザー情報は `/api/me` が GitHub から都度取得し、セッションとトークンは暗号化 Cookie が担う |
-| ~~shortcuts~~ | — | ユーザー作成のショートカット設定（M2）。**サーバー保存を廃止** し、正本を端末内 localStorage へ移した（`docs/design/stateless-architecture.md` P1） |
-| issue_log | user_key, repo, content_hash, created_at (PK: user_key + repo + content_hash) | 二重送信防止（FR-24）の最小記録。タイトル・本文の平文は保存しない。P3 で端末内へ移す |
-| request_ids | user_key, client_request_id, created_at | オフラインキュー再送の重複防止（B4-4・26 時間窓）。P3 で IndexedDB へ移す |
-| rate_limits | user_key, window_start, count | 起票のレート制限カウンタ。P3 で Workers Rate Limiting binding へ移す |
+| ~~users~~ / ~~sessions~~ / ~~tokens~~ | 暗号化トークン Cookie（端末内） | **廃止**（P2）。GitHub ユーザー情報は `/api/me` が GitHub から都度取得する |
+| ~~shortcuts~~ | localStorage（端末内） | ユーザー作成のショートカット設定（M2）。正本を端末内へ移した（P1） |
+| ~~issue_log~~ | localStorage（`src/issues/submitGuard.ts`・30 秒窓） | 二重送信防止（FR-24）。内容はキー化して端末内にのみ置く（P3） |
+| ~~request_ids~~ | IndexedDB（`src/issues/sentRequestIds.ts`・26 時間窓） | オフラインキュー再送の重複防止（B4-4）。Service Worker と共有できるよう IndexedDB（P3） |
+| ~~rate_limits~~ | Workers Rate Limiting binding | 起票のレート制限（PR-4）。キーは GitHub 数値ユーザー ID の **ハッシュ** で、カウンタは Cloudflare 管理（P3） |
 
-`user_key` は GitHub の数値ユーザー ID（内部 UUID・`users` テーブルは廃止済み）。値は暗号化 Cookie から取り出すため、
-クライアントが他人の ID を騙ることはできない（AES-GCM で認証済み）。
-
-アカウント削除（FR-12）は **トークン Cookie の破棄 + 端末内データの削除 + GitHub 連携解除の案内** で完了する（MUST）。
-サーバーに残るのは重複防止・レート制限の一時行のみで、いずれも Cron（日次）で **最長 7 日** で削除される。
-`user_key`（GitHub の数値ユーザー ID）は個人に紐づく識別子であるため「個人データを含まない」とは言わない。
-アカウント削除時はこれらの行も即時削除する（MUST）。
+アカウント削除（FR-12）は **トークン Cookie の破棄（GitHub 側でのトークン失効を含む） + 端末内データの削除 +
+GitHub 連携解除の案内** で完了する（MUST）。サーバーに削除すべき記録は残っていない。
 
 ### 6.3 API エンドポイント一覧案
 
@@ -264,7 +262,7 @@ CI/CD: GitHub Actions（test / lint）+ Workers Builds（git 連携・push で�
 | labels / assignees / milestone は push アクセスがないと silently dropped（201 だが未反映） | 権限に応じた UI 表示制御（FR-14・§4.4-3）。「付けたつもりのラベルが付かない」を UI で防ぐこと（MUST） |
 | レート制限: user token 5,000 req/h・二次制限 80 req/min・500 req/h（コンテンツ生成系） | 自動リトライで制限を悪化させない・`Retry-After` 尊重・ユーザーへの明示（FR-9）（MUST） |
 | 422 は spam 判定を含む | 盲目リトライ禁止（MUST）。オフラインキューの再送対象からも除外（FR-22） |
-| 冪等性キーなし → タイムアウト再送で重複起票リスク | 自前の重複防止（FR-24・issue_log）（MUST） |
+| 冪等性キーなし → タイムアウト再送で重複起票リスク | 自前の重複防止（FR-24・端末内の送信記録）（MUST）。ただし「サーバーには届いたがレスポンスが端末に届かなかった」ケースは端末から判別できず、再送で重複しうる（P3 で受容・設計 §6） |
 | API バージョン 2026-03-10 で単数 assignee 廃止 | `X-GitHub-Api-Version: 2026-03-10` を pin（MUST） |
 | user token の到達範囲は「App インストール済み ∩ ユーザーがアクセス可」 | 任意の公開リポジトリへは起票できない。オンボーディングでインストール誘導（FR-4）で吸収 |
 | トークン: access 8h / refresh 6 ヶ月・単回使用ローテーション | 自動リフレッシュ + クライアント Web Locks による 1 本化（FR-3）（MUST） |
@@ -311,7 +309,7 @@ CI/CD: GitHub Actions（test / lint）+ Workers Builds（git 連携・push で�
 | リフレッシュトークンの並行更新で失効 → 強制再ログイン多発 | 高 | ユーザー単位直列化（FR-3）を M1 の必須要件とし、E2E テストで並行リフレッシュを検証 |
 | 悪用（スパム起票）で GitHub App が制裁・停止される | 高 | PR-4 / PR-5 / PR-8。422 の監視と自動抑止。App 停止は全ユーザー影響のため最優先で防ぐ |
 | クエリパラメータ付きホーム画面ショートカットが WebAPK で開かない | 中 | M2 冒頭で実機検証。ダメなら manifest shortcuts（3 個）+ アプリ内切替 + 共有シートで代替 |
-| 無料枠（D1 書込 100K/日等）超過 | 低 | NFR-14。issue_log 等の書込を最小化・使用量アラートを設定 |
+| 無料枠超過 | 低 | NFR-14。P3 で永続層（D1 書込）そのものが無くなり、残るのは Workers リクエスト数のみ。使用量アラートを設定 |
 | manifest 更新（shortcuts / share_target）が既存インストールに反映されない・遅延 | 中 | manifest 変更を伴うリリースは検証項目化し、再インストール案内を用意（§7.2） |
 | Cloudflare / GitHub の仕様変更（API バージョン・トークン仕様） | 中 | API バージョン pin + 変更検知（deprecation ヘッダの監視）。リサーチ文書の日付を根拠に定期見直し |
 | 一人開発 + 自律エージェント開発での品質劣化 | 中 | NFR-15（E2E ゲート）とドメイン品質ゲート（project-mission.md）を CI で強制 |
@@ -326,9 +324,9 @@ CI/CD: GitHub Actions（test / lint）+ Workers Builds（git 連携・push で�
 | OQ-3 | ~~リフレッシュ直列化の実装方式~~ **再決定済み（2026-07-27・#164 P2）**: サーバー側の D1 行ロックを撤去し、**クライアントの Web Locks API（`navigator.locks`）で 1 本化** する（多タブ・Service Worker をまたいで直列化できる）。サーバーは「復号 → 使用 → 必要なら Set-Cookie」に徹する。稀な同時実行では再ログインが起こりうることを受容する（`docs/design/stateless-architecture.md` §5）。旧決定（2026-07-14・#17）の D1 行ロックはトークンをサーバーに保存しなくなったため消滅した | 決定済み |
 | OQ-4 | 計測イベント（FR-26）の実装方式: サーバーに個人データを持たない方針（P2）と両立する形（クライアント側集計 or Workers Analytics Engine）を選ぶこと。実装時にプライバシーポリシーへ「収集する計測イベント」を追記する（現行ポリシーからは削除済み） | M2 |
 | OQ-5 | ~~i18n（NFR-13）の初期リリース範囲~~ **決定済み（2026-07-10）: M1 から日本語・英語の 2 言語** | 決定済み |
-| OQ-6 | アプリ側レート制限（PR-4）の具体値（分間 / 時間あたり上限）と実装層（Worker ミドルウェア） | M1 実装開始時 |
+| OQ-6 | ~~アプリ側レート制限（PR-4）の具体値と実装層~~ **決定済み（2026-07-16 / P3 で実装層を変更）**: 起票 10 件/分（GitHub の二次制限 80 req/min の 1/8）。実装層は Workers Rate Limiting binding（データセンター単位の best-effort・厳密なカウントを前提にしない） | 決定済み |
 | OQ-7 | ~~カスタムドメインの選定~~ **決定済み（2026-07-10）: カスタムドメインは現時点で取得しない**。本番 URL は workers.dev サブドメイン（名称は M0 で確定）で運用する。`__Host-` Cookie はホスト単位のため workers.dev でも問題ない。TWA（M4・保留）を実施判断する際にドメイン要否を再検討する | 決定済み |
-| OQ-8 | ~~オフラインキュー（FR-22）採用時の重複防止（FR-24）との整合~~ **決定済み（2026-07-25・#20 / #91 実装時）**: 再送は `client_request_id` を固定し、サーバー側の予約テーブル（26 時間窓）で重複を弾く（B4-4）。窓を超えて滞留したキューはクライアント側 TTL（24 時間・Background Sync の保持期間と同値）で自動再送を打ち切り、D2-1 の一覧から手動で再送・破棄させる | 決定済み |
+| OQ-8 | ~~オフラインキュー（FR-22）採用時の重複防止（FR-24）との整合~~ **決定済み（2026-07-25・#20 / #91 実装時。P3 で保存先を端末内へ変更）**: 再送は `client_request_id` を固定し、**端末内の予約（IndexedDB・26 時間窓・SW と共有）** で重複を弾く（B4-4）。窓を超えて滞留したキューはクライアント側 TTL（24 時間・Background Sync の保持期間と同値）で自動再送を打ち切り、D2-1 の一覧から手動で再送・破棄させる | 決定済み |
 | OQ-9 | ~~セッション TTL の設計~~ **決定済み（2026-07-27・#164 P2）**: サーバー側セッションを廃止し、トークン Cookie の `Max-Age` を refresh token の有効期限（約 6 ヶ月）に揃える。アイドル失効は設けず、失効・鍵ローテーション時は再ログインへ誘導する | 決定済み |
 | OQ-10 | ~~GitHub App の表示名・公開名~~ **決定済み（2026-07-10）: 「Issue Shortcut」**（商標配慮で名称に「GitHub」を含めない。プロダクト名・リポジトリ名は GitHub Issue Shortcut のまま） | 決定済み |
 

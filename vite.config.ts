@@ -128,9 +128,16 @@ export default defineConfig({
         // オフラインキュー（B4-2・FR-22）: ネットワーク到達不能時の起票 POST を Workbox Background
         // Sync（IndexedDB キュー・約 24h 保持）に積み、オンライン復帰時に自動再送する。ページを閉じて
         // いても再送される保証はこの SW 側の経路が担い、フォアグラウンドでの確実な UI 更新・キュー表示は
-        // クライアント側の再送経路（src/issues/useOfflineQueueSync.ts）が担う（二重化。重複は
-        // 既存の issue_log 照合・B4-3・#70 がサーバー側で吸収する）。4xx/5xx はネットワーク成功
-        // レスポンスのため Background Sync のリトライ対象にならず、要件どおり自動再送されない。
+        // クライアント側の再送経路（src/issues/useOfflineQueueSync.ts）が担う（二重化。経路をまたぐ
+        // 重複は client_request_id の端末内予約・src/issues/sentRequestIds.ts が吸収する）。
+        // 4xx/5xx はネットワーク成功レスポンスのため Background Sync のリトライ対象にならず、
+        // 要件どおり自動再送されない。
+        //
+        // 🔴 既知の不具合（#177）: 下の `urlPattern` は Workbox が **URL 全体（url.href）** に対して
+        // 評価するため、`^/api/issues$` は同一オリジンのリクエストにも一致せず、この Background Sync
+        // ルートは現状 1 度も発火していない（＝「ページを閉じていても再送」は効いていない）。修正は
+        // SW 側の再送にも端末内の重複防止を効かせる仕組み（injectManifest 化）とセットで行う必要が
+        // あるため、P3 では現状維持とし #177 で扱う。
         //
         // P2（#164）以降、長時間オフラインだった端末の SW 再送は access token 失効で 401
         // （token_expired）になりうる。SW からはリフレッシュできない（Web Locks で 1 本化した

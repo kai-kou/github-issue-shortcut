@@ -54,7 +54,7 @@ export interface TokenBundle {
   /** ログイン状態そのものの絶対期限（UNIX 秒）。リフレッシュでは延長しない。 */
   x: number;
   /**
-   * GitHub の数値ユーザー ID。P3 でクライアント側へ移すまでの暫定として、重複防止（issue_log /
+   * GitHub の数値ユーザー ID。重複防止は P3 で端末内へ移したため、現在の用途はレート制限のキー（ハッシュ化して使う）
    * request_ids）とレート制限のキーに使う。Cookie は AES-GCM で認証済みのため、クライアントが
    * 他人の ID を騙ることはできない。
    */

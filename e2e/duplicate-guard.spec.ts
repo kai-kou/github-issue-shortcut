@@ -29,8 +29,13 @@ test.describe("二重送信防止（モック GitHub・モバイルエミュレ�
     await expect(page.getByText(/e2e-user/)).toBeVisible();
   }
 
-  async function submitIssue(page: import("@playwright/test").Page, title: string) {
-    await page.getByRole("button", { name: "kai-kou/alpha" }).click();
+  /** 起票シートを開いて（既に開いていれば `openSheet: false`）タイトルだけの起票を送る。 */
+  async function submitIssue(
+    page: import("@playwright/test").Page,
+    title: string,
+    { openSheet = true }: { openSheet?: boolean } = {},
+  ) {
+    if (openSheet) await page.getByRole("button", { name: "kai-kou/alpha" }).click();
     await page.getByRole("textbox", { name: /タイトル|^Title$/ }).fill(title);
     await page.getByRole("button", { name: /Issue を作成|Create issue/ }).click();
   }
@@ -55,7 +60,8 @@ test.describe("二重送信防止（モック GitHub・モバイルエミュレ�
     await submitIssue(page, "1 件目");
     await expect(page.getByText(/Issue を作成しました|Issue created/)).toBeVisible();
 
-    await submitIssue(page, "2 件目");
+    // 成功後は起票シートが開いたまま連続起票できる（フォームだけが初期化される）。
+    await submitIssue(page, "2 件目", { openSheet: false });
     await expect(page.getByText(/Issue を作成しました|Issue created/)).toBeVisible();
 
     const created = await (await request.get(`${MOCK_GITHUB_URL}/mock/issue-count`)).json();
