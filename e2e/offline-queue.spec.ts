@@ -128,8 +128,8 @@ test.describe("オフラインキュー（モック GitHub・モバイルエミ�
     });
     expect(await (await request.get(`${MOCK_GITHUB_URL}/mock/issue-count`)).json()).toEqual({ count: 1 });
 
-    // 送信済みの id を持つエントリをキューへ戻す（SW の Background Sync が同じリクエストを
-    // 再送した状況の再現）。タイトルだけ変えるのは、内容ベースの 30 秒窓ではなく **id 側の
+    // 送信済みの id を持つエントリをキューへ戻す（別タブが既に送信した id がこのタブのキューに
+    // 残っている状況の再現）。タイトルだけ変えるのは、内容ベースの 30 秒窓ではなく **id 側の
     // ガード**（IndexedDB・26 時間窓）が効いていることを分離して確かめるため。
 
     let issuePostCount = 0;

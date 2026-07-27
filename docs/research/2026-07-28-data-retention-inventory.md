@@ -159,7 +159,7 @@ submitGuard（localStorage・30 秒）  <  offlineQueue TTL（24 時間）  <  s
 
 - `vite-plugin-pwa` の `generateSW` により、アプリの静的アセット（JS / CSS / HTML / アイコン）を precache する。`registerType: "autoUpdate"`。
 - `manifest.webmanifest` は precache から **除外**（`stripManifestFromSwPrecache` プラグイン）。
-- `runtimeCaching` は `POST /api/issues` の Background Sync 定義のみで、**GET の API 応答をキャッシュする設定は無い**（＝ Issue・リポジトリ・ラベルのレスポンスが Cache Storage に残ることはない。SWR キャッシュは前述の localStorage 側が担う）。
+- `runtimeCaching` は `POST /api/issues` の Background Sync 定義のみで、**GET の API 応答をキャッシュする設定は無い**（＝ Issue・リポジトリ・ラベルのレスポンスが Cache Storage に残ることはない。SWR キャッシュは前述の localStorage 側が担う）。※ 調査後、この唯一の定義も #177 で撤去したため、現在 `runtimeCaching` 自体が存在しない（GET をキャッシュしない結論は変わらない）。
 - `navigateFallbackDenylist` により `/auth/*`・`/setup`・`/api/*` は SW のナビゲーションフォールバック対象外（OAuth コールバックがキャッシュ応答で壊れるのを防ぐ）。
 
 ---

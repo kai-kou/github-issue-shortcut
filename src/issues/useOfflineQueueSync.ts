@@ -81,8 +81,11 @@ async function postQueuedEntry(entry: QueuedIssue): Promise<PostOutcome> {
 /** オフライン時にキューされた起票（B4-2・FR-22・FR-23）を、オンライン復帰後に直列・間隔を空けて
  * 再送する。**再送経路はこれ 1 つ**（Service Worker 側の Workbox Background Sync は 1 度も発火して
  * おらず、有効化するとページ側の再送と二重起票しうるため #177 で撤去した・vite.config.ts）。
- * 再送の契機は「アプリを開いたときの初回 flush」と「`online` イベント」で、アプリを閉じている間は
- * 再送されない。複数タブが同時に再送しても `sentRequestIds.ts` の端末内予約が重複を吸収する（P3）。 */
+ * 再送の契機は **このフックを mount している認証済みホーム画面（`src/repos/RepoPicker.tsx`）が
+ * 描画されたときの初回 flush** と、その間に発火する `online` イベントの 2 つ。したがってアプリを
+ * 閉じている間はもちろん、未認証・App 未インストール・`/privacy` 等のサブページを開いただけの
+ * ときも再送は走らない（#177 の派生課題として起票済み）。複数タブが同時に再送しても
+ * `sentRequestIds.ts` の端末内予約が重複を吸収する（P3）。 */
 export function useOfflineQueueSync() {
   const [queue, setQueue] = useState<QueuedIssue[]>(() => loadOfflineQueue());
   const [optimisticQueue, applyAction] = useOptimistic(queue, applyOptimistic);
