@@ -9,9 +9,25 @@ export type Me = { login: string; avatarUrl: string | null; githubUserId: number
 
 export type AuthState =
   | { status: "checking" }
-  | { status: "anonymous" }
+  /**
+   * 未ログイン。`sessionExpired` は「ログイン状態が切れた（リフレッシュも失敗した）」ことを表す。
+   * このとき端末内データ（ショートカット設定）は **消さない**: リフレッシュ失敗は GitHub の
+   * 一時障害・オフラインでも起こり、ユーザー資産である localStorage の正本（P1 以降）を
+   * 巻き添えにしてはいけない（再ログインしても復旧できない）。
+   */
+  | { status: "anonymous"; sessionExpired?: boolean }
   | { status: "authenticated"; me: Me }
   | { status: "error" };
+
+/** 401 が「ログイン状態の失効」（＝端末内データを消してはいけないケース）かを判定する。 */
+async function isSessionExpiry(res: Response): Promise<boolean> {
+  try {
+    const data = (await res.json()) as { error?: { code?: string } };
+    return data.error?.code === "token_expired";
+  } catch {
+    return false;
+  }
+}
 
 /** ログイン済みユーザーが GitHub App を 1 件以上インストール済みか（A2-1・FR-4）。未確定は null。 */
 export type InstallState = boolean | null;
@@ -54,7 +70,7 @@ export function useAuthState(): AuthStateResult {
     const cachedUserId = cachedAuth?.me.githubUserId ?? null;
     apiFetch("/api/me")
       .then(async (res): Promise<AuthState> => {
-        if (res.status === 401) return { status: "anonymous" };
+        if (res.status === 401) return { status: "anonymous", sessionExpired: await isSessionExpiry(res) };
         if (!res.ok) throw new Error(`unexpected status: ${res.status}`);
         const me = (await res.json()) as Me;
         return { status: "authenticated", me };
@@ -64,7 +80,9 @@ export function useAuthState(): AuthStateResult {
         // （#101/#102・明示ログアウトを経ない Cookie 失効経路の防御網。共有端末で次のユーザーに前ユーザーの
         // 一覧が見えないようにする）。このクリアは `active`（mount 状態）でガードしない: /api/me 解決前に
         // アンマウントされても、プライバシーガードとしてキャッシュ消去は必ず実行する（active は setAuth のみに掛ける）。
-        if (next.status === "anonymous") clearAllUserCaches();
+        // 「確定した未ログイン」のときだけ消す。リフレッシュ失敗（token_expired）で消すと、
+        // 一時的な障害でユーザーのショートカット設定が失われる（#164 セルフレビュー C-1）。
+        if (next.status === "anonymous" && !next.sessionExpired) clearAllUserCaches();
         // キャッシュから楽観的に別ユーザーを表示していた場合は、確定ユーザーが判明した時点で
         // 前ユーザー由来の SWR キャッシュ（リポジトリ/ショートカット/ラベル）実体を消去する（#119・#101 の不変条件維持）。
         // userId キーにより下流の一覧は元々混入しないが、ディスク上のキャッシュも残さない。

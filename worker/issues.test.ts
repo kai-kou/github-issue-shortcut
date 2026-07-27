@@ -1,6 +1,6 @@
 import { env, SELF } from "cloudflare:test";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { applySchema } from "./store";
+import { applySchema, nowSeconds } from "./store";
 import { loginCookie, testTokenBundle, tokenCookieHeader } from "./test-support";
 import type { Env } from "./types";
 
@@ -117,6 +117,40 @@ describe("POST /api/issues error mapping (B5-2/FR-9)", () => {
     expect(res.status).toBe(502);
     const body = (await res.json()) as { error: { code: string } };
     expect(body.error.code).toBe("upstream_failed");
+  });
+});
+
+describe("POST /api/issues の認証順序 (token_expired で予約・カウンタを消費しない)", () => {
+  it("does not consume the duplicate-submission reservation when the access token has expired", async () => {
+    // 認証確定を予約より後ろに戻すと、「失効 → 401 → クライアントがリフレッシュ → 同じ内容を再送」が
+    // duplicate_submission(409) で永久に通らなくなる。その不変条件を機械で固定する。
+    const expiredBundle = testTokenBundle({ ae: nowSeconds() - 10, r: "refresh-token" });
+    const fetchSpy = vi.fn(async () => jsonResponse(201, { number: 60, html_url: "https://github.com/kai-kou/alpha/issues/60" }));
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const expired = await postIssue(await tokenCookieHeader(testEnv, expiredBundle), { title: "同じ内容" });
+    expect(expired.status).toBe(401);
+    expect((await expired.json() as { error: { code: string } }).error.code).toBe("token_expired");
+    expect(fetchSpy).not.toHaveBeenCalled();
+
+    // リフレッシュ後（同一ユーザー・同一内容）の再送が通ること。
+    const refreshed = await tokenCookieHeader(testEnv, { ...expiredBundle, ae: nowSeconds() + 3600 });
+    const retry = await postIssue(refreshed, { title: "同じ内容" });
+    expect(retry.status).toBe(201);
+  });
+
+  it("does not consume the rate-limit budget when the access token has expired", async () => {
+    const expiredBundle = testTokenBundle({ ae: nowSeconds() - 10, r: "refresh-token" });
+    const expiredCookie = await tokenCookieHeader(testEnv, expiredBundle);
+    const fetchSpy = vi.fn(async () => jsonResponse(201, { number: 61, html_url: "https://github.com/kai-kou/alpha/issues/61" }));
+    vi.stubGlobal("fetch", fetchSpy);
+
+    for (let i = 0; i < 12; i++) {
+      expect((await postIssue(expiredCookie, { title: `t${i}` })).status).toBe(401);
+    }
+    // 失効リクエストで予算を使い切っていれば、リフレッシュ後の 1 通目が 429 になってしまう。
+    const refreshed = await tokenCookieHeader(testEnv, { ...expiredBundle, ae: nowSeconds() + 3600 });
+    expect((await postIssue(refreshed, { title: "after refresh" })).status).toBe(201);
   });
 });
 

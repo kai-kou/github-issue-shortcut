@@ -43,7 +43,7 @@ export interface RefreshDeps {
 }
 
 /**
- * access token の期限が `skewSeconds` 以内に迫っていればリフレッシュする。
+ * access token の期限が `skewSeconds` 以内に迫っていればリフレッシュする（API 呼び出し前の先回り）。
  * 戻り値は「この後 API 呼び出しを進めてよいか」。未ログイン（期限 Cookie なし）と
  * リフレッシュ失敗は false を返し、呼び出し側は再試行せず 401 の導線に委ねる（§5-3）。
  */
@@ -57,6 +57,30 @@ export async function refreshIfStale(deps: RefreshDeps, skewSeconds: number): Pr
     const current = deps.readExpiry();
     if (current === null) return false;
     if (current - deps.now() > skewSeconds) return true;
+    return deps.postRefresh();
+  });
+}
+
+/**
+ * サーバーが 401 を返した後のリフレッシュ。**ローカルの期限読みを信用しない**。
+ *
+ * 期限判定に使う `__Host-gh-exp` は、端末の時計ずれ・JS からの書き換え・鍵ローテーション後の
+ * 残骸などで「まだ有効」を指しうる。その値を条件にすると、サーバーが失効と判断しているのに
+ * クライアントは何もせず同じリクエストを投げ直すだけになり、自己回復できない。
+ * ここでは「401 を受け取った」という外部観測を根拠に、ロック内で強制的にリフレッシュする。
+ *
+ * `expiryBefore` は 401 を受け取ったリクエストを送る前に読んだ期限値。ロック取得までの間に
+ * 他タブがリフレッシュを完了していれば値が変わるため、その場合は再送だけ行う（二重ローテーション回避）。
+ */
+export async function refreshAfterUnauthorized(deps: RefreshDeps, expiryBefore: number | null): Promise<boolean> {
+  // 期限 Cookie が無い＝未ログイン（またはサーバーが Cookie を破棄済み）。再送しても無駄。
+  if (deps.readExpiry() === null) return false;
+
+  return deps.withLock(async () => {
+    const current = deps.readExpiry();
+    if (current === null) return false;
+    // 他タブが先にリフレッシュ済み（期限が動いた）なら、そのまま再送してよい。
+    if (current !== expiryBefore) return true;
     return deps.postRefresh();
   });
 }
@@ -88,12 +112,17 @@ const browserDeps: RefreshDeps = {
   },
 };
 
+/** `__Host-gh-exp` の現在値（未ログインなら null）。401 前後の比較に使う。 */
+export function readAccessTokenExpiry(): number | null {
+  return browserDeps.readExpiry();
+}
+
 /** API 呼び出し前の先回りリフレッシュ（期限が近いときだけネットワークに出る）。 */
 export function ensureFreshAccessToken(): Promise<boolean> {
   return refreshIfStale(browserDeps, REFRESH_SKEW_SECONDS);
 }
 
-/** 401（token_expired）を受け取った後のリフレッシュ。成功したら呼び出し側が 1 度だけ再送する。 */
-export function refreshAfterUnauthorized(): Promise<boolean> {
-  return refreshIfStale(browserDeps, 0);
+/** 401 を受け取った後のリフレッシュ。成功したら呼び出し側が 1 度だけ再送する。 */
+export function recoverFromUnauthorized(expiryBefore: number | null): Promise<boolean> {
+  return refreshAfterUnauthorized(browserDeps, expiryBefore);
 }

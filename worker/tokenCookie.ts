@@ -3,7 +3,8 @@
  *
  * GitHub のトークンはサーバー（D1）に保存せず、Worker の鍵で暗号化して利用者の端末の
  * HttpOnly Cookie に置く。サーバーは「復号 → 使用 → 必要なら Set-Cookie で書き戻し」だけを行い、
- * 永続化しない（個人データ保持ゼロ・Epic #162）。
+ * 永続化しない（個人データ保持ゼロ・Epic #162）。「セッション」という語はファイル名にも使わない:
+ * サーバー側にセッションレコードは存在せず、この Cookie 自体がその役割を兼ねる。
  *
  * - `__Host-gh`     : `base64url(keyVersion || iv || AES-256-GCM(JSON))`。HttpOnly のため JS から読めない
  * - `__Host-gh-exp` : access token の有効期限（UNIX 秒）だけを持つ。JS から読める（個人データではない）
@@ -18,21 +19,28 @@ import type { Env } from "./types";
 
 /** 暗号化トークン Cookie の名前。 */
 export const TOKEN_COOKIE = "__Host-gh";
-/** access token の有効期限だけを載せる Cookie（JS から読める）。 */
+/**
+ * access token の有効期限だけを載せる Cookie（JS から読める）。
+ * クライアント側の同名定数は `src/auth/tokenRefresh.ts`（worker と src はビルド単位が別で共有できない）。
+ * 名前を変えるときは必ず両方を直すこと。
+ */
 export const TOKEN_EXP_COOKIE = "__Host-gh-exp";
 
 /**
- * トークン Cookie の Max-Age 既定値（約 6 か月）。GitHub の refresh token の有効期限に合わせる。
- * GitHub が `refresh_token_expires_in` を返した場合はそちらを優先する。
+ * ログインから強制再認証までの上限（30 日）。refresh token の有効期限（約 6 か月）より短くする。
+ *
+ * トークン Cookie は自己完結型のクレデンシャル（復号できれば GitHub のトークンそのもの）で、
+ * サーバー側に失効レコードを持たない。盗まれた Cookie がリフレッシュを繰り返して半年生き延びる
+ * ことを防ぐ最後の砦がこの絶対期限で、リフレッシュしても延長しない。
  */
-export const DEFAULT_REFRESH_TOKEN_TTL = 6 * 30 * 24 * 60 * 60;
+export const SESSION_MAX_AGE = 30 * 24 * 60 * 60;
 
 /** Cookie の共通属性（`__Host-` プレフィックスの要件: Secure + Path=/ + Domain 指定なし）。 */
 const COOKIE_BASE = { secure: true, path: "/", sameSite: "Lax" } as const;
 
 /**
  * Cookie に封入するトークン一式。キーを 1 文字にしているのは Cookie サイズ（4KB 上限）を
- * 節約するため（実測は `session.test.ts` の封入サイズ検証を参照）。
+ * 節約するため（実測は `tokenCookie.test.ts` の封入サイズ検証を参照）。
  */
 export interface TokenBundle {
   /** access token。 */
@@ -43,6 +51,8 @@ export interface TokenBundle {
   r: string | null;
   /** refresh token の有効期限（UNIX 秒・不明なら null）。 */
   re: number | null;
+  /** ログイン状態そのものの絶対期限（UNIX 秒）。リフレッシュでは延長しない。 */
+  x: number;
   /**
    * GitHub の数値ユーザー ID。P3 でクライアント側へ移すまでの暫定として、重複防止（issue_log /
    * request_ids）とレート制限のキーに使う。Cookie は AES-GCM で認証済みのため、クライアントが
@@ -57,6 +67,15 @@ export function currentKeyVersion(env: Env): number {
   return isValidKeyVersion(parsed) ? parsed : MIN_KEY_VERSION;
 }
 
+/**
+ * `TOKEN_KEY_VERSION` が「未設定」か「妥当な値」かを返す（設定ミスの自己診断用）。
+ * `"v2"` のような不正値はサイレントに 1 へフォールバックし、鍵を交換したのにバージョンが
+ * 上がらない（＝旧鍵の Cookie を安価に弾けない）状態になるため、`/api/ready` で可視化する。
+ */
+export function hasValidKeyVersionSetting(env: Env): boolean {
+  return env.TOKEN_KEY_VERSION === undefined || isValidKeyVersion(Number(env.TOKEN_KEY_VERSION));
+}
+
 function isTokenBundle(value: unknown): value is TokenBundle {
   if (typeof value !== "object" || value === null) return false;
   const v = value as Record<string, unknown>;
@@ -66,6 +85,7 @@ function isTokenBundle(value: unknown): value is TokenBundle {
     typeof v.ae === "number" &&
     (v.r === null || typeof v.r === "string") &&
     (v.re === null || typeof v.re === "number") &&
+    typeof v.x === "number" &&
     typeof v.u === "number"
   );
 }
@@ -76,46 +96,48 @@ export function sealTokenBundle(env: Env, bundle: TokenBundle): Promise<string> 
 }
 
 /**
- * トークン Cookie を開封する。復号失敗（改ざん・鍵ローテーション・形式不正）はすべて null を返し、
- * 呼び出し側では「未認証」として扱う（＝再ログイン導線）。失敗理由でレスポンスを分けない
- * （攻撃者に鍵の状態を伝えないため）。
+ * トークン Cookie を開封する。復号失敗（改ざん・鍵ローテーション・形式不正）と絶対期限切れは
+ * すべて null を返し、呼び出し側では「未認証」として扱う（＝再ログイン導線）。失敗理由で
+ * レスポンスを分けない（攻撃者に鍵の状態を伝えないため）。
  */
-export async function openTokenBundle(env: Env, sealed: string): Promise<TokenBundle | null> {
+export async function openTokenBundle(env: Env, sealed: string, now: number): Promise<TokenBundle | null> {
   try {
     const json: unknown = JSON.parse(await openVersioned(env.TOKEN_ENCRYPTION_KEY, currentKeyVersion(env), sealed));
-    return isTokenBundle(json) ? json : null;
+    if (!isTokenBundle(json)) return null;
+    // 絶対期限を過ぎたログインは refresh token が残っていても受け付けない。
+    return json.x > now ? json : null;
   } catch {
     return null;
   }
 }
 
-/** リクエストの Cookie からトークン一式を取り出す（無い・開けない場合は null）。 */
-export function readTokenBundle(c: Context<{ Bindings: Env }>): Promise<TokenBundle | null> {
+/** リクエストの Cookie からトークン一式を取り出す（無い・開けない・絶対期限切れは null）。 */
+export function readTokenBundle(c: Context<{ Bindings: Env }>, now: number): Promise<TokenBundle | null> {
   const sealed = getCookie(c, TOKEN_COOKIE);
   if (!sealed) return Promise.resolve(null);
-  return openTokenBundle(c.env, sealed);
+  return openTokenBundle(c.env, sealed, now);
 }
 
 /**
  * トークン一式を Cookie へ書き戻す。ログイン直後とリフレッシュ成功時に呼ぶ。
- * Max-Age は refresh token の有効期限に合わせる（access token より長い＝再訪時に自動更新できる）。
+ * Max-Age は絶対期限（`x`）までで、リフレッシュしても延びない。
  */
 export async function setTokenCookies(
   c: Context<{ Bindings: Env }>,
   bundle: TokenBundle,
-  nowSeconds: number,
+  now: number,
 ): Promise<void> {
-  const expiresAt = bundle.re ?? nowSeconds + DEFAULT_REFRESH_TOKEN_TTL;
-  // 期限切れ寸前の refresh token でも Cookie 自体は最低 1 分は残し、クライアントが
-  // 再ログインへ倒す判断（/auth/refresh の 401）を受け取れるようにする。
-  const maxAge = Math.max(60, expiresAt - nowSeconds);
+  // 期限切れ寸前でも Cookie 自体は最低 1 分残し、クライアントが再ログインへ倒す判断
+  // （/auth/refresh の 401）を受け取れるようにする。
+  const maxAge = Math.max(60, bundle.x - now);
   setCookie(c, TOKEN_COOKIE, await sealTokenBundle(c.env, bundle), {
     ...COOKIE_BASE,
     httpOnly: true,
     maxAge,
   });
-  // access token の期限だけをクライアントへ公開する（HttpOnly にしない＝Web Locks で
-  // 先回りリフレッシュするかの判断に使う・§5）。値は数値 1 個で個人データではない。
+  // access token の期限だけをクライアントへ公開する（HttpOnly にしない＝先回りリフレッシュの
+  // 判断に使う・§5）。値は数値 1 個で個人データではない。JS から書き換え可能な値のため、
+  // これはあくまで最適化のヒントであり、認可の判断には使わない（最終判断はサーバーの 401）。
   setCookie(c, TOKEN_EXP_COOKIE, String(bundle.ae), {
     ...COOKIE_BASE,
     httpOnly: false,

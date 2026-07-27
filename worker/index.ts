@@ -4,10 +4,10 @@ import type { Env } from "./types";
 import {
   codeChallengeS256,
   createCodeVerifier,
-  decryptString,
-  encryptString,
   isValidEncryptionKey,
+  openVersioned,
   randomToken,
+  sealVersioned,
   sha256Base64url,
 } from "./crypto";
 import {
@@ -22,10 +22,14 @@ import {
   fetchInstallationCount,
   fetchRepoLabels,
   GitHubApiError,
+  revokeAccessToken,
 } from "./github";
 import {
   checkRateLimit,
   cleanupStaleIssueLog,
+  cleanupStaleRateLimits,
+  cleanupStaleRequestIds,
+  deleteUserRecords,
   nowSeconds,
   releaseIssueLogReservation,
   releaseRequestIdReservation,
@@ -34,10 +38,13 @@ import {
 } from "./store";
 import {
   clearTokenCookies,
+  currentKeyVersion,
+  hasValidKeyVersionSetting,
   readTokenBundle,
+  SESSION_MAX_AGE,
   setTokenCookies,
   type TokenBundle,
-} from "./session";
+} from "./tokenCookie";
 import { isAccessTokenFresh, ReauthRequiredError, refreshTokenBundle } from "./tokens";
 
 /** pre-auth Cookie の TTL（10 分・§4.2-1）。 */
@@ -52,10 +59,12 @@ const DUPLICATE_SUBMISSION_WINDOW = 30;
  */
 const OFFLINE_QUEUE_DEDUPE_WINDOW = 26 * 60 * 60;
 /**
- * `issue_log` の保持期間（#71）: 二重送信防止の照合ウィンドウ（`DUPLICATE_SUBMISSION_WINDOW` = 30 秒）
- * に対して十分な安全マージンを取った上で、Cron Trigger（`scheduled` ハンドラ）が古い行を削除する。
+ * 一時行（`issue_log` / `request_ids` / `rate_limits`）の保持期間（#71・#164）。
+ * 最長の照合ウィンドウ（`OFFLINE_QUEUE_DEDUPE_WINDOW` = 26 時間）に十分な安全マージンを取った上で、
+ * Cron Trigger（`scheduled` ハンドラ）が古い行を削除する。プライバシーポリシーの「最長 7 日で
+ * 自動削除」はこの値が根拠なので、変更するときはポリシー文言も合わせること。
  */
-const ISSUE_LOG_RETENTION_SECONDS = 7 * 24 * 60 * 60;
+const TEMP_RECORD_RETENTION_SECONDS = 7 * 24 * 60 * 60;
 /** client_request_id の長さ上限（crypto.randomUUID() は36文字・将来の形式変更を見込んだ余裕）。 */
 const CLIENT_REQUEST_ID_MAX_LENGTH = 100;
 /**
@@ -146,12 +155,26 @@ function requireSameOrigin(c: Context<{ Bindings: Env }>): Response | null {
  * 並行 API レスポンスの Set-Cookie が互いを上書きする事故を構造的に避けるための分離。
  */
 async function resolveTokens(c: Context<{ Bindings: Env }>): Promise<TokenBundle | Response> {
-  const bundle = await readTokenBundle(c);
+  const now = nowSeconds();
+  const bundle = await readTokenBundle(c, now);
   if (!bundle) return c.json(jsonError("unauthenticated", "not logged in"), 401);
-  if (!isAccessTokenFresh(bundle, nowSeconds())) {
+  if (!isAccessTokenFresh(bundle, now)) {
     return c.json(jsonError("token_expired", "access token expired; refresh required"), 401);
   }
   return bundle;
+}
+
+/**
+ * GitHub 側でトークンを失効させる（ベストエフォート）。
+ * 失敗しても Cookie 破棄は続行する（ログアウト操作自体をネットワーク障害で失敗させない）。
+ */
+async function revokeTokenBestEffort(c: Context<{ Bindings: Env }>, bundle: TokenBundle): Promise<void> {
+  await revokeAccessToken({
+    apiBase: c.env.GITHUB_API_BASE ?? DEFAULT_API_BASE,
+    clientId: c.env.GITHUB_CLIENT_ID,
+    clientSecret: c.env.GITHUB_CLIENT_SECRET,
+    accessToken: bundle.a,
+  });
 }
 
 /** 重複防止・レート制限のキー（P3 でクライアント側へ移すまでの暫定・GitHub の数値ユーザー ID）。 */
@@ -167,17 +190,22 @@ app.get("/api/health", (c) => c.json({ status: "ok" }));
 app.get("/api/ready", async (c) => {
   const checks = {
     encryptionKey: isValidEncryptionKey(c.env.TOKEN_ENCRYPTION_KEY),
+    // TOKEN_KEY_VERSION の不正値はサイレントに 1 へフォールバックするため、設定ミスをここで可視化する
+    // （鍵を交換したのにバージョンが上がらないと、旧鍵の Cookie を安価に弾けない）。
+    keyVersion: hasValidKeyVersionSetting(c.env),
     clientId: Boolean(c.env.GITHUB_CLIENT_ID),
     database: false,
   };
   try {
     // 個人データは持たないが、重複防止・レート制限用のテーブル（P3 まで暫定）は必要。
-    await c.env.DB.prepare("SELECT 1 FROM issue_log LIMIT 1").all();
+    // 列まで指定するのは「Worker だけ先にデプロイされ migration が未適用」を検知するため
+    // （テーブルの存在だけを見ると、旧スキーマ（user_id 列）でも ready を返してしまう）。
+    await c.env.DB.prepare("SELECT user_key FROM issue_log LIMIT 1").all();
     checks.database = true;
   } catch {
     checks.database = false;
   }
-  const ready = checks.encryptionKey && checks.clientId && checks.database;
+  const ready = checks.encryptionKey && checks.keyVersion && checks.clientId && checks.database;
   return c.json({ ready, checks }, ready ? 200 : 503);
 });
 
@@ -186,7 +214,11 @@ app.get("/auth/login", async (c) => {
   const state = randomToken(16);
   const verifier = createCodeVerifier();
   const challenge = await codeChallengeS256(verifier);
-  const preauth = await encryptString(c.env.TOKEN_ENCRYPTION_KEY, JSON.stringify({ state, verifier }));
+  const preauth = await sealVersioned(
+    c.env.TOKEN_ENCRYPTION_KEY,
+    currentKeyVersion(c.env),
+    JSON.stringify({ state, verifier }),
+  );
 
   setCookie(c, PREAUTH_COOKIE, preauth, {
     httpOnly: true,
@@ -227,7 +259,7 @@ app.get("/auth/callback", async (c) => {
 
   let pre: { state: string; verifier: string };
   try {
-    pre = JSON.parse(await decryptString(c.env.TOKEN_ENCRYPTION_KEY, preauth));
+    pre = JSON.parse(await openVersioned(c.env.TOKEN_ENCRYPTION_KEY, currentKeyVersion(c.env), preauth));
   } catch {
     return c.json(jsonError("invalid_preauth", "pre-auth cookie could not be read"), 400);
   }
@@ -259,6 +291,7 @@ app.get("/auth/callback", async (c) => {
       ae: now + (token.expires_in ?? DEFAULT_ACCESS_TOKEN_TTL),
       r: token.refresh_token ?? null,
       re: token.refresh_token_expires_in ? now + token.refresh_token_expires_in : null,
+      x: now + SESSION_MAX_AGE,
       u: ghUser.id,
     },
     now,
@@ -273,10 +306,15 @@ app.post("/auth/refresh", async (c) => {
   const csrfRejection = requireSameOrigin(c);
   if (csrfRejection) return csrfRejection;
 
-  const bundle = await readTokenBundle(c);
-  if (!bundle) return c.json(jsonError("unauthenticated", "not logged in"), 401);
-
   const now = nowSeconds();
+  const bundle = await readTokenBundle(c, now);
+  if (!bundle) {
+    // 開けない Cookie（改ざん・鍵ローテーション・絶対期限切れ）は残しておくと、クライアントが
+    // 「まだ期限内」と誤認して 401 を繰り返す。ここで確実に掃除して再ログイン導線へ倒す。
+    clearTokenCookies(c);
+    return c.json(jsonError("unauthenticated", "not logged in"), 401);
+  }
+
   // ロック取得までの間に他タブが更新済みなら GitHub を呼ばない（二重ローテーション＝失効の回避）。
   if (isAccessTokenFresh(bundle, now)) {
     return c.json({ expiresAt: bundle.ae });
@@ -455,9 +493,13 @@ app.post("/api/issues", async (c) => {
 
 // POST /auth/logout: トークン Cookie を破棄する（CSRF: 同一 Origin を要求）。
 // サーバー側にセッションを持たないため、Cookie を消せばそれでログアウトが完了する。
-app.post("/auth/logout", (c) => {
+app.post("/auth/logout", async (c) => {
   const csrfRejection = requireSameOrigin(c);
   if (csrfRejection) return csrfRejection;
+  const bundle = await readTokenBundle(c, nowSeconds());
+  // Cookie を消すだけでは、値をコピーされていた場合にアクセスを止められない（自己完結型の
+  // クレデンシャルのため）。GitHub 側でトークン自体を失効させてログアウトを実効化する。
+  if (bundle) await revokeTokenBestEffort(c, bundle);
   clearTokenCookies(c);
   return c.body(null, 204);
 });
@@ -468,9 +510,13 @@ app.post("/auth/logout", (c) => {
 app.delete("/api/account", async (c) => {
   const csrfRejection = requireSameOrigin(c);
   if (csrfRejection) return csrfRejection;
-  const bundle = await readTokenBundle(c);
+  const bundle = await readTokenBundle(c, nowSeconds());
   if (!bundle) return c.json(jsonError("unauthenticated", "not logged in"), 401);
 
+  // 個人データは保持していないが、重複防止・レート制限の一時行は GitHub の数値ユーザー ID を
+  // キーに持つため、退会時に確実に消す（残っていないことを保証する）。
+  await deleteUserRecords(c.env.DB, userKeyOf(bundle));
+  await revokeTokenBestEffort(c, bundle);
   clearTokenCookies(c);
   return c.body(null, 204);
 });
@@ -482,6 +528,15 @@ export default {
   fetch: app.fetch,
   // Cron Trigger（wrangler.jsonc の triggers.crons）: issue_log の保持期間ポリシー（#71）を実行する。
   async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
-    ctx.waitUntil(cleanupStaleIssueLog(env.DB, ISSUE_LOG_RETENTION_SECONDS));
+    // 一時行（いずれも user_key = GitHub の数値ユーザー ID を含む）を保持期間で掃除する。
+    // 1 つでも掃除漏れがあると「サーバーに個人データを残さない」方針が崩れるため、
+    // 片方が失敗しても他方は実行されるよう allSettled でまとめる。
+    ctx.waitUntil(
+      Promise.allSettled([
+        cleanupStaleIssueLog(env.DB, TEMP_RECORD_RETENTION_SECONDS),
+        cleanupStaleRequestIds(env.DB, TEMP_RECORD_RETENTION_SECONDS),
+        cleanupStaleRateLimits(env.DB, TEMP_RECORD_RETENTION_SECONDS),
+      ]),
+    );
   },
 };

@@ -3,7 +3,7 @@
  * ステートレス認証（stateless-architecture.md §4）では「ログイン済み」= トークン Cookie を持つことなので、
  * D1 にユーザー行を作る代わりに、封入済みの Cookie ヘッダを組み立てる。
  */
-import { sealTokenBundle, TOKEN_COOKIE, type TokenBundle } from "./session";
+import { sealTokenBundle, SESSION_MAX_AGE, TOKEN_COOKIE, type TokenBundle } from "./tokenCookie";
 import { nowSeconds } from "./store";
 import type { Env } from "./types";
 
@@ -16,6 +16,7 @@ export function testTokenBundle(overrides: Partial<TokenBundle> = {}): TokenBund
     ae: nowSeconds() + 3600,
     r: null,
     re: null,
+    x: nowSeconds() + SESSION_MAX_AGE,
     u: nextUserId++,
     ...overrides,
   };

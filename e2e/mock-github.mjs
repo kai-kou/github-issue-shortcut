@@ -2,6 +2,8 @@
 // - GET  /login/oauth/authorize             : ユーザー承認をシミュレートし redirect_uri へ code+state を返す
 // - POST /login/oauth/access_token          : トークン交換 / リフレッシュのレスポンスを返す（単回使用ローテーションを再現）
 // - GET  /mock/refresh-count                : refresh_token グラントが走った回数（Web Locks 1本化の検証用・#164）
+// - DELETE /applications/:client_id/token   : user access token の失効（ログアウトの実効化・#164）
+// - GET  /mock/revoked-count                : 失効 API が呼ばれた回数
 // - GET  /user                              : ログインユーザー情報を返す
 // - GET  /user/installations                : App インストール一覧を返す（既定は e2e-user 常に 0 件・A2-1）
 // - GET  /user/installations/:id/repositories: インストール別のアクセス可能リポジトリを返す（B2-1/B2-2）
@@ -37,6 +39,7 @@ let accessTokenTtl = DEFAULT_ACCESS_TOKEN_TTL;
 let validRefreshToken = "mock_refresh_token";
 let refreshCount = 0;
 let nextRefreshSerial = 0;
+let revokedCount = 0;
 // 実際に作成された Issue の件数（#148）。オフラインキューの再送で「GitHub 側に 1 件だけ
 // 作られたか」を、キュー表示が消えたという間接証拠ではなく直接検証するために数える。
 let issueCreateCount = 0;
@@ -156,6 +159,7 @@ const server = createServer(async (req, res) => {
       // テストごとの初期化点。作成件数・リフレッシュ回数もここでリセットし、spec 間で持ち越さない。
       issueCreateCount = 0;
       refreshCount = 0;
+      revokedCount = 0;
       return json(200, { ok: true });
     } catch {
       res.writeHead(400);
@@ -173,6 +177,17 @@ const server = createServer(async (req, res) => {
 
   if (req.method === "GET" && url.pathname === "/mock/refresh-count") {
     return json(200, { count: refreshCount });
+  }
+
+  if (req.method === "GET" && url.pathname === "/mock/revoked-count") {
+    return json(200, { count: revokedCount });
+  }
+
+  // user access token の失効（ログアウト・アカウント削除で呼ばれる）。実 GitHub は 204 を返す。
+  if (req.method === "DELETE" && /^\/applications\/[^/]+\/token$/.test(url.pathname)) {
+    revokedCount += 1;
+    res.writeHead(204);
+    return res.end();
   }
 
   if (req.method === "GET" && url.pathname === "/user/installations") {

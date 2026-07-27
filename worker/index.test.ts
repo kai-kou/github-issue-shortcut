@@ -1,8 +1,9 @@
 import { createExecutionContext, createScheduledController, env, SELF, waitOnExecutionContext } from "cloudflare:test";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import worker from "./index";
-import { applySchema, nowSeconds, reserveIssueLog } from "./store";
-import { loginCookie } from "./test-support";
+import { applySchema, nowSeconds, reserveIssueLog, reserveRequestId } from "./store";
+import { loginCookie, testTokenBundle, tokenCookieHeader } from "./test-support";
+import { currentKeyVersion } from "./tokenCookie";
 import type { Env } from "./types";
 
 const testEnv = env as unknown as Env;
@@ -36,6 +37,35 @@ describe("GET /api/ready", () => {
     expect(body.checks.encryptionKey).toBe(true); // miniflare のテスト鍵は有効
     expect(body.checks.clientId).toBe(true); // miniflare のテスト client_id
     expect(body.checks.database).toBe(false); // スキーマ未適用 → 検知される
+  });
+
+  it("detects an un-migrated (legacy column) schema, not just a missing table", async () => {
+    // 「Worker だけ先にデプロイされ 0010 が未適用」を検知できること。テーブルの存在だけを見ると
+    // 旧スキーマ（user_id 列）でも ready を返してしまい、起票時に初めて全滅する。
+    await db.prepare("CREATE TABLE IF NOT EXISTS issue_log (user_id TEXT, repo TEXT, content_hash TEXT, created_at INTEGER)").run();
+    try {
+      const res = await SELF.fetch("https://example.com/api/ready");
+      expect(res.status).toBe(503);
+      const body = (await res.json()) as { checks: Record<string, boolean> };
+      expect(body.checks.database).toBe(false);
+    } finally {
+      await db.prepare("DROP TABLE issue_log").run();
+    }
+  });
+
+  it("reports an unusable TOKEN_KEY_VERSION instead of silently falling back to v1", async () => {
+    await applySchema(db);
+    // env を差し替えるため SELF ではなくハンドラを直接呼ぶ（SELF.fetch は env を受け取らない）。
+    const ctx = createExecutionContext();
+    const res = await worker.fetch(
+      new Request("https://example.com/api/ready"),
+      { ...testEnv, TOKEN_KEY_VERSION: "v2" },
+      ctx,
+    );
+    await waitOnExecutionContext(ctx);
+    expect(res.status).toBe(503);
+    const body = (await res.json()) as { checks: Record<string, boolean> };
+    expect(body.checks.keyVersion).toBe(false);
   });
 });
 
@@ -127,7 +157,11 @@ describe("GET /api/me", () => {
   });
 
   it("treats a cookie sealed with another key version as unauthenticated (鍵ローテーション → 再ログイン)", async () => {
-    const rotated = await loginCookie({ ...testEnv, TOKEN_KEY_VERSION: "2" });
+    // 現行バージョン + 1 で封入する（定数直書きだと本番でローテーションした瞬間にテストが壊れる）。
+    const rotated = await loginCookie({
+      ...testEnv,
+      TOKEN_KEY_VERSION: String(currentKeyVersion(testEnv) + 1),
+    });
     const res = await SELF.fetch("https://example.com/api/me", { headers: { Cookie: rotated } });
     expect(res.status).toBe(401);
     const body = (await res.json()) as { error: { code: string } };
@@ -191,6 +225,45 @@ describe("POST /auth/refresh (§5)", () => {
     });
     expect(res.status).toBe(200);
     expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("keeps the cookies when the refresh fails transiently (GitHub 5xx で強制ログアウトしない)", async () => {
+    const cookie = await loginCookie(testEnv, { ae: nowSeconds() - 10, r: "refresh-token" });
+    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse(503, {})));
+
+    const res = await SELF.fetch("https://example.com/auth/refresh", {
+      method: "POST",
+      headers: { Origin: "https://example.com", Cookie: cookie },
+    });
+    expect(res.status).toBe(502);
+    // まだ有効な refresh token を持つ利用者を、一過性障害で追い出さない。
+    expect(res.headers.get("Set-Cookie")).toBeNull();
+  });
+
+  it("documents that the server alone cannot serialize two concurrent refreshes (§5 の受容したトレードオフ)", async () => {
+    // 直列化はクライアントの Web Locks が担う。サーバー側は同じ古い Cookie を持つ 2 本が同時に
+    // 届くと片方が失効する（旧実装の D1 行ロックが担っていた保護は構造的に無い）。
+    const cookie = await loginCookie(testEnv, { ae: nowSeconds() - 10, r: "single-use" });
+    let consumed = false;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init: RequestInit) => {
+        const params = new URLSearchParams(String(init.body));
+        if (params.get("refresh_token") !== "single-use" || consumed) {
+          return jsonResponse(200, { error: "bad_refresh_token" });
+        }
+        consumed = true;
+        return jsonResponse(200, { access_token: "new-access", expires_in: 28800, refresh_token: "rotated" });
+      }),
+    );
+
+    const refresh = () =>
+      SELF.fetch("https://example.com/auth/refresh", {
+        method: "POST",
+        headers: { Origin: "https://example.com", Cookie: cookie },
+      });
+    const [a, b] = await Promise.all([refresh(), refresh()]);
+    expect([a.status, b.status].sort()).toEqual([200, 401]);
   });
 
   it("clears the cookies and asks for re-login when GitHub rejects the refresh token", async () => {
@@ -276,14 +349,21 @@ describe("POST /auth/logout", () => {
     expect(res.status).toBe(204);
   });
 
-  it("clears both token cookies", async () => {
+  it("clears both token cookies and revokes the token at GitHub (漏れた Cookie を無効化する)", async () => {
     const cookie = await loginCookie(testEnv);
+    const fetchSpy = vi.fn(async () => new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetchSpy);
+
     const res = await SELF.fetch("https://example.com/auth/logout", {
       method: "POST",
       headers: { Origin: "https://example.com", Cookie: cookie },
       redirect: "manual",
     });
     expect(res.status).toBe(204);
+    // Cookie を消すだけでは、値をコピーされていた相手を止められない。
+    const revoke = fetchSpy.mock.calls[0] as unknown as [string, RequestInit];
+    expect(revoke[0]).toContain("/applications/");
+    expect(revoke[1].method).toBe("DELETE");
     const setCookie = res.headers.get("Set-Cookie") ?? "";
     expect(setCookie).toContain("__Host-gh=");
     expect(setCookie).toContain("__Host-gh-exp=");
@@ -307,34 +387,51 @@ describe("DELETE /api/account", () => {
     expect(body.error.code).toBe("unauthenticated");
   });
 
-  it("only destroys the token cookies (サーバーには消すべき個人データが無い・P2)", async () => {
-    const cookie = await loginCookie(testEnv);
+  it("destroys the token cookies and the user's remaining rows (FR-12)", async () => {
+    await applySchema(db);
+    const bundle = testTokenBundle();
+    const userKey = String(bundle.u);
+    await reserveIssueLog(db, userKey, "kai-kou/alpha", "hash-delete", 30);
+    await reserveRequestId(db, userKey, "req-delete", 26 * 60 * 60);
+    // GitHub 側のトークン失効呼び出し（ベストエフォート）は stub で受ける。
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(null, { status: 204 })));
+
     const res = await SELF.fetch("https://example.com/api/account", {
       method: "DELETE",
-      headers: { Origin: "https://example.com", Cookie: cookie },
+      headers: { Origin: "https://example.com", Cookie: await tokenCookieHeader(testEnv, bundle) },
     });
     expect(res.status).toBe(204);
     const setCookie = res.headers.get("Set-Cookie") ?? "";
     expect(setCookie).toContain("__Host-gh=");
     expect(setCookie).toContain("Max-Age=0");
+
+    // GitHub の数値ユーザー ID をキーに持つ一時行が残らないこと（保持ゼロの担保）。
+    expect(await db.prepare("SELECT 1 FROM issue_log WHERE user_key = ?").bind(userKey).first()).toBeNull();
+    expect(await db.prepare("SELECT 1 FROM request_ids WHERE user_key = ?").bind(userKey).first()).toBeNull();
   });
 });
 
-describe("scheduled handler (issue_log 保持期間クリーンアップ・#71)", () => {
-  it("deletes issue_log rows older than the retention window via the Cron Trigger wiring", async () => {
+describe("scheduled handler (一時行の保持期間クリーンアップ・#71 / #164)", () => {
+  it("deletes stale rows from every temporary table via the Cron Trigger wiring", async () => {
     await applySchema(db);
     const userKey = "3001";
+    const stale = nowSeconds() - 8 * 24 * 60 * 60;
     await reserveIssueLog(db, userKey, "kai-kou/alpha", "hash-cron", 30);
+    await reserveRequestId(db, userKey, "req-cron", 26 * 60 * 60);
+    await db.prepare("INSERT INTO rate_limits (user_key, window_start, count) VALUES (?, ?, 1)").bind(userKey, stale).run();
     await db
       .prepare("UPDATE issue_log SET created_at = ? WHERE user_key = ? AND repo = ? AND content_hash = ?")
-      .bind(nowSeconds() - 8 * 24 * 60 * 60, userKey, "kai-kou/alpha", "hash-cron")
+      .bind(stale, userKey, "kai-kou/alpha", "hash-cron")
       .run();
+    await db.prepare("UPDATE request_ids SET created_at = ? WHERE user_key = ?").bind(stale, userKey).run();
 
     const ctx = createExecutionContext();
     await worker.scheduled(createScheduledController(), env as unknown as Env, ctx);
     await waitOnExecutionContext(ctx);
 
-    const remaining = await db.prepare("SELECT COUNT(*) as count FROM issue_log").first<{ count: number }>();
-    expect(remaining?.count).toBe(0);
+    for (const table of ["issue_log", "request_ids", "rate_limits"]) {
+      const remaining = await db.prepare(`SELECT COUNT(*) as count FROM ${table}`).first<{ count: number }>();
+      expect(remaining?.count, table).toBe(0);
+    }
   });
 });

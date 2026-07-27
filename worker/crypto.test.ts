@@ -2,8 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   codeChallengeS256,
   createCodeVerifier,
-  decryptString,
-  encryptString,
   KeyVersionMismatchError,
   openVersioned,
   randomToken,
@@ -36,30 +34,23 @@ describe("PKCE code challenge (S256)", () => {
   });
 });
 
-describe("AES-256-GCM encrypt/decrypt", () => {
-  it("round-trips plaintext without leaking it", async () => {
-    const plaintext = "gho_exampletoken_1234567890";
-    const blob = await encryptString(KEY, plaintext);
-    expect(blob).not.toContain(plaintext);
-    expect(await decryptString(KEY, blob)).toBe(plaintext);
-  });
-
+describe("AES-256-GCM の封入・開封", () => {
   it("uses a random IV so ciphertext differs each time", async () => {
-    const a = await encryptString(KEY, "same-plaintext");
-    const b = await encryptString(KEY, "same-plaintext");
+    const a = await sealVersioned(KEY, 1, "same-plaintext");
+    const b = await sealVersioned(KEY, 1, "same-plaintext");
     expect(a).not.toBe(b);
   });
 
   it("rejects tampered ciphertext", async () => {
-    const blob = await encryptString(KEY, "secret");
-    // 先頭文字（IV の一部）を反転する。末尾文字は base64url のパディングビットしか
-    // 変えずデコード結果が同一になりうるため、必ずバイトが変わる先頭を改ざんする。
-    const tampered = (blob[0] === "A" ? "B" : "A") + blob.slice(1);
-    await expect(decryptString(KEY, tampered)).rejects.toThrow();
+    const blob = await sealVersioned(KEY, 1, "secret");
+    // 2 文字目（IV の一部）を反転する。末尾文字は base64url のパディングビットしか
+    // 変えずデコード結果が同一になりうるため、必ずバイトが変わる前方を改ざんする。
+    const tampered = blob[0] + (blob[1] === "A" ? "B" : "A") + blob.slice(2);
+    await expect(openVersioned(KEY, 1, tampered)).rejects.toThrow();
   });
 
   it("rejects a key that is not 32 bytes", async () => {
-    await expect(encryptString("c2hvcnQ=", "x")).rejects.toThrow();
+    await expect(sealVersioned("c2hvcnQ=", 1, "x")).rejects.toThrow();
   });
 });
 

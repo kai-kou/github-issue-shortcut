@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   parseAccessTokenExpiry,
+  refreshAfterUnauthorized,
   refreshIfStale,
   REFRESH_SKEW_SECONDS,
   type RefreshDeps,
@@ -94,6 +95,12 @@ describe("refreshIfStale（Web Locks による 1 本化・stateless-architecture
     expect(postRefresh).toHaveBeenCalledTimes(1);
   });
 
+  it("does not refresh when the token is fresh, even at skew 0 (先回り経路)", async () => {
+    const { deps, postRefresh } = makeDeps(NOW + 3600);
+    expect(await refreshIfStale(deps, 0)).toBe(true);
+    expect(postRefresh).not.toHaveBeenCalled();
+  });
+
   it("skips the refresh inside the lock when another tab already renewed it", async () => {
     let expiry = NOW - 10;
     const postRefresh = vi.fn(async () => true);
@@ -109,5 +116,57 @@ describe("refreshIfStale（Web Locks による 1 本化・stateless-architecture
     };
     expect(await refreshIfStale(deps, REFRESH_SKEW_SECONDS)).toBe(true);
     expect(postRefresh).not.toHaveBeenCalled();
+  });
+});
+
+describe("refreshAfterUnauthorized（401 を根拠にした強制リフレッシュ）", () => {
+  it("refreshes even when the local expiry claims the token is still valid (時計ずれ・exp Cookie 改ざん)", async () => {
+    // ここが早期 return してしまうと、サーバーが失効と判断しているのにクライアントは
+    // 同じリクエストを投げ直すだけになり、exp が切れるまで自己回復できない。
+    const { deps, postRefresh } = makeDeps(NOW + 3600);
+    expect(await refreshAfterUnauthorized(deps, NOW + 3600)).toBe(true);
+    expect(postRefresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("skips the refresh when another tab already renewed it while we waited for the lock", async () => {
+    let expiry = NOW - 10;
+    const postRefresh = vi.fn(async () => true);
+    const deps: RefreshDeps = {
+      now: () => NOW,
+      readExpiry: () => expiry,
+      withLock: async (fn) => {
+        expiry = NOW + 28800; // ロック待ちの間に他タブが更新した
+        return fn();
+      },
+      postRefresh,
+    };
+    expect(await refreshAfterUnauthorized(deps, NOW - 10)).toBe(true);
+    expect(postRefresh).not.toHaveBeenCalled();
+  });
+
+  it("does nothing when unauthenticated (期限 Cookie が無い＝サーバーが Cookie を破棄済み)", async () => {
+    const { deps, postRefresh } = makeDeps(null);
+    expect(await refreshAfterUnauthorized(deps, null)).toBe(false);
+    expect(postRefresh).not.toHaveBeenCalled();
+  });
+
+  it("runs the refresh once for concurrent 401 recoveries (単回使用トークンを二重消費しない)", async () => {
+    const { deps, postRefresh } = makeDeps(NOW - 10);
+    const results = await Promise.all(
+      Array.from({ length: 4 }, () => refreshAfterUnauthorized(deps, NOW - 10)),
+    );
+    expect(results).toEqual([true, true, true, true]);
+    expect(postRefresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports failure so the caller surfaces the original 401 (再ログイン導線へ)", async () => {
+    const postRefresh = vi.fn(async () => false);
+    const deps: RefreshDeps = {
+      now: () => NOW,
+      readExpiry: () => NOW - 10,
+      withLock: (fn) => fn(),
+      postRefresh,
+    };
+    expect(await refreshAfterUnauthorized(deps, NOW - 10)).toBe(false);
   });
 });

@@ -74,44 +74,15 @@ export function isValidEncryptionKey(base64Key: string | undefined): boolean {
   }
 }
 
-/** 平文を AES-256-GCM で暗号化し、base64url(iv(12B) || ciphertext) を返す。 */
-export async function encryptString(base64Key: string, plaintext: string): Promise<string> {
-  const key = await importAesKey(base64Key);
-  const iv = crypto.getRandomValues(new Uint8Array(12));
-  const cipher = new Uint8Array(
-    await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, encoder.encode(plaintext)),
-  );
-  const combined = new Uint8Array(iv.byteLength + cipher.byteLength);
-  combined.set(iv, 0);
-  combined.set(cipher, iv.byteLength);
-  return bytesToBase64url(combined);
-}
-
-/** encryptString で作った blob を復号する。改ざん・鍵不一致時は例外を投げる。 */
-export async function decryptString(base64Key: string, blob: string): Promise<string> {
-  const key = await importAesKey(base64Key);
-  const combined = base64urlToBytes(blob);
-  if (combined.byteLength <= 12) throw new Error("ciphertext too short");
-  const iv = combined.slice(0, 12);
-  const cipher = combined.slice(12);
-  const plain = await crypto.subtle.decrypt({ name: "AES-GCM", iv }, key, cipher);
-  return decoder.decode(plain);
-}
-
 /** 鍵バージョンとして表現できる範囲（先頭 1 バイトに埋め込む）。 */
 export const MIN_KEY_VERSION = 1;
-export const MAX_KEY_VERSION = 255;
+const MAX_KEY_VERSION = 255;
 
 /** 鍵バージョンが現行と異なる blob を開こうとしたときに送出する（＝再ログインが必要）。 */
 export class KeyVersionMismatchError extends Error {
-  readonly found: number;
-  readonly expected: number;
-
   constructor(found: number, expected: number) {
     super(`key version mismatch: found ${found}, expected ${expected}`);
     this.name = "KeyVersionMismatchError";
-    this.found = found;
-    this.expected = expected;
   }
 }
 

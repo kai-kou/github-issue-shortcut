@@ -112,6 +112,41 @@ export async function cleanupStaleIssueLog(db: D1Database, olderThanSeconds: num
 }
 
 /**
+ * `request_ids` の保持期間（#164 セルフレビュー S-3）: 照合ウィンドウ（26 時間）を過ぎた行は
+ * 判定に使われないため、`issue_log` と同じ Cron で削除する。放置すると GitHub のユーザー ID を
+ * 含む行が無期限に増え続け、「サーバーに個人データを残さない」方針と食い違う。
+ */
+export async function cleanupStaleRequestIds(db: D1Database, olderThanSeconds: number): Promise<number> {
+  const staleBefore = nowSeconds() - olderThanSeconds;
+  const result = await db.prepare(`DELETE FROM request_ids WHERE created_at < ?`).bind(staleBefore).run();
+  return result.meta.changes ?? 0;
+}
+
+/**
+ * `rate_limits` の保持期間（#164 セルフレビュー S-3）: `checkRateLimit` の自浄処理は
+ * 「同じユーザーが次に起票したとき」しか走らないため、離脱したユーザーの行が残り続ける。
+ * 過去ウィンドウの行を Cron でまとめて削除する。
+ */
+export async function cleanupStaleRateLimits(db: D1Database, olderThanSeconds: number): Promise<number> {
+  const staleBefore = nowSeconds() - olderThanSeconds;
+  const result = await db.prepare(`DELETE FROM rate_limits WHERE window_start < ?`).bind(staleBefore).run();
+  return result.meta.changes ?? 0;
+}
+
+/**
+ * アカウント削除（FR-12・PR-3）: サーバーに残る当該ユーザーの一時行を即座に消す。
+ * 個人データは保持していないが、`user_key`（GitHub の数値ユーザー ID）は個人に紐づく識別子のため、
+ * 退会時に残さない（「削除すべきものは無い」ではなく「無いことを保証する」）。
+ */
+export async function deleteUserRecords(db: D1Database, userKey: string): Promise<void> {
+  await db.batch([
+    db.prepare(`DELETE FROM issue_log WHERE user_key = ?`).bind(userKey),
+    db.prepare(`DELETE FROM request_ids WHERE user_key = ?`).bind(userKey),
+    db.prepare(`DELETE FROM rate_limits WHERE user_key = ?`).bind(userKey),
+  ]);
+}
+
+/**
  * オフラインキュー再送の重複防止（B4-4/FR-22×FR-24・OQ-8）: クライアントが起票の最初の送信試行時に
  * 生成する `client_request_id`（キュー管理用の既存ローカル ID を流用）で長時間窓の予約を行う。
  * `reserveIssueLog` の content_hash・短時間窓（再タップ対策）とは独立な仕組みで、Service Worker の
