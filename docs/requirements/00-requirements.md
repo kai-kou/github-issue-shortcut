@@ -191,7 +191,7 @@ LP にアクセス →「GitHub でログイン」→ GitHub の認可画面（�
 | NFR-14 | コスト | Cloudflare 無料枠（Workers リクエスト数・Rate Limiting binding・static assets 配信無料）内で運用できる設計であること（P3 で永続層は不使用）。枠超過が近づいたら検知できること | MUST |
 | NFR-15 | 運用 | 起票フロー（ログイン → 起票 → GitHub 反映）の E2E 確認なしに main へマージしないこと（CI ゲート） | MUST |
 | NFR-16 | 互換性 | 一次サポートは Android Chrome（WebAPK）。デスクトップ / iOS ブラウザでも基本フロー（ログイン・起票）が動作すること | SHOULD |
-| NFR-17 | プライバシー | 収集データはプライバシーポリシー記載の範囲に限定し、Issue 本文等のユーザーコンテンツを分析目的で保存しないこと | MUST |
+| NFR-17 | プライバシー | 収集データはプライバシーポリシー記載の範囲に限定し、Issue 本文等のユーザーコンテンツを分析目的で保存しないこと。Cloudflare 基盤側のログ（Workers Logs）は `observability` を明示設定し、**invocation log を無効化**（Request / Response をヘッダーごと記録するため）したうえでサンプリングを絞り、残る記録の種類と保持期間（無料プラン 3 日 / 有料プラン 7 日）をポリシーに記載すること（P4） | MUST |
 
 ## 6. システムアーキテクチャ
 
@@ -209,7 +209,8 @@ Cloudflare Workers（単一 Worker）
 │     ├── GitHub App 認可（state + PKCE・トークン交換・暗号化トークン Cookie の発行/書き戻し）
 │     └── Issue 作成プロキシ（POST /repos/{owner}/{repo}/issues・API version pin）
 ├── Rate Limiting binding: 起票のレート制限（カウンタは Cloudflare 管理・キーはユーザー ID のハッシュ）
-│     └── D1 は全用途が廃止済み（P1〜P3・個人データ保持ゼロ。バインディング自体の撤去は P4）
+│     └── D1 は廃止（P1〜P3 で全用途を移設し、P4 でバインディング・migrations も撤去済み）
+├── Workers Logs: observability を明示設定（invocation log 無効化 + 5% サンプリング・保持は無料 3 日 / 有料 7 日・P4）
 └── Workers Secrets: GitHub App client secret・トークン暗号鍵
 
 開発: wrangler v4（wrangler.jsonc）/ TypeScript / @cloudflare/vitest-pool-workers
@@ -223,7 +224,8 @@ CI/CD: GitHub Actions（test / lint）+ Workers Builds（git 連携・push で�
 ### 6.2 データモデル（サーバーは永続化しない）
 
 **サーバー側の永続データは存在しない（MUST・P3）**。かつて D1 に置いていたものはすべて移設済みで、
-Worker は永続化 API（D1 / KV / R2 / DO）を呼ばない（D1 バインディング・`migrations/` の撤去自体は P4）。
+Worker は永続化 API（D1 / KV / R2 / DO）を呼ばない。D1 バインディングと `migrations/` も撤去済み（P4。
+Cloudflare 上のデータベース実体はデプロイ確認後に削除し、記録は #166 に残す）。
 
 | かつての D1 テーブル | 現在の置き場所 | 備考 |
 |------|------|------|
@@ -293,8 +295,8 @@ GitHub 連携解除の案内** で完了する（MUST）。サーバーに削除
 | ID | 要件 | レベル | MS |
 |----|------|--------|----|
 | PR-1 | 利用規約を公開し、無保証・自己責任・禁止行為（スパム起票等）・サービス変更/終了の可能性を明記すること | MUST | M1 |
-| PR-2 | プライバシーポリシーに、収集データ（GitHub トークン・アカウント情報とその保存先が **利用者の端末** であること・二重起票防止の一時記録）・保持期間・削除方法を明記すること。サーバー側で個人データを保持しないこと自体をポリシーに明示する | MUST | M1 |
-| PR-3 | アカウント削除機能（FR-12）で端末内データ（トークン Cookie・ショートカット設定・キャッシュ）を即時削除し、GitHub 側の連携解除（App の authorization 取消・インストール削除）の手順を案内すること。サーバーには削除すべき個人データが無い（P2） | MUST | M1 |
+| PR-2 | プライバシーポリシーに、収集データ（GitHub トークン・アカウント情報とその保存先が **利用者の端末** であること・二重起票防止の一時記録）・保持期間・削除方法・**サーバー基盤に残る記録（Workers Logs のサンプリング率と保持期間）**・**問い合わせ窓口** を明記すること。サーバー側で個人データを保持しないこと自体をポリシーに明示する | MUST | M1 |
+| PR-3 | アカウント削除機能（FR-12）で端末内データ（トークン Cookie・ショートカット設定・送信履歴・キャッシュ）を即時削除し、GitHub 側の連携解除（App の authorization 取消・インストール削除）の手順を案内すること。サーバーには削除すべき個人データが無い（P2・P3） | MUST | M1 |
 | PR-4 | 不正利用対策: 本アプリ経由の起票にアプリ側レート制限（例: ユーザーあたり分間・時間あたり上限）を設け、GitHub の二次制限（80 req/min）より十分低く抑えること | MUST | M1 |
 | PR-5 | 不正利用対策: 422（spam 判定）が続くユーザーを検知し、一時的に送信を抑止できること | SHOULD | M2 |
 | PR-6 | GitHub App を公開設定（public）にし、App の説明・権限理由・ホームページ URL・プライバシーポリシー URL を整備すること | MUST | M1 |

@@ -43,13 +43,19 @@
       "simple": { "limit": 1000, "period": 60 }
     }
   ],
-  // D1（バインディング・migrations）は P3 で全ての利用が無くなった。撤去そのものは P4（#166）で行う。
-  "d1_databases": [
-    {
-      "binding": "DB",
-      "database_name": "github-issue-shortcut-db",
-      "database_id": "8c403d10-29b8-4a51-9f63-9e79b19aed46",
-      "migrations_dir": "migrations"
+  // Workers Logs（既定は有効・サンプリング 100%・invocation log 有効）。未設定のままだと
+  // invocation log が Request / Response のヘッダーごと記録するため、トークン Cookie が
+  // Cloudflare 側に残り「サーバーに個人データを保持しない」が成立しない（P4・§8）。
+  // invocation log を無効化し、残すのは例外（uncaught exception）だけにする。それも 5% に
+  // 絞る（保持ゼロ優先のトレードオフ。全数の障害調査が要るときだけ一時的に引き上げる）。
+  // 保持期間は Cloudflare 側の上限（無料プラン 3 日 / 有料プラン 7 日）。
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 0.05,
+    "logs": {
+      "invocation_logs": false
     }
-  ]
+  }
+  // D1 は P1〜P3 で全用途が移設され、バインディングと migrations/ は P4（#166）で撤去した。
+  // Worker は永続化 API（D1 / KV / R2 / DO）をひとつも持たない。
 }
