@@ -344,6 +344,9 @@ export const translations = {
             {
               p: "開発者は、利用者への事前告知なく本アプリの内容を変更し、または提供を終了することがあります。これによって生じた損害について、開発者は責任を負いません。",
             },
+            {
+              p: "本アプリはお客様のデータをサーバーに保存せず、ショートカット設定・下書きはお使いの端末内にのみ保存されます。そのため提供終了時に開発者が引き渡す・削除するデータはなく、端末内のデータはブラウザのデータ削除またはアプリ内のアカウント削除機能でお客様自身に削除いただく必要があります。過去に作成した Issue は GitHub 側に残ります。",
+            },
           ],
         },
         {
@@ -383,13 +386,29 @@ export const translations = {
         },
         {
           heading: "4. 保持期間",
-          blocks: [{ p: "端末内のデータは、お客様が削除するまで保持されます（トークン Cookie は最長 30 日で失効し、以降は再ログインが必要です）。サーバー側に保持するデータはありません。ログアウトすると端末のトークン Cookie が破棄され、あわせて GitHub 側でもアクセストークンを失効させます。" }],
+          blocks: [{ p: "端末内のデータは、お客様が削除するまで保持されます（トークン Cookie は最長 30 日で失効し、以降は再ログインが必要です）。本アプリがサーバー側に保持するデータはありません（サーバー基盤に残る記録については「5. サーバー基盤に残る記録」をご覧ください）。ログアウトすると端末のトークン Cookie が破棄され、あわせて GitHub 側でもアクセストークンを失効させます。" }],
         },
         {
-          heading: "5. 削除方法",
+          heading: "5. サーバー基盤に残る記録",
           blocks: [
             {
-              p: "アプリ内のアカウント削除機能により、端末内に保存されたデータ（トークン Cookie・ショートカット設定・各種キャッシュ）と、サーバー側に残っている一時データ（お客様の GitHub ユーザー ID を含む行）を即時に削除し、GitHub 側のアクセストークンも失効させます。あわせて GitHub 側の連携解除（本アプリの GitHub App 認可の取り消し）の手順を案内します。",
+              p: "本アプリは Cloudflare Workers 上で動作しており、本アプリ自身が何も保存しなくても、基盤側にリクエストの記録が残る場合があります。本アプリでは、リクエストとその応答（ヘッダー・Cookie を含む）を記録する設定を無効化しており、残るのはエラー発生時の記録（例外の内容）だけです。それも記録対象を全体の約 5% に絞っており、Cloudflare 側で自動的に削除されます（保持期間は Cloudflare の上限に従い、本アプリが利用しているプランでは最長 3 日・上位プランでも最長 7 日）。この記録は障害調査のためだけに参照するもので、Issue の内容・GitHub のトークン・ショートカット設定は含まれません。",
+            },
+          ],
+        },
+        {
+          heading: "6. 削除方法",
+          blocks: [
+            {
+              p: "アプリ内のアカウント削除機能により、端末内に保存されたデータ（トークン Cookie・ショートカット設定・送信履歴・各種キャッシュ）を即時に削除し、GitHub 側のアクセストークンも失効させます。本アプリのサーバーには削除すべきお客様のデータがそもそも保存されていません。あわせて GitHub 側の連携解除（本アプリの GitHub App 認可の取り消し）の手順を案内します。",
+            },
+          ],
+        },
+        {
+          heading: "7. お問い合わせ",
+          blocks: [
+            {
+              p: "本ポリシーおよびデータの取り扱いに関するお問い合わせは、本アプリの GitHub リポジトリの Issue（https://github.com/kai-kou/github-issue-shortcut/issues）からご連絡ください。",
             },
           ],
         },
@@ -581,6 +600,9 @@ export const translations = {
             {
               p: "The developer may change or discontinue the App without prior notice to users. The developer is not liable for any damages resulting from this.",
             },
+            {
+              p: "The App stores none of your data on its server; shortcut settings and drafts live only on your device. If the App is discontinued there is therefore no data for the developer to hand over or delete, and any data on your device must be removed by you, either by clearing your browser data or by using the in-app account deletion feature. Issues you have already created remain in GitHub.",
+            },
           ],
         },
         {
@@ -620,13 +642,29 @@ export const translations = {
         },
         {
           heading: "4. Retention Period",
-          blocks: [{ p: "Data on your device is retained until you delete it (the token cookie expires after at most 30 days, after which you sign in again). No data is retained on the server. Signing out destroys the token cookie on your device and revokes the access token at GitHub." }],
+          blocks: [{ p: "Data on your device is retained until you delete it (the token cookie expires after at most 30 days, after which you sign in again). The App retains no data of yours on the server (for records kept by the underlying platform, see \"5. Records Kept by the Underlying Platform\"). Signing out destroys the token cookie on your device and revokes the access token at GitHub." }],
         },
         {
-          heading: "5. How to Delete Your Data",
+          heading: "5. Records Kept by the Underlying Platform",
           blocks: [
             {
-              p: "The in-app account deletion feature immediately deletes the data stored on your device (the token cookie, shortcut settings, and caches) and the temporary server-side rows keyed by your GitHub user ID, and revokes your access token at GitHub. It also guides you through revoking the App's GitHub authorization.",
+              p: "The App runs on Cloudflare Workers, so even though the App itself stores nothing, the platform may keep records of requests. The App disables the setting that records requests and responses (including headers and cookies), so the only records left are errors (uncaught exceptions), and even those are sampled down to roughly 5%. Cloudflare deletes them automatically after its retention limit (at most 3 days on the plan this App uses; at most 7 days on higher plans). These records are consulted only to investigate incidents; they contain no issue content, GitHub tokens, or shortcut settings.",
+            },
+          ],
+        },
+        {
+          heading: "6. How to Delete Your Data",
+          blocks: [
+            {
+              p: "The in-app account deletion feature immediately deletes the data stored on your device (the token cookie, shortcut settings, submission history, and caches) and revokes your access token at GitHub. There is no data of yours on the App's server to delete in the first place. It also guides you through revoking the App's GitHub authorization.",
+            },
+          ],
+        },
+        {
+          heading: "7. Contact",
+          blocks: [
+            {
+              p: "For questions about this Policy or how your data is handled, open an issue in the App's GitHub repository (https://github.com/kai-kou/github-issue-shortcut/issues).",
             },
           ],
         },
