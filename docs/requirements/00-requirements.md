@@ -22,7 +22,7 @@ GitHub Issues を個人タスク管理・アイデアキャプチャに使う文
 |------|------|
 | 起票所要時間（起動 → Issue 作成完了） | 10 秒以内（タイトルのみなら 5 秒以内） |
 | 起票までのタップ数（ショートカット起動時） | 3 タップ以内 |
-| 起票成功率（送信 → GitHub 反映） | 99% 以上（失敗時は入力内容を失わない）。定義: 送信試行（ユーザーが送信を実行した回数）に対する GitHub API 201 応答の割合。issue_log で計測し、集計窓は直近 7 日 |
+| 起票成功率（送信 → GitHub 反映） | 99% 以上（失敗時は入力内容を失わない）。定義: 送信試行（ユーザーが送信を実行した回数）に対する GitHub API 201 応答の割合。P2 でサーバー側の成否記録を廃止したため、E2E の実機計測（`e2e/kpi.spec.ts`）で代替する |
 | 初回セットアップ（ログイン → 初起票） | 5 分以内 |
 
 ### 1.3 プロダクト定義
@@ -121,7 +121,7 @@ LP にアクセス →「GitHub でログイン」→ GitHub の認可画面（�
 | FR-9 | GitHub API のエラー（認証切れ・権限不足・レート制限・Issues 無効・spam 判定）を種類別にユーザーが理解できるメッセージで表示できること | MUST | M1 |
 | FR-10 | PWA としてインストール可能であること（manifest・Service Worker・HTTPS・アイコン） | MUST | M1 |
 | FR-11 | 利用規約・プライバシーポリシーのページを提供し、ログイン導線から参照できること | MUST | M1 |
-| FR-12 | アカウント削除（本アプリ内データの全削除 + GitHub 側連携解除の案内）ができること | MUST | M1 |
+| FR-12 | アカウント削除（端末内データの全削除 + サーバー側に残る一時行の削除 + GitHub 側連携解除の案内）ができること | MUST | M1 |
 | FR-13 | 直前に選択したリポジトリ・入力状態を記憶し、次回起動時に再現できること | SHOULD | M1 |
 | FR-14 | push アクセスを持つリポジトリに対し、ラベルを選択して Issue に付与できること。push アクセスがない場合はラベル選択 UI の代わりに「付与されない」旨の警告を表示する（silently dropped の防止・§4.4-3 / B5-3 と整合） | MUST | M2 |
 | FR-15 | URL パラメータ（例: `/new?repo=owner/name&labels=a,b`）でリポジトリ・ラベルが初期選択された状態で起票画面を開けること | MUST | M2 |
@@ -135,7 +135,7 @@ LP にアクセス →「GitHub でログイン」→ GitHub の認可画面（�
 | FR-23 | 送信時に楽観的 UI で即時完了表示し、失敗時は下書き復元と再試行導線を提示すること | SHOULD | M3 |
 | FR-24 | 同一内容の二重送信を防止できること（送信中の再タップ抑止 + サーバー側で直近送信内容（issue_log）との重複照合。GitHub API に冪等性キーがないため）。オフラインキュー再送との整合は M3（B4-4・OQ-8 決定済み）で対応済み | MUST | M1 |
 | FR-25 | TWA（Bubblewrap）として Google Play で配布できること。manifest shortcuts がネイティブ App Shortcuts に変換されること | MAY | M4 |
-| FR-26 | 起票所要時間・成功率の計測イベント（プライバシーポリシー記載の範囲）を送出できること | SHOULD | M2 |
+| FR-26 | 起票所要時間・成功率の計測イベントを送出できること。P2 でサーバー側の計測記録を廃止したため、実装はプライバシーポリシーへの追記とセットで行う | SHOULD | M2 |
 
 ### 4.2 認証フロー（FR-1〜FR-4 詳細）
 
@@ -179,7 +179,7 @@ LP にアクセス →「GitHub でログイン」→ GitHub の認可画面（�
 | NFR-2 | パフォーマンス | ショートカット起動から Issue 作成完了まで 10 秒以内（タイトルのみ 5 秒以内）・3 タップ以内で完了できること | MUST |
 | NFR-3 | パフォーマンス | 初期バンドルを常に監視し、起票フローに不要なコードを遅延ロードすること（起動速度 > リッチ UI の優先順位）。初期ロード JS は gzip 後 200KB 以下を予算とする | SHOULD |
 | NFR-4 | セキュリティ | 認可フローは state + PKCE S256 併用・フルページリダイレクトであること | MUST |
-| NFR-5 | セキュリティ | Cookie は `__Host-` prefix + `HttpOnly; Secure; Path=/; SameSite=Lax` であること（`Strict` は OAuth コールバックで state 検証が壊れるため禁止） | MUST |
+| NFR-5 | セキュリティ | Cookie は `__Host-` prefix + `HttpOnly; Secure; Path=/; SameSite=Lax` であること（`Strict` は OAuth コールバックで state 検証が壊れるため禁止）。唯一の例外は access token の有効期限のみを載せる `__Host-gh-exp` で、クライアントの先回りリフレッシュ判断に使うため非 HttpOnly とする（個人データを含まず、認可の判断には使わない） | MUST |
 | NFR-6 | セキュリティ | サーバー（Worker）は個人データ（GitHub トークン・ユーザー情報・セッション）を永続化しないこと。認証状態は暗号化 Cookie として利用者の端末にのみ存在すること | MUST |
 | NFR-7 | セキュリティ | GitHub トークンは鍵バージョン付きの AES-256-GCM で暗号化して HttpOnly Cookie に格納し、平文をログ・JS から読める場所に出さないこと。鍵は Workers Secrets で管理し、鍵バージョンを上げるだけでローテーションできること | MUST |
 | NFR-8 | セキュリティ | GitHub への要求権限を Issues: write のみに保ち、追加権限を要求しないこと（最小権限） | MUST |
@@ -206,7 +206,7 @@ LP にアクセス →「GitHub でログイン」→ GitHub の認可画面（�
 Cloudflare Workers（単一 Worker）
 ├── static assets: Vite + React SPA（PWA: vite-plugin-pwa / Workbox・SPA フォールバック）
 ├── API: Hono（/api/*, /auth/*）… run_worker_first
-│     ├── GitHub App 認可（state + PKCE・トークン交換・リフレッシュ直列化）
+│     ├── GitHub App 認可（state + PKCE・トークン交換・暗号化トークン Cookie の発行/書き戻し）
 │     └── Issue 作成プロキシ（POST /repos/{owner}/{repo}/issues・API version pin）
 ├── D1: issue_log / request_ids / rate_limits（重複防止・レート制限のみ。P3 で撤去予定）
 │     └── users / sessions / tokens / shortcuts は廃止（P1・P2・個人データ保持ゼロ）
@@ -234,7 +234,9 @@ CI/CD: GitHub Actions（test / lint）+ Workers Builds（git 連携・push で�
 クライアントが他人の ID を騙ることはできない（AES-GCM で認証済み）。
 
 アカウント削除（FR-12）は **トークン Cookie の破棄 + 端末内データの削除 + GitHub 連携解除の案内** で完了する（MUST）。
-サーバーに残るのは重複防止・レート制限の一時行のみで、いずれも短時間で自動削除される（個人を特定する情報を含まない）。
+サーバーに残るのは重複防止・レート制限の一時行のみで、いずれも Cron（日次）で **最長 7 日** で削除される。
+`user_key`（GitHub の数値ユーザー ID）は個人に紐づく識別子であるため「個人データを含まない」とは言わない。
+アカウント削除時はこれらの行も即時削除する（MUST）。
 
 ### 6.3 API エンドポイント一覧案
 
@@ -251,7 +253,6 @@ CI/CD: GitHub Actions（test / lint）+ Workers Builds（git 連携・push で�
 | ~~GET/POST/PUT/DELETE /api/shortcuts~~ | ショートカット設定 CRUD（M2）。**廃止**: 正本を端末内 localStorage へ移した（`docs/design/stateless-architecture.md` P1） | — |
 | DELETE /api/account | アカウント削除（FR-12）。トークン Cookie を破棄する（サーバーに個人データが無いため削除対象はこれだけ） | 必要 |
 
-- トークンリフレッシュは専用エンドポイントを設けず、API 呼び出し時にサーバー側で透過的に行うこと（SHOULD）。
 - エラーレスポンスは `{ error: { code, message } }` 形式に正規化し、FR-9 の表示分岐が code のみで行えること（SHOULD）。
 
 ## 7. 外部依存と制約
@@ -294,7 +295,7 @@ CI/CD: GitHub Actions（test / lint）+ Workers Builds（git 連携・push で�
 | ID | 要件 | レベル | MS |
 |----|------|--------|----|
 | PR-1 | 利用規約を公開し、無保証・自己責任・禁止行為（スパム起票等）・サービス変更/終了の可能性を明記すること | MUST | M1 |
-| PR-2 | プライバシーポリシーを公開し、収集データ（GitHub アカウント情報・暗号化トークン・ショートカット設定・最小限の計測イベント）・保存先（Cloudflare）・保持期間・削除方法を明記すること | MUST | M1 |
+| PR-2 | プライバシーポリシーに、収集データ（GitHub トークン・アカウント情報とその保存先が **利用者の端末** であること・二重起票防止の一時記録）・保持期間・削除方法を明記すること。サーバー側で個人データを保持しないこと自体をポリシーに明示する | MUST | M1 |
 | PR-3 | アカウント削除機能（FR-12）で端末内データ（トークン Cookie・ショートカット設定・キャッシュ）を即時削除し、GitHub 側の連携解除（App の authorization 取消・インストール削除）の手順を案内すること。サーバーには削除すべき個人データが無い（P2） | MUST | M1 |
 | PR-4 | 不正利用対策: 本アプリ経由の起票にアプリ側レート制限（例: ユーザーあたり分間・時間あたり上限）を設け、GitHub の二次制限（80 req/min）より十分低く抑えること | MUST | M1 |
 | PR-5 | 不正利用対策: 422（spam 判定）が続くユーザーを検知し、一時的に送信を抑止できること | SHOULD | M2 |
@@ -323,7 +324,7 @@ CI/CD: GitHub Actions（test / lint）+ Workers Builds（git 連携・push で�
 | OQ-1 | クエリパラメータ付き「ホーム画面に追加」ショートカットのタップ時挙動（standalone WebAPK かブラウザタブか）の実機検証 | M2 着手時 |
 | OQ-2 | 認証ライブラリの最終選定: 手書き fetch + `hono/cookie` か `@octokit/auth-oauth-user`（自動リフレッシュ内蔵）か。**選定方針は高速性（バンドル最小・起動速度）最優先（2026-07-10 決定）** → 第一候補は手書き fetch + `hono/cookie`（依存ゼロ）。ライブラリ全般もこの方針で選ぶ | M1 実装開始時 |
 | OQ-3 | ~~リフレッシュ直列化の実装方式~~ **再決定済み（2026-07-27・#164 P2）**: サーバー側の D1 行ロックを撤去し、**クライアントの Web Locks API（`navigator.locks`）で 1 本化** する（多タブ・Service Worker をまたいで直列化できる）。サーバーは「復号 → 使用 → 必要なら Set-Cookie」に徹する。稀な同時実行では再ログインが起こりうることを受容する（`docs/design/stateless-architecture.md` §5）。旧決定（2026-07-14・#17）の D1 行ロックはトークンをサーバーに保存しなくなったため消滅した | 決定済み |
-| OQ-4 | 計測イベント（FR-26）の実装方式: 自前 D1 集計か Workers Analytics Engine か。プライバシーポリシー文面との整合 | M2 |
+| OQ-4 | 計測イベント（FR-26）の実装方式: サーバーに個人データを持たない方針（P2）と両立する形（クライアント側集計 or Workers Analytics Engine）を選ぶこと。実装時にプライバシーポリシーへ「収集する計測イベント」を追記する（現行ポリシーからは削除済み） | M2 |
 | OQ-5 | ~~i18n（NFR-13）の初期リリース範囲~~ **決定済み（2026-07-10）: M1 から日本語・英語の 2 言語** | 決定済み |
 | OQ-6 | アプリ側レート制限（PR-4）の具体値（分間 / 時間あたり上限）と実装層（Worker ミドルウェア） | M1 実装開始時 |
 | OQ-7 | ~~カスタムドメインの選定~~ **決定済み（2026-07-10）: カスタムドメインは現時点で取得しない**。本番 URL は workers.dev サブドメイン（名称は M0 で確定）で運用する。`__Host-` Cookie はホスト単位のため workers.dev でも問題ない。TWA（M4・保留）を実施判断する際にドメイン要否を再検討する | 決定済み |

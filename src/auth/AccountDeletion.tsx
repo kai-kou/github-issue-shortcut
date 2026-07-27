@@ -5,7 +5,11 @@ import { apiFetch } from "./apiFetch";
 
 type DeleteState = "idle" | "confirming" | "deleting" | "error";
 
-/** アプリ内データ（セッション・トークン等）の削除を実行する（A4-3・FR-12）。GitHub 側の連携解除案内は onDeleted 側で表示する。 */
+/**
+ * アカウント削除を実行する（A4-3・FR-12）。サーバーは個人データを保持しないため（P2）、削除の実体は
+ * 「トークン Cookie の破棄 + 端末内データの削除 + サーバー側に残る一時行（GitHub ユーザー ID をキーに持つ）の削除」。
+ * GitHub 側の連携解除案内は onDeleted 側で表示する。
+ */
 export function AccountDeletion({ onDeleted }: { onDeleted: () => void }) {
   const { t } = useLanguage();
   const [state, setState] = useState<DeleteState>("idle");
@@ -15,9 +19,9 @@ export function AccountDeletion({ onDeleted }: { onDeleted: () => void }) {
     try {
       const res = await apiFetch("/api/account", { method: "DELETE" });
       if (!res.ok) throw new Error(`unexpected status: ${res.status}`);
-      // 端末内に残るデータ（ショートカット設定・認証/リポジトリ/ラベルのキャッシュ）も消す。
-      // ショートカット設定は P1 で正本が localStorage へ移ったため、サーバー側の削除だけでは
-      // 端末に残ってしまう（プライバシーポリシーの「全データを即時に削除」と食い違う）。
+      // 端末内に残るデータ（ショートカット設定・認証/リポジトリ/ラベルのキャッシュ）を消す。
+      // ショートカット設定は P1 で正本が localStorage へ移っており、削除の主役はこちら側にある
+      // （サーバー側は一時行の削除と GitHub トークンの失効を /api/account が行う）。
       clearAllUserCaches();
       onDeleted();
     } catch {

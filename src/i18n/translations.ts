@@ -364,7 +364,7 @@ export const translations = {
                 "GitHub アクセストークン・リフレッシュトークン。暗号化した Cookie としてお使いの端末に保存し、サーバーには保存しません",
                 "GitHub アカウント情報（ユーザー名・アイコンなど）。表示のたびに GitHub から取得し、サーバーには保存しません",
                 "ショートカット設定（よく使うリポジトリ・ラベルの組み合わせ）。サーバーへは送信せず、お使いの端末内にのみ保存します",
-                "Issue のタイトル・本文などのユーザーコンテンツは、GitHub へ送信するためだけに使用し、保存しません",
+                "Issue のタイトル・本文などのユーザーコンテンツは、GitHub へ送信するためだけに使用し、保存しません（二重起票を防ぐための照合用ハッシュ値を除く。§2 参照）",
               ],
             },
           ],
@@ -373,7 +373,7 @@ export const translations = {
           heading: "2. 保存先",
           blocks: [
             {
-              p: "本アプリのサーバー（Cloudflare Workers）は、お客様の個人データを保存しません。GitHub のトークンは AES-256-GCM で暗号化した Cookie としてお使いの端末に保存され（JavaScript からは読み取れない HttpOnly Cookie）、サーバーはリクエストのたびに復号して使うだけです。ショートカット設定・下書き・各種キャッシュも、お使いの端末内（ブラウザのローカルストレージ）にのみ保存されます。二重起票の防止とレート制限のため、GitHub のユーザー ID と送信内容のハッシュ値を最長 26 時間だけ一時的に保持します（Issue のタイトル・本文は含みません）。",
+              p: "本アプリのサーバー（Cloudflare Workers）は、お客様の個人データを保存しません。GitHub のトークンは AES-256-GCM で暗号化した Cookie としてお使いの端末に保存され（JavaScript からは読み取れない HttpOnly Cookie）、サーバーはリクエストのたびに復号して使うだけです。ショートカット設定・下書き・各種キャッシュも、お使いの端末内（ブラウザのローカルストレージ）にのみ保存されます。二重起票の防止とレート制限のため、GitHub のユーザー ID と送信内容のハッシュ値を最長 7 日間だけ一時的に保持します（Issue のタイトル・本文そのものは含みません）。",
             },
           ],
         },
@@ -383,13 +383,13 @@ export const translations = {
         },
         {
           heading: "4. 保持期間",
-          blocks: [{ p: "端末内のデータは、お客様が削除するまで保持されます（トークン Cookie は最長 6 か月で失効します）。サーバー側に保持する一時データ（二重起票防止・レート制限）は最長 26 時間で自動的に削除されます。ログアウトすると端末のトークン Cookie が破棄されます。" }],
+          blocks: [{ p: "端末内のデータは、お客様が削除するまで保持されます（トークン Cookie は最長 30 日で失効し、以降は再ログインが必要です）。サーバー側に保持する一時データ（二重起票防止・レート制限）は、毎日実行される削除処理により最長 7 日間で消えます。ログアウトすると端末のトークン Cookie が破棄され、あわせて GitHub 側でもアクセストークンを失効させます。" }],
         },
         {
           heading: "5. 削除方法",
           blocks: [
             {
-              p: "アプリ内のアカウント削除機能により、端末内に保存されたデータ（トークン Cookie・ショートカット設定・各種キャッシュ）を即時に削除できます。サーバーには削除すべき個人データがありません。あわせて GitHub 側の連携解除（本アプリの GitHub App 認可の取り消し）の手順を案内します。",
+              p: "アプリ内のアカウント削除機能により、端末内に保存されたデータ（トークン Cookie・ショートカット設定・各種キャッシュ）と、サーバー側に残っている一時データ（お客様の GitHub ユーザー ID を含む行）を即時に削除し、GitHub 側のアクセストークンも失効させます。あわせて GitHub 側の連携解除（本アプリの GitHub App 認可の取り消し）の手順を案内します。",
             },
           ],
         },
@@ -601,7 +601,7 @@ export const translations = {
                 "GitHub access and refresh tokens. They are stored on your device as an encrypted cookie and are never stored on the server",
                 "GitHub account information (username, avatar). It is fetched from GitHub each time it is displayed and is never stored on the server",
                 "Shortcut settings (combinations of frequently used repositories and labels). These are never sent to the server and are stored only on your device",
-                "Issue titles and bodies are used solely to submit them to GitHub and are never stored",
+                "Issue titles and bodies are used solely to submit them to GitHub and are never stored (except for the hash used to prevent duplicate submissions; see section 2)",
               ],
             },
           ],
@@ -610,7 +610,7 @@ export const translations = {
           heading: "2. Where Data Is Stored",
           blocks: [
             {
-              p: "The App's server (Cloudflare Workers) does not store your personal data. GitHub tokens live on your device inside a cookie encrypted with AES-256-GCM (an HttpOnly cookie that JavaScript cannot read); the server merely decrypts it for the duration of each request. Shortcut settings, drafts, and caches are likewise stored only on your device (browser local storage). To prevent duplicate submissions and to rate-limit abuse, we temporarily keep your GitHub user ID and a hash of the submitted content for at most 26 hours (issue titles and bodies are not included).",
+              p: "The App's server (Cloudflare Workers) does not store your personal data. GitHub tokens live on your device inside a cookie encrypted with AES-256-GCM (an HttpOnly cookie that JavaScript cannot read); the server merely decrypts it for the duration of each request. Shortcut settings, drafts, and caches are likewise stored only on your device (browser local storage). To prevent duplicate submissions and to rate-limit abuse, we temporarily keep your GitHub user ID and a hash of the submitted content for at most 7 days (the titles and bodies themselves are not included).",
             },
           ],
         },
@@ -620,13 +620,13 @@ export const translations = {
         },
         {
           heading: "4. Retention Period",
-          blocks: [{ p: "Data on your device is retained until you delete it (the token cookie expires after at most six months). The temporary server-side records used for duplicate prevention and rate limiting are deleted automatically within 26 hours. Signing out destroys the token cookie on your device." }],
+          blocks: [{ p: "Data on your device is retained until you delete it (the token cookie expires after at most 30 days, after which you sign in again). The temporary server-side records used for duplicate prevention and rate limiting are removed by a daily cleanup job within 7 days. Signing out destroys the token cookie on your device and revokes the access token at GitHub." }],
         },
         {
           heading: "5. How to Delete Your Data",
           blocks: [
             {
-              p: "The in-app account deletion feature immediately deletes the data stored on your device (the token cookie, shortcut settings, and caches). There is no personal data on the server to delete. It also guides you through revoking the App's GitHub authorization.",
+              p: "The in-app account deletion feature immediately deletes the data stored on your device (the token cookie, shortcut settings, and caches) and the temporary server-side rows keyed by your GitHub user ID, and revokes your access token at GitHub. It also guides you through revoking the App's GitHub authorization.",
             },
           ],
         },

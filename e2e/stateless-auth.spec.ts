@@ -58,73 +58,55 @@ test.describe("ステートレス認証（暗号化トークン Cookie・モッ�
     await page.getByRole("button", { name: /Issue を作成|Create issue/ }).click();
     await expect(page.getByRole("link", { name: /GitHub で開く|Open on GitHub/ })).toBeVisible();
 
-    // 単回使用ローテーションのため、多タブ・多重呼び出しでも GitHub のリフレッシュは 1 回だけ
-    // （2 回以上走ると 2 回目以降は bad_refresh_token になり、上の起票が失敗する）。
+    // モック GitHub は単回使用ローテーションを再現しており、2 回目以降のリフレッシュは
+    // bad_refresh_token になる。ここが 1 回であることは「ブラウザ配線（navigator.locks 経由の
+    // ensureFreshAccessToken）が実際に通り、重複リフレッシュを起こしていない」ことを示す。
+    //
+    // 複数タブ同時起動そのものは E2E にしない: Service Worker 経由のリクエストが page.route を
+    // 素通りするため「失効した Cookie を持つ状態」を安定して作れず、ロックの正否ではなく
+    // セットアップ起因でフレークする。タブ・SW をまたぐ直列化の判定ロジックは
+    // src/auth/tokenRefresh.test.ts の並行呼び出しテスト（同一コードパス・ロックを注入）で担保する。
     const refreshes = await request.get(`${MOCK_GITHUB_URL}/mock/refresh-count`);
     expect((await refreshes.json()).count).toBe(1);
   });
 
-  test("複数タブが同時に起動しても Web Locks でリフレッシュが 1 回に収まる", async ({ context, page, request }) => {
-    await request.post(`${MOCK_GITHUB_URL}/mock/config`, {
-      data: {
-        accessTokenTtl: 1,
-        installations: [{ id: 2002, repos: [{ id: 1, full_name: "kai-kou/alpha", private: false }] }],
-      },
+  // Service Worker を止めて `page.route` が確実に効くようにする（SW 経由のリクエストは
+  // page.route を素通りするため、「リフレッシュを止めて失効状態を保つ」セットアップが安定しない）。
+  test.describe("期限 Cookie の改ざん・時計ずれ耐性", () => {
+    test.use({ serviceWorkers: "block" });
+
+    test("期限 Cookie が未来を指していても、401 を受けたら強制リフレッシュして回復する", async ({ page, request }) => {
+      // `__Host-gh-exp` は JS から書き換え可能（＝端末の時計ずれや悪性拡張でも起こる）。この値を
+      // 信じて先回りリフレッシュを飛ばすと、サーバーの 401 から自己回復できなくなる（#164 C-2/S-4）。
+      await request.post(`${MOCK_GITHUB_URL}/mock/config`, {
+        data: {
+          accessTokenTtl: 1,
+          installations: [{ id: 2003, repos: [{ id: 1, full_name: "kai-kou/alpha", private: false }] }],
+        },
+      });
+
+      // 自動リフレッシュを止めたままログインし、「失効した Cookie を持つ状態」を作る。
+      await page.route("**/auth/refresh", (route) => route.abort());
+      await page.goto("/");
+      await page.getByRole("link", { name: /GitHub でログイン|Sign in with GitHub/ }).click();
+      await page.waitForURL((url) => url.pathname === "/");
+      // リフレッシュを止めているので、復帰後は未ログイン表示に落ち着く。ここまで待ってから
+      // 解除することで、後続の Set-Cookie が期限の書き換えと競合しないようにする。
+      await expect(page.getByRole("link", { name: /GitHub でログイン|Sign in with GitHub/ })).toBeVisible();
+      await page.unroute("**/auth/refresh");
+
+      // 期限だけ「まだ十分先」に書き換える（トークン本体は失効したまま）。
+      await page.evaluate(() => {
+        const future = Math.floor(Date.now() / 1000) + 86400;
+        document.cookie = `__Host-gh-exp=${future}; Secure; Path=/`;
+      });
+
+      await page.goto("/");
+      // 先回り判定は「まだ有効」と誤認するが、401 を根拠に強制リフレッシュして回復する。
+      await expect(page.getByRole("button", { name: "kai-kou/alpha" })).toBeVisible({ timeout: 15_000 });
+      const refreshes = await request.get(`${MOCK_GITHUB_URL}/mock/refresh-count`);
+      expect((await refreshes.json()).count).toBe(1);
     });
-
-    // ログイン直後の自動リフレッシュを止めたまま「失効した Cookie を持つ状態」を作る
-    // （リフレッシュを止めているのでログイン表示にはならない。Cookie の存在で確認する）。
-    await page.route("**/auth/refresh", (route) => route.abort());
-    await page.goto("/");
-    await page.getByRole("link", { name: /GitHub でログイン|Sign in with GitHub/ }).click();
-    await page.waitForURL((url) => url.pathname === "/");
-    expect((await context.cookies()).map((c) => c.name)).toContain("__Host-gh");
-    await page.unroute("**/auth/refresh");
-    await page.close();
-
-    // 同一プロファイルの 2 タブを同時に起動する（Cookie を共有し、どちらも失効を検知する）。
-    const [tabA, tabB] = [await context.newPage(), await context.newPage()];
-    await Promise.all([tabA.goto("/"), tabB.goto("/")]);
-    await Promise.all([
-      expect(tabA.getByRole("button", { name: "kai-kou/alpha" })).toBeVisible(),
-      expect(tabB.getByRole("button", { name: "kai-kou/alpha" })).toBeVisible(),
-    ]);
-
-    // Web Locks はタブ間で共有されるため、2 タブ同時でも GitHub のリフレッシュは 1 回だけ。
-    // 直列化が壊れると 2 本目が bad_refresh_token になり、上のリポジトリ表示自体が失敗する。
-    const refreshes = await request.get(`${MOCK_GITHUB_URL}/mock/refresh-count`);
-    expect((await refreshes.json()).count).toBe(1);
-  });
-
-  test("期限 Cookie が未来を指していても、401 を受けたら強制リフレッシュして回復する", async ({ page, request }) => {
-    // `__Host-gh-exp` は JS から書き換え可能（＝端末の時計ずれや拡張機能でも起こる）。
-    // この値を信じて先回りリフレッシュを飛ばすと、サーバーの 401 から自己回復できなくなる。
-    await request.post(`${MOCK_GITHUB_URL}/mock/config`, {
-      data: {
-        accessTokenTtl: 1,
-        installations: [{ id: 2003, repos: [{ id: 1, full_name: "kai-kou/alpha", private: false }] }],
-      },
-    });
-
-    await page.route("**/auth/refresh", (route) => route.abort());
-    await page.goto("/");
-    await page.getByRole("link", { name: /GitHub でログイン|Sign in with GitHub/ }).click();
-    await page.waitForURL((url) => url.pathname === "/");
-    await page.unroute("**/auth/refresh");
-
-    // 期限だけ「まだ十分先」に書き換える（トークン本体は失効したまま）。
-    await page.evaluate(() => {
-      const future = Math.floor(Date.now() / 1000) + 86400;
-      document.cookie = `__Host-gh-exp=${future}; Secure; Path=/`;
-    });
-
-    await page.goto("/");
-    // 先回り判定は「まだ有効」と誤認するが、401 を根拠に強制リフレッシュして回復する。
-    // 回復には /api/me 401 → /auth/refresh → 再送 → /api/installations → /api/repos の往復が要るため、
-    // 既定の 5 秒だと遅いマシンで足りないことがある。
-    await expect(page.getByRole("button", { name: "kai-kou/alpha" })).toBeVisible({ timeout: 15_000 });
-    const refreshes = await request.get(`${MOCK_GITHUB_URL}/mock/refresh-count`);
-    expect((await refreshes.json()).count).toBeGreaterThanOrEqual(1);
   });
 
   test("ログアウトすると GitHub 側でもトークンが失効する（Cookie のコピーを無効化する）", async ({ page, request }) => {
