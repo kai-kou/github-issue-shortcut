@@ -168,7 +168,7 @@ CI で E2E が落ちた
 
 - `SELF.fetch("/manifest.webmanifest")` のように **`ASSETS` バインディング経由でビルド済みファイルを読む** エンドポイントの結合テストを `worker/*.test.ts`（vitest・miniflare）に書くと、Workers Builds のテスト段では `dist/client` が未生成のため落ちる。
 - 代わりに **2 層で担保** する:
-  1. **純関数の unit テスト**: ビルド生成物に依存しないロジック（例: `buildDynamicManifest` — ユーザーの上位 3 ショートカットを `manifest.shortcuts` に反映する純関数）を直接テストする。dist 非依存なので Workers Builds のテスト段でも通る。
+  1. **純関数の unit テスト**: ビルド生成物に依存しないロジック（例: `normalizeShortcutInput` — ショートカット設定の入力検証を行う純関数）を直接テストする。dist 非依存なので Workers Builds のテスト段でも通る。
   2. **E2E（`npm run e2e`）**: 実際に `wrangler dev` がビルド済み SPA + Worker を配信した状態で `/manifest.webmanifest` の実レスポンスを検証する（`e2e/pwa.spec.ts`）。ビルド後に走るのでエンドポイント結合を実挙動で担保できる。
 
 > ⚠️ **`wrangler.jsonc` の `assets.directory`（`./dist/client`）は削除しない**。miniflare のテスト環境が `ASSETS` バインディングを解決するために必要で、これを消すと逆にローカル unit テストが壊れる（過去に「Workers Builds 対策」として誤って削除し、manifest テストを 500/404 にした回帰あり）。Workers Builds 対策は「dist 依存テストを unit に置かない」であって「`assets.directory` を消す」ではない。

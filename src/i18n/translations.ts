@@ -298,7 +298,7 @@ export const translations = {
       openButton: "開く",
       placementGuideTitle: "保存したショートカットの使い方",
       placementGuideBody:
-        "保存したショートカットは、ホーム画面上部の一覧からタップして開けます。よく使う上位 3 件は、インストール済みアプリのアイコンを長押ししたときのメニューにも表示されます（反映まで最大 1 日ほどかかることがあります。待たずに反映させたい場合は、アプリを一度アンインストールして入れ直してください）。反映前でも、ホーム画面上部の「保存済みショートカット」一覧からはすぐに使えます。「URL をコピー」は、ブラウザのブックマークや他アプリへの貼り付けに使えます。",
+        "保存したショートカットは、ホーム画面上部の「保存済みショートカット」一覧からタップして開けます。「URL をコピー」で得た URL は、ブラウザのブックマークや他アプリへの貼り付け、ホーム画面へのリンク追加に使えます。",
       placementGuideNote:
         "この URL を単体でホーム画面のアイコンにしても、初期選択（プリセット）は反映されません（アプリはトップ画面で起動します・Android の仕様）。プリセット付きで開くには上記の方法を使ってください。",
       homeListTitle: "保存済みショートカット",
@@ -363,7 +363,7 @@ export const translations = {
               ul: [
                 "GitHub アカウント情報（ユーザー ID・ユーザー名など、ログインに必要な範囲）",
                 "GitHub アクセストークン・リフレッシュトークン（暗号化して保管）",
-                "ショートカット設定（よく使うリポジトリ・ラベルの組み合わせ）",
+                "ショートカット設定（よく使うリポジトリ・ラベルの組み合わせ）。サーバーへは送信せず、お使いの端末内にのみ保存します",
                 "最小限の計測イベント（起票の成功・失敗など、機能改善に必要な範囲のみ。Issue のタイトル・本文などのユーザーコンテンツは分析目的で保存しません）",
               ],
             },
@@ -373,7 +373,7 @@ export const translations = {
           heading: "2. 保存先",
           blocks: [
             {
-              p: "収集したデータは Cloudflare（Workers / D1）上に保存します。アクセストークン・リフレッシュトークンは AES-256-GCM で暗号化して保管し、平文では保存しません。",
+              p: "サーバーで保管するデータは Cloudflare（Workers / D1）上に保存します。アクセストークン・リフレッシュトークンは AES-256-GCM で暗号化して保管し、平文では保存しません。ショートカット設定はサーバーには保存されず、お使いの端末内（ブラウザのローカルストレージ）にのみ保存されます。",
             },
           ],
         },
@@ -389,7 +389,7 @@ export const translations = {
           heading: "5. 削除方法",
           blocks: [
             {
-              p: "アプリ内のアカウント削除機能により、本アプリが保存する全データ（ユーザー情報・セッション・トークン・ショートカット設定・起票履歴）を即時に削除できます。あわせて GitHub 側の連携解除（本アプリの GitHub App 認可の取り消し）の手順を案内します。",
+              p: "アプリ内のアカウント削除機能により、サーバー側のデータ（ユーザー情報・セッション・トークン・起票履歴）と、端末内に保存されたデータ（ショートカット設定・各種キャッシュ）をあわせて即時に削除できます。あわせて GitHub 側の連携解除（本アプリの GitHub App 認可の取り消し）の手順を案内します。",
             },
           ],
         },
@@ -535,7 +535,7 @@ export const translations = {
       openButton: "Open",
       placementGuideTitle: "Using your saved shortcuts",
       placementGuideBody:
-        "Open a saved shortcut by tapping it in the list at the top of the home screen. Your top 3 shortcuts also appear in the long-press menu on the installed app icon (this can take up to a day to update; to see it right away, uninstall and reinstall the app). Until it updates, you can still use the shortcut immediately from the \"Saved shortcuts\" list at the top of the home screen. \"Copy URL\" is handy for bookmarks or pasting into other apps.",
+        "Open a saved shortcut by tapping it in the \"Saved shortcuts\" list at the top of the home screen. Use \"Copy URL\" to bookmark it, paste it into another app, or add it to your home screen as a link.",
       placementGuideNote:
         "Adding this URL to your home screen as a standalone icon won't keep the pre-selected fields—the app always launches on its main screen (an Android limitation). Use the methods above to open it with the preset applied.",
       homeListTitle: "Saved shortcuts",
@@ -600,7 +600,7 @@ export const translations = {
               ul: [
                 "GitHub account information (user ID, username, and other data needed for login)",
                 "GitHub access and refresh tokens (stored encrypted)",
-                "Shortcut settings (combinations of frequently used repositories and labels)",
+                "Shortcut settings (combinations of frequently used repositories and labels). These are never sent to the server and are stored only on your device",
                 "Minimal usage events (e.g. issue submission success/failure, only as needed for product improvement; issue titles and bodies are never stored for analytics purposes)",
               ],
             },
@@ -610,7 +610,7 @@ export const translations = {
           heading: "2. Where Data Is Stored",
           blocks: [
             {
-              p: "Collected data is stored on Cloudflare (Workers / D1). Access and refresh tokens are encrypted with AES-256-GCM and are never stored in plaintext.",
+              p: "Data kept on the server is stored on Cloudflare (Workers / D1). Access and refresh tokens are encrypted with AES-256-GCM and are never stored in plaintext. Shortcut settings are not stored on the server: they live only on your device (browser local storage).",
             },
           ],
         },
@@ -626,7 +626,7 @@ export const translations = {
           heading: "5. How to Delete Your Data",
           blocks: [
             {
-              p: "The in-app account deletion feature immediately deletes all data the App stores (user info, sessions, tokens, shortcut settings, and issue submission history). It also guides you through revoking the App's GitHub authorization.",
+              p: "The in-app account deletion feature immediately deletes both the server-side data (user info, sessions, tokens, and issue submission history) and the data stored on your device (shortcut settings and caches). It also guides you through revoking the App's GitHub authorization.",
             },
           ],
         },
