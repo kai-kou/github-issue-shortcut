@@ -125,7 +125,7 @@ LP にアクセス →「GitHub でログイン」→ GitHub の認可画面（�
 | FR-13 | 直前に選択したリポジトリ・入力状態を記憶し、次回起動時に再現できること | SHOULD | M1 |
 | FR-14 | push アクセスを持つリポジトリに対し、ラベルを選択して Issue に付与できること。push アクセスがない場合はラベル選択 UI の代わりに「付与されない」旨の警告を表示する（silently dropped の防止・§4.4-3 / B5-3 と整合） | MUST | M2 |
 | FR-15 | URL パラメータ（例: `/new?repo=owner/name&labels=a,b`）でリポジトリ・ラベルが初期選択された状態で起票画面を開けること | MUST | M2 |
-| FR-16 | ユーザーがショートカット設定（リポジトリ × ラベルのプリセット）を作成・編集・削除でき、対応する起動 URL を取得できること | MUST | M2 |
+| FR-16 | ユーザーがショートカット設定（リポジトリ × ラベルのプリセット）を作成・編集・削除でき、対応する起動 URL を取得できること。設定は端末内に保存し、サーバーへは送信しないこと（P1 で変更） | MUST | M2 |
 | FR-17 | manifest `shortcuts` に既定のショートカット（最大 3 個）を定義し、アイコン長押しメニューから起票画面を直接開けること | SHOULD | M2 |
 | FR-18 | Web Share Target として共有シートに表示され、共有されたテキスト / URL をタイトル・本文にプレフィルできること（Android では URL が `text` に入るケースの抽出処理を含む） | MUST | M2 |
 | FR-19 | プレフィル起動（FR-15 / FR-18）では自動送信せず、必ずユーザーの送信操作を要すること | MUST | M2 |
@@ -208,7 +208,7 @@ Cloudflare Workers（単一 Worker）
 ├── API: Hono（/api/*, /auth/*）… run_worker_first
 │     ├── GitHub App 認可（state + PKCE・トークン交換・リフレッシュ直列化）
 │     └── Issue 作成プロキシ（POST /repos/{owner}/{repo}/issues・API version pin）
-├── D1: users / sessions / tokens / shortcuts / issue_log
+├── D1: users / sessions / tokens / issue_log（shortcuts は端末内保存へ移行済み・P1）
 └── Workers Secrets: GitHub App client secret・トークン暗号鍵
 
 開発: wrangler v4（wrangler.jsonc）/ TypeScript / @cloudflare/vitest-pool-workers
@@ -226,7 +226,7 @@ CI/CD: GitHub Actions（test / lint）+ Workers Builds（git 連携・push で�
 | users | id (PK), github_user_id (UNIQUE), login, avatar_url, created_at, deleted_at | GitHub ユーザーと 1:1 |
 | sessions | id_hash (PK), user_id (FK), created_at, expires_at, last_used_at | セッション ID はハッシュのみ保存 |
 | tokens | user_id (PK/FK), access_token_enc, access_expires_at, refresh_token_enc, refresh_expires_at, updated_at | AES-256-GCM 暗号化・ユーザー単位 1 行（ローテーション直列化の単位） |
-| shortcuts | id (PK), user_id (FK), name, repo_owner, repo_name, labels (JSON), position, created_at | ユーザー作成のショートカット設定（M2） |
+| ~~shortcuts~~ | — | ユーザー作成のショートカット設定（M2）。**サーバー保存を廃止** し、正本を端末内 localStorage へ移した（`docs/design/stateless-architecture.md` P1） |
 | issue_log | id (PK), user_id (FK), repo, content_hash, created_at | 二重送信防止（FR-24）と成功率計測用の最小記録。タイトル・本文の平文は保存しない |
 
 アカウント削除（FR-12）時は上記全テーブルの該当ユーザー行を削除すること（MUST）。
