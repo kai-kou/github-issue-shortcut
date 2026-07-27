@@ -23,7 +23,7 @@
 
 ユーザーストーリーを持たない技術基盤（enabler）スライス。構成は [Cloudflare スタックリサーチ §7](../research/2026-07-10-cloudflare-stack.md) の推奨に従う。
 
-本番 URL は workers.dev サブドメイン（名称は M0 で確定）で運用する。**カスタムドメインは現時点で取得しない**（[00-requirements.md](00-requirements.md) OQ-7 決定済み・2026-07-10）。GitHub App のコールバック URL / Setup URL は workers.dev の本番 URL で設定する。
+本番 URL は workers.dev サブドメイン（名称は M0 で確定）で運用する。**カスタムドメインは現時点で取得しない**（[00-requirements.md](00-requirements.md) OQ-7 決定済み・2026-07-10）。GitHub App のコールバック URL は workers.dev の本番 URL で設定する（Setup URL はインストール時の OAuth 要求を有効にしているため GitHub 側の仕様で入力できない・実測 2026-07-28・#173）。
 
 ### タスクと SP（合計 12 SP）
 
