@@ -191,7 +191,7 @@ LP にアクセス →「GitHub でログイン」→ GitHub の認可画面（�
 | NFR-14 | コスト | Cloudflare 無料枠（Workers リクエスト数・Rate Limiting binding・static assets 配信無料）内で運用できる設計であること（P3 で永続層は不使用）。枠超過が近づいたら検知できること | MUST |
 | NFR-15 | 運用 | 起票フロー（ログイン → 起票 → GitHub 反映）の E2E 確認なしに main へマージしないこと（CI ゲート） | MUST |
 | NFR-16 | 互換性 | 一次サポートは Android Chrome（WebAPK）。デスクトップ / iOS ブラウザでも基本フロー（ログイン・起票）が動作すること | SHOULD |
-| NFR-17 | プライバシー | 収集データはプライバシーポリシー記載の範囲に限定し、Issue 本文等のユーザーコンテンツを分析目的で保存しないこと。Cloudflare 基盤側のログ（Workers Logs）は `observability` を明示設定してサンプリングを絞り、その存在と保持期間（最長 7 日）をポリシーに記載すること（P4） | MUST |
+| NFR-17 | プライバシー | 収集データはプライバシーポリシー記載の範囲に限定し、Issue 本文等のユーザーコンテンツを分析目的で保存しないこと。Cloudflare 基盤側のログ（Workers Logs）は `observability` を明示設定し、**invocation log を無効化**（Request / Response をヘッダーごと記録するため）したうえでサンプリングを絞り、残る記録の種類と保持期間（無料プラン 3 日 / 有料プラン 7 日）をポリシーに記載すること（P4） | MUST |
 
 ## 6. システムアーキテクチャ
 
@@ -210,7 +210,7 @@ Cloudflare Workers（単一 Worker）
 │     └── Issue 作成プロキシ（POST /repos/{owner}/{repo}/issues・API version pin）
 ├── Rate Limiting binding: 起票のレート制限（カウンタは Cloudflare 管理・キーはユーザー ID のハッシュ）
 │     └── D1 は廃止（P1〜P3 で全用途を移設し、P4 でバインディング・migrations も撤去済み）
-├── Workers Logs: observability を明示設定（5% サンプリング・最長 7 日・P4）
+├── Workers Logs: observability を明示設定（invocation log 無効化 + 5% サンプリング・保持は無料 3 日 / 有料 7 日・P4）
 └── Workers Secrets: GitHub App client secret・トークン暗号鍵
 
 開発: wrangler v4（wrangler.jsonc）/ TypeScript / @cloudflare/vitest-pool-workers

@@ -392,7 +392,7 @@ export const translations = {
           heading: "5. サーバー基盤に残る記録",
           blocks: [
             {
-              p: "本アプリは Cloudflare Workers 上で動作しており、本アプリ自身が何も保存しなくても、基盤側にリクエストの記録（日時・アクセス先のパス・ステータスコードなどのメタデータ）が残ります。本アプリでは記録するリクエストを全体の約 5% に絞る設定にしており、記録は Cloudflare 側で最長 7 日間保持されたのち自動的に削除されます。この記録は障害調査のためだけに参照するもので、Issue の内容・GitHub のトークン・ショートカット設定は含まれません。",
+              p: "本アプリは Cloudflare Workers 上で動作しており、本アプリ自身が何も保存しなくても、基盤側にリクエストの記録が残る場合があります。本アプリでは、リクエストとその応答（ヘッダー・Cookie を含む）を記録する設定を無効化しており、残るのはエラー発生時の記録（例外の内容）だけです。それも記録対象を全体の約 5% に絞っており、Cloudflare 側で自動的に削除されます（保持期間は Cloudflare の上限に従い、本アプリが利用しているプランでは最長 3 日・上位プランでも最長 7 日）。この記録は障害調査のためだけに参照するもので、Issue の内容・GitHub のトークン・ショートカット設定は含まれません。",
             },
           ],
         },
@@ -648,7 +648,7 @@ export const translations = {
           heading: "5. Records Kept by the Underlying Platform",
           blocks: [
             {
-              p: "The App runs on Cloudflare Workers, so even though the App itself stores nothing, the platform records request metadata (timestamp, requested path, status code). The App is configured to log roughly 5% of requests, and Cloudflare retains those records for at most 7 days before deleting them automatically. These records are consulted only to investigate incidents; they contain no issue content, GitHub tokens, or shortcut settings.",
+              p: "The App runs on Cloudflare Workers, so even though the App itself stores nothing, the platform may keep records of requests. The App disables the setting that records requests and responses (including headers and cookies), so the only records left are errors (uncaught exceptions), and even those are sampled down to roughly 5%. Cloudflare deletes them automatically after its retention limit (at most 3 days on the plan this App uses; at most 7 days on higher plans). These records are consulted only to investigate incidents; they contain no issue content, GitHub tokens, or shortcut settings.",
             },
           ],
         },

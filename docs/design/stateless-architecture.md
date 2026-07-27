@@ -139,10 +139,16 @@ Cookie 化すると同じ競合が戻ってくるため、以下の三段構え�
 
 - `wrangler.jsonc` に `observability` を明記し、**ログを無効化するか head sampling を 1〜5% に絞る**
   （既定は「新規 Worker で有効・サンプリング 100%」のため、未設定のままでは 100% 記録される）
-  → **P4 で `enabled: true` + `head_sampling_rate: 0.05`（5%）を採用**。完全無効化だと障害調査の手掛かりが
-  ゼロになるため、記録量を絞ったうえで存在と保持期間を対外的に開示する側に倒した
-- Workers Logs の保持は **最長 7 日**（Cloudflare の上限・[Workers Logs](https://developers.cloudflare.com/workers/observability/logs/workers-logs/)）。
-  記録されるのはリクエストのメタデータで、Issue 本文・トークンは含まれない
+  → **P4 で `enabled: true` + `head_sampling_rate: 0.05` + `logs.invocation_logs: false` を採用**
+- **invocation log を無効化するのが必須**（サンプリングだけでは足りない）。invocation log は
+  Request / Response と **ヘッダーごと** 記録するため（[2025-04-07 changelog](https://developers.cloudflare.com/changelog/post/2025-04-07-increase-trace-events-limit/)
+  「request metadata, and headers are automatically captured」）、本アプリは認証を Cookie で行う以上、
+  暗号化トークン Cookie がサンプリングに当たった分だけ Cloudflare 側に残ってしまう
+- 無効化後に残るのは **例外（uncaught exception）と `console.*` 出力だけ**（`invocation_logs = false` は
+  invocation log のみを止める）。本アプリのコードに `console.*` は無いため、実質はエラー記録のみ
+- 保持は Cloudflare の上限に従う: **無料プラン 3 日 / 有料プラン 7 日**
+  （[Workers Logs](https://developers.cloudflare.com/workers/observability/logs/workers-logs/) の pricing 表。
+  本プロジェクトのアカウントに Workers Paid の契約は無いため現状は 3 日）
 - D1 廃止により **Time Travel（復元履歴）も消滅** する
 - プライバシーポリシーを「サーバーには保存しない / 端末内に保存する / Cloudflare 基盤の記録は 7 日」に全面改訂する（P4 で完了）
 

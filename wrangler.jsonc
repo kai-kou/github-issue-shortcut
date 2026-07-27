@@ -43,13 +43,18 @@
       "simple": { "limit": 1000, "period": 60 }
     }
   ],
-  // Workers Logs（既定は有効・サンプリング 100%）。未設定だと全リクエストのメタデータ（URL・
-  // ステータス等）が最長 7 日 Cloudflare 側に記録され、「サーバーに個人データを保持しない」の
-  // 建て付けと食い違う（P4・stateless-architecture.md §8）。障害調査の手掛かりは残したいので
-  // 無効化ではなく 5% サンプリングにし、記録の存在と保持日数はプライバシーポリシーに明記する。
+  // Workers Logs（既定は有効・サンプリング 100%・invocation log 有効）。未設定のままだと
+  // invocation log が Request / Response のヘッダーごと記録するため、トークン Cookie が
+  // Cloudflare 側に残り「サーバーに個人データを保持しない」が成立しない（P4・§8）。
+  // invocation log を無効化し、残すのは例外（uncaught exception）だけにする。それも 5% に
+  // 絞る（保持ゼロ優先のトレードオフ。全数の障害調査が要るときだけ一時的に引き上げる）。
+  // 保持期間は Cloudflare 側の上限（無料プラン 3 日 / 有料プラン 7 日）。
   "observability": {
     "enabled": true,
-    "head_sampling_rate": 0.05
+    "head_sampling_rate": 0.05,
+    "logs": {
+      "invocation_logs": false
+    }
   }
   // D1 は P1〜P3 で全用途が移設され、バインディングと migrations/ は P4（#166）で撤去した。
   // Worker は永続化 API（D1 / KV / R2 / DO）をひとつも持たない。
