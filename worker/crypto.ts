@@ -43,6 +43,25 @@ export async function sha256Base64url(input: string): Promise<string> {
   return bytesToBase64url(new Uint8Array(digest));
 }
 
+/**
+ * 秘密鍵付きのハッシュ（HMAC-SHA256）を base64url で返す。
+ *
+ * 低エントロピーな値（GitHub の数値ユーザー ID は公開かつ実質連番）を「不可逆な鍵」として外部へ渡すとき、
+ * 無塩 SHA-256 では総当たりで簡単に逆引きできてしまい仮名化にならない。鍵を知らない側からは
+ * 逆引きできないよう HMAC にする（レート制限キー・`worker/index.ts` の `rateLimitKey`）。
+ */
+export async function hmacSha256Base64url(base64Key: string, message: string): Promise<string> {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    base64ToBytes(base64Key) as BufferSource,
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const signature = await crypto.subtle.sign("HMAC", key, encoder.encode(message));
+  return bytesToBase64url(new Uint8Array(signature));
+}
+
 /** PKCE code_verifier を生成する（43〜128 文字の base64url）。 */
 export function createCodeVerifier(): string {
   return randomToken(32);

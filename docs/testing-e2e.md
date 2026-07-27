@@ -4,13 +4,13 @@
 
 ## ⚠️ スコープと限界（最重要・#56）
 
-**この E2E は「モック IdP + ローカルランタイム + テスト値注入 + マイグレーション済みローカル D1」で走る機能テストであり、`green` は「コードが正しく構成された環境で動く」ことしか意味しない。「本番で動く」ことは保証しない。**
+**この E2E は「モック IdP + ローカルランタイム + テスト値注入」で走る機能テストであり、`green` は「コードが正しく構成された環境で動く」ことしか意味しない。「本番で動く」ことは保証しない。**
 
 E2E が **構造的に検知できない** もの（実際に本番で 500 を起こした）:
 
 - 本番 secret の妥当性（例: `TOKEN_ENCRYPTION_KEY` が 32 バイトにデコードされない）
 - 本番の非 secret var の存在（例: `GITHUB_CLIENT_ID` がデプロイで消える）
-- 本番（remote）D1 のマイグレーション適用（例: テーブル未作成で `/auth/callback` 500）
+- 本番のバインディング設定（例: レート制限バインディング未設定で不正利用対策が効かない）
 - 実 GitHub との実連携（App の callback 登録・consent）
 
 → これらは **本番スモークテスト**（下記）と **`/api/ready` 自己診断** で担保する。**モック E2E の green を「本番 E2E で担保できた」と報告してはならない**（教訓 L-118）。
@@ -18,7 +18,7 @@ E2E が **構造的に検知できない** もの（実際に本番で 500 を�
 ## 何を自動化したか（クラウド CI で自動実行）
 
 **Playwright（Chromium・Pixel モバイルエミュレーション）+ モック GitHub OAuth** で、
-ログインフロー全体を実コード（ブラウザ ↔ Worker ↔ D1）で検証する。実 GitHub には触れない。
+ログインフロー全体を実コード（ブラウザ ↔ Worker）で検証する。実 GitHub には触れない。
 
 - 対象: `/auth/login`（state + PKCE 生成）→ 認可（モック）→ `/auth/callback`（トークン交換・
   ユーザー取得・**暗号化トークン Cookie（`__Host-gh`）と期限 Cookie（`__Host-gh-exp`）の発行**）→
@@ -27,7 +27,7 @@ E2E が **構造的に検知できない** もの（実際に本番で 500 を�
   「トークンが `document.cookie` から読めない」「失効 → 自動リフレッシュ → 起票継続」「多タブでもリフレッシュは
   1 回」「期限 Cookie が改ざんされても 401 から回復する」を検証する。
 - 構成:
-  - `wrangler dev` がビルド済み SPA + Worker + ローカル D1（`migrations/` 適用。P2 以降 D1 に個人データは無く、重複防止・レート制限のみ）を配信。
+  - `wrangler dev` がビルド済み SPA + Worker を配信（P3 以降サーバーは永続層を持たない）。起票のレート制限は E2E 専用の緩いバインディング（`ISSUE_RATE_LIMIT_RELAXED_ENABLED=1`）へ切り替える。
   - `e2e/mock-github.mjs` がモック IdP（authorize / access_token / user）を提供。
   - Worker の `GITHUB_OAUTH_BASE` / `GITHUB_API_BASE`（`worker/github.ts` で差し替え可能・
     既定は実 GitHub）をモックに向ける。本番挙動は変えない。
@@ -63,7 +63,7 @@ headless シグナルで bot 検知・2FA が誘発され不安定になるた�
       ストップウォッチで 5 秒以内（`e2e/kpi.spec.ts` の外形計測はプロセス起動を含まない下限値）
 - [ ] 機内モードで起票 → キュー表示 → **アプリを完全に閉じた状態** から復帰し、Service Worker の
       Background Sync で自動再送が発火する（設定の残存は `tools/check_sw_background_sync.py` が
-      ガード。**重複の有無はサーバー側の冪等性キー（`request_ids`）+ `e2e/offline-queue.spec.ts` の
+      ガード。**重複の有無は端末内の冪等性キー（`src/issues/sentRequestIds.ts` の 26 時間窓）+ `e2e/offline-queue.spec.ts` の
       作成件数アサートで担保済みのため、実機で数え直す必要はない**）
 - [ ] 実指のタップで候補チップ・ラベルチェックボックスの誤タップが起きない（合成イベントは
       接触楕円を持たないため自動化不可）
@@ -130,10 +130,10 @@ tools/smoke_prod.sh   # 既定で本番 URL を検査。引数でプレビュー
 チェック内容:
 
 - `/api/health` → 200
-- `/api/ready` → 200（`TOKEN_ENCRYPTION_KEY` の 32 バイト妥当性・`GITHUB_CLIENT_ID` の存在・D1 テーブル存在を自己診断）
+- `/api/ready` → 200（`TOKEN_ENCRYPTION_KEY` の 32 バイト妥当性・`GITHUB_CLIENT_ID` の存在・レート制限バインディングの有無を自己診断）
 - `/auth/login` → 302 で GitHub 認可 URL へ、かつ `client_id` が空でない
 
-`.github/workflows/smoke.yml` がスケジュール（6 時間ごと）+ 手動実行で本番に対して走らせ、本番デグレを早期検知する。**新しいマイグレーション・secret 変更・デプロイの後は、このスモークが緑であることをリリースの合否とする。**
+`.github/workflows/smoke.yml` がスケジュール（6 時間ごと）+ 手動実行で本番に対して走らせ、本番デグレを早期検知する。**secret / var / バインディングの変更・デプロイの後は、このスモークが緑であることをリリースの合否とする。**
 
 ## E2E の CI flaky 切り分け手順（#106）
 
@@ -151,7 +151,7 @@ CI で E2E が落ちた
   ↓ ローカルで対象 spec を単体実行（npm run e2e -- <spec>）
   ├─ 単体では通る／フルスイートで落ちる → B（テスト分離）。429 か確認。
   │    override が効いていない or 新しい共有状態の枯渇を疑う（レート制限以外の
-  │    D1 行・localStorage 汚染も含む。afterEach のクリーンアップ漏れを点検）
+  │    localStorage / IndexedDB の汚染も含む。afterEach のクリーンアップ漏れを点検）
   └─ 単体でも CI でだけ落ちる → A（環境速度）。retries で吸収されるはず。
        retries 後も落ちるなら真の不具合（アサーション対象の非同期処理が壊れている）
 ```

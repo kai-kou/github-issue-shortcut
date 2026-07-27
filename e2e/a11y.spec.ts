@@ -95,7 +95,7 @@ test.describe("a11y: axe-core（wcag2a/wcag2aa/wcag22aa・モバイルエミュ�
 
     const results = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
     expect(results.violations, JSON.stringify(results.violations, null, 2)).toEqual([]);
-    // ショートカットは保存しないため D1 状態は残らない。
+    // ショートカットは保存しないため端末内（localStorage）状態は残らない。
   });
 
   test("ショートカット作成ヘルパー画面に WCAG 違反がない（一覧表示された ShortcutRow を含む）", async ({ page }) => {
@@ -116,7 +116,7 @@ test.describe("a11y: axe-core（wcag2a/wcag2aa/wcag22aa・モバイルエミュ�
     const results = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
     expect(results.violations, JSON.stringify(results.violations, null, 2)).toEqual([]);
 
-    // 後続テストへ D1 状態を残さない。
+    // 後続テストへ端末内（localStorage）状態を残さない。
     await page.getByRole("button", { name: /削除|Delete/ }).click();
     await page.getByRole("button", { name: /削除|Delete/ }).click();
   });

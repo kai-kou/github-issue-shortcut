@@ -19,7 +19,7 @@ PAT 管理の手間なし（GitHub 認証）・ショートカット起動（リ
 | API | Hono（Cloudflare Workers 上で動作） |
 | ホスティング | Cloudflare Workers（単一 Worker 構成・workers.dev） |
 | 認証 | GitHub App（OAuth）+ 暗号化 HttpOnly Cookie（サーバーは個人データを保持しない） |
-| データ | 端末内（localStorage / IndexedDB）+ Cloudflare D1（重複防止・レート制限のみ） |
+| データ | 端末内（localStorage / IndexedDB）のみ。サーバーは永続層を持たない（レート制限は Workers Rate Limiting binding） |
 | CI | GitHub Actions（テスト・型チェック・Markdown ゲート） |
 | デプロイ | Cloudflare Workers Builds（Git 連携・キーレス） |
 

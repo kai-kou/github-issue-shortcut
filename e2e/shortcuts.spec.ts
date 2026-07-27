@@ -114,7 +114,7 @@ test.describe("ショートカット作成ヘルパー（モック GitHub・モ�
     await expect(page.getByText(/リポジトリ・ラベル・タイトルのいずれかを入力してください|Enter at least one of/)).toBeVisible();
     await expect(page.locator(".shortcut-row")).toHaveCount(1);
 
-    // 後続テスト（および同一 e2e-user を使う他 spec）に汚染された D1 状態を残さない。
+    // 後続テスト（および同一 e2e-user を使う他 spec）に汚染された端末内（localStorage）状態を残さない。
     await page.getByRole("button", { name: /削除|Delete/ }).click();
     await page.getByRole("button", { name: /削除|Delete/ }).click();
     await expect(page.getByText(/まだショートカットがありません|No shortcuts yet/)).toBeVisible();
@@ -142,7 +142,7 @@ test.describe("ショートカット作成ヘルパー（モック GitHub・モ�
     await page.getByRole("button", { name: "kai-kou/alpha" }).click();
     await expect(page.getByRole("textbox", { name: /タイトル|^Title$/ })).toHaveValue("メモ:");
 
-    // 後続テスト（同一 e2e-user を使う他 spec）に D1 状態を残さない。
+    // 後続テスト（同一 e2e-user を使う他 spec）に端末内（localStorage）状態を残さない。
     await page.goto("/shortcuts");
     await page.getByRole("button", { name: /削除|Delete/ }).click();
     await page.getByRole("button", { name: /削除|Delete/ }).click();

@@ -1,7 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
 
 // E2E: Playwright（Chromium・Pixel モバイルエミュレーション）で OAuth ログインフローを検証する。
-// - wrangler dev がビルド済み SPA + Worker + ローカル D1 を配信（要 `npm run build` 事前実行）
+// - wrangler dev がビルド済み SPA + Worker を配信（要 `npm run build` 事前実行・永続層なし）
 // - モック GitHub（e2e/mock-github.mjs）を GITHUB_OAUTH_BASE / GITHUB_API_BASE に向ける
 // - ローカル実行時はプリインストール Chromium を E2E_CHROMIUM_PATH で指定できる
 const chromiumPath = process.env.E2E_CHROMIUM_PATH;
@@ -38,7 +38,6 @@ export default defineConfig({
     },
     {
       command:
-        "npx wrangler d1 migrations apply DB --local && " +
         "npx wrangler dev --port 8789 " +
         "--var GITHUB_CLIENT_ID:e2e-client-id " +
         "--var GITHUB_CLIENT_SECRET:e2e-client-secret " +
@@ -46,10 +45,10 @@ export default defineConfig({
         "--var GITHUB_OAUTH_BASE:http://localhost:8788 " +
         "--var GITHUB_API_BASE:http://localhost:8788 " +
         // E2E は単一のモックユーザー（e2e-user）を全 spec（~40件）が使い回すため、本番の
-        // 起票レート制限（10件/分・worker/index.ts ISSUE_RATE_LIMIT_PER_WINDOW）のままだと
-        // スイート後半のテストが不正利用と誤判定され 429 で落ちる（テスト分離の問題）。
-        // E2E 実行時だけ上限を引き上げる（本番既定値は変更しない）。
-        "--var ISSUE_RATE_LIMIT_PER_WINDOW_OVERRIDE:1000",
+        // 起票レート制限（10件/分・wrangler.jsonc の ISSUE_RATE_LIMIT）のままだとスイート後半の
+        // テストが不正利用と誤判定され 429 で落ちる（テスト分離の問題）。E2E 実行時だけ緩い上限の
+        // バインディング（ISSUE_RATE_LIMIT_RELAXED）へ切り替える（本番の上限は変更しない）。
+        "--var ISSUE_RATE_LIMIT_RELAXED_ENABLED:1",
       url: "http://localhost:8789/api/health",
       reuseExistingServer: !process.env.CI,
       timeout: 90_000,

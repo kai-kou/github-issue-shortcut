@@ -48,6 +48,11 @@ test.describe("起票エラー表示（モック GitHub・B5-2/FR-9）", () => {
     await expect(page.getByText(/リクエストが多すぎます|Too many requests/)).toBeVisible();
   });
 
+  // アプリ側レート制限（PR-4）の 429 は、応答 body の code が上の 403 と同じ `rate_limited` で、
+  // クライアントの分岐（submitError.ts）も表示文言も上のテストと完全に同一経路になる。E2E を足しても
+  // 新しい経路を通らないため、ここでは重複させない。サーバー側の 429 + Retry-After は
+  // worker/issues.test.ts が実際の Rate Limiting binding に対して検証している。
+
   test("422 は内容の見直しを促す表示になる（盲目リトライ禁止）", async ({ page }) => {
     await page.goto("/");
     await page.getByRole("link", { name: /GitHub でログイン|Sign in with GitHub/ }).click();

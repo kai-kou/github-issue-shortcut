@@ -4,7 +4,7 @@
  * D1 にユーザー行を作る代わりに、封入済みの Cookie ヘッダを組み立てる。
  */
 import { sealTokenBundle, SESSION_MAX_AGE, TOKEN_COOKIE, type TokenBundle } from "./tokenCookie";
-import { nowSeconds } from "./store";
+import { nowSeconds } from "./time";
 import type { Env } from "./types";
 
 let nextUserId = 1_000_000;

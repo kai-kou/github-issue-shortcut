@@ -1,16 +1,23 @@
 import { test, expect } from "@playwright/test";
 
 // OAuth ログインフローの E2E（モック GitHub・Pixel モバイルエミュレーション）。
-// 実コード（ブラウザ ↔ Worker ↔ D1）を通し、実 GitHub には触れない。
+// 実コード（ブラウザ ↔ Worker）を通し、実 GitHub には触れない。
 // カバー範囲: /auth/login（state+PKCE）→ 認可（モック）→ /auth/callback（トークン交換・
 // セッション発行）→ /api/me でログイン表示 → /api/installations（A2-1・App 未インストール誘導）→ /auth/logout。
 // 実機 Android 固有（WebAPK・standalone PWA の Chrome Custom Tab 経由 OAuth）は対象外。
 test.describe("OAuth ログインフロー（モック GitHub・モバイルエミュレーション）", () => {
   test("ログイン → セッション確立 → ログイン表示 → ログアウト", async ({ page }) => {
-    // readiness: ローカル D1 マイグレーション済み・鍵・client_id が揃っていること
+    // readiness: 鍵・鍵バージョン・client_id・レート制限バインディングが揃っていること。
+    // E2E は緩い上限のバインディング（ISSUE_RATE_LIMIT_RELAXED_ENABLED=1）で動かすため、
+    // 「本番でその緩和フラグが立っていないこと」を見る rateLimiterStrict だけは意図的に false
+    // （＝全体としては 503）。本番では 200 / ready:true になる（tools/smoke_prod.sh）。
     const ready = await page.request.get("/api/ready");
-    expect(ready.status()).toBe(200);
-    expect((await ready.json()).ready).toBe(true);
+    const checks = (await ready.json()).checks as Record<string, boolean>;
+    expect(checks.encryptionKey).toBe(true);
+    expect(checks.keyVersion).toBe(true);
+    expect(checks.clientId).toBe(true);
+    expect(checks.rateLimiter).toBe(true);
+    expect(checks.rateLimiterStrict).toBe(false);
 
     await page.goto("/");
 

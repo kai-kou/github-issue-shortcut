@@ -70,7 +70,7 @@ jobs:
       - run: npx playwright install --with-deps chromium
 
       # OAuth ログインフロー + デザインガイドライン + a11y（axe-core）の E2E（Playwright・
-      # モバイルエミュレーション・モック GitHub）。webServer が wrangler dev（ローカル D1・
+      # モバイルエミュレーション・モック GitHub）。webServer が wrangler dev（永続層なし・
       # モック GitHub base）とモックを起動する。
       - run: npm run e2e
         env:
@@ -89,8 +89,6 @@ jobs:
       - run: npm ci
 
       - run: npm run build
-
-      - run: npx wrangler d1 migrations apply DB --local
 
       # ログイン前トップページ（未認証）の performance / accessibility スコアを Lighthouse で
       # 監査する（design-guidelines.md §5「後続導入」の消化・lighthouserc.json で minScore を

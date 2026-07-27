@@ -22,6 +22,7 @@ import { findTokens, isTokenMatched, stripTokens } from "../issues/smartInput";
 import type { PrefillParams } from "../issues/prefillParams";
 import type { ShortcutPreset } from "../shortcuts/launchUrl";
 import { submitErrorCode, submitErrorMessage } from "../issues/submitError";
+import { claimSubmission, releaseSubmission } from "../issues/submitGuard";
 import { useOfflineQueueSync } from "../issues/useOfflineQueueSync";
 import { OfflineQueueList } from "../issues/OfflineQueueList";
 
@@ -294,19 +295,25 @@ export function RepoPicker({ prefill = null, userId, ref }: RepoPickerProps) {
     // 最初の送信試行の時点で発行する（失敗後に生成すると SW が既に再送した元リクエストと id が
     // 揃わなくなる・B4-4）。
     const clientRequestId = crypto.randomUUID();
+    const guardInput = { repo: selected, title: input.title, body: input.body, labels: input.labels };
+    // 同一内容の二重送信（再タップ・タイムアウトと思っての押し直し）を端末内で弾く（FR-24・P3）。
+    // 送信ボタンの無効化だけでは、ほぼ同時の二重タップやシート再表示後の再送信を止めきれない。
+    // 下書きはここでクリアしない: 端末内の予約は「送信済み」の証明ではない（応答前にタブが破棄されると
+    // 予約だけが残る）ため、消すと入力を失う可能性がある（D-7・入力は絶対に失わせない）。
+    if (!(await claimSubmission(guardInput))) {
+      setSubmitState({ status: "error", code: "duplicate_submission" });
+      return;
+    }
     try {
       const res = await apiFetch("/api/issues", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ repo: selected, title: input.title, body: input.body, labels: input.labels, clientRequestId }),
+        body: JSON.stringify({ repo: selected, title: input.title, body: input.body, labels: input.labels }),
       });
       if (!res.ok) {
-        const code = await submitErrorCode(res);
-        // duplicate_submission は直前の同一内容の送信が既に GitHub 側で成功済みであることを意味する
-        // （サーバー側は成功記録との照合でのみこのコードを返す）。取り残された下書きが後の
-        // ウィンドウ外での二重作成を招かないよう、下書きはクリアする（B5-1 と整合）。
-        if (code === "duplicate_submission") clearDraft();
-        setSubmitState({ status: "error", code });
+        // 失敗した内容の予約は解放する（残すと正当な再試行まで 30 秒ブロックしてしまう）。
+        await releaseSubmission(guardInput);
+        setSubmitState({ status: "error", code: await submitErrorCode(res) });
         return;
       }
       const data = (await res.json()) as { number: number; htmlUrl: string };
@@ -317,6 +324,9 @@ export function RepoPicker({ prefill = null, userId, ref }: RepoPickerProps) {
       // 連続起票へ引き継がない判定にも流用する（同じ雛形が繰り返し復活しないように）。
       setFormKey((k) => k + 1);
     } catch {
+      // ネットワーク到達不能ならサーバーには届いていない。予約を残すと、キュー再送が始まる前に
+      // ユーザーが押し直した正当な送信まで 30 秒ブロックしてしまうため解放する。
+      await releaseSubmission(guardInput);
       // fetch 自体の失敗（オフライン・ネットワーク断）はオフラインキュー（B4-2・FR-22）へ積む。
       // 下書き（B5-1）は再送が確定するまで消さずに残す（再送失敗時の手動復旧経路として機能する）。
       // フォームはクリアしない（D-7・入力は絶対に失わせない）: formKey を進めて再マウントしても

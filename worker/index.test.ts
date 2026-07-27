@@ -1,13 +1,12 @@
-import { createExecutionContext, createScheduledController, env, SELF, waitOnExecutionContext } from "cloudflare:test";
+import { createExecutionContext, env, SELF, waitOnExecutionContext } from "cloudflare:test";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import worker from "./index";
-import { applySchema, nowSeconds, reserveIssueLog, reserveRequestId } from "./store";
+import { nowSeconds } from "./time";
 import { loginCookie, testTokenBundle, tokenCookieHeader } from "./test-support";
 import { currentKeyVersion } from "./tokenCookie";
 import type { Env } from "./types";
 
 const testEnv = env as unknown as Env;
-const db = testEnv.DB;
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -26,35 +25,50 @@ describe("/api/health", () => {
 });
 
 describe("GET /api/ready", () => {
-  it("reports not-ready (503) when the database is not provisioned", async () => {
-    // このテストファイルはスキーマを適用しないため、D1 のテーブルが存在しない。
-    // 本番で「remote D1 未マイグレーション」により /auth/callback が 500 になった事象
-    // （E2E が見逃したクラス）を、readiness チェックが検知できることを示す。
+  it("reports ready when the configured bindings and secrets are usable", async () => {
     const res = await SELF.fetch("https://example.com/api/ready");
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { ready: boolean; checks: Record<string, boolean> };
+    expect(body.ready).toBe(true);
+    expect(body.checks.encryptionKey).toBe(true); // miniflare のテスト鍵は有効
+    expect(body.checks.clientId).toBe(true); // miniflare のテスト client_id
+    expect(body.checks.rateLimiter).toBe(true); // wrangler.jsonc の ratelimits バインディング
+  });
+
+  it("detects a missing rate limit binding instead of letting every submission through (PR-4)", async () => {
+    // レート制限バインディングの設定漏れは 500 にならず「制限が効かないまま起票が通る」形で
+    // 表面化する（本番で気づけない）。readiness チェックで先に落とす。
+    const ctx = createExecutionContext();
+    const res = await worker.fetch(
+      new Request("https://example.com/api/ready"),
+      { ...testEnv, ISSUE_RATE_LIMIT: undefined } as unknown as Env,
+      ctx,
+    );
+    await waitOnExecutionContext(ctx);
     expect(res.status).toBe(503);
     const body = (await res.json()) as { ready: boolean; checks: Record<string, boolean> };
     expect(body.ready).toBe(false);
-    expect(body.checks.encryptionKey).toBe(true); // miniflare のテスト鍵は有効
-    expect(body.checks.clientId).toBe(true); // miniflare のテスト client_id
-    expect(body.checks.database).toBe(false); // スキーマ未適用 → 検知される
+    expect(body.checks.rateLimiter).toBe(false);
   });
 
-  it("detects an un-migrated (legacy column) schema, not just a missing table", async () => {
-    // 「Worker だけ先にデプロイされ 0010 が未適用」を検知できること。テーブルの存在だけを見ると
-    // 旧スキーマ（user_id 列）でも ready を返してしまい、起票時に初めて全滅する。
-    await db.prepare("CREATE TABLE IF NOT EXISTS issue_log (user_id TEXT, repo TEXT, content_hash TEXT, created_at INTEGER)").run();
-    try {
-      const res = await SELF.fetch("https://example.com/api/ready");
-      expect(res.status).toBe(503);
-      const body = (await res.json()) as { checks: Record<string, boolean> };
-      expect(body.checks.database).toBe(false);
-    } finally {
-      await db.prepare("DROP TABLE issue_log").run();
-    }
+  it("reports not-ready when the E2E relaxed rate limit is enabled (本番へ紛れ込む事故の検知)", async () => {
+    // E2E の wrangler dev が使う緩和フラグ（上限 1000 件/分）が本番 vars にコピーされると、
+    // 不正利用対策が実質無効のまま 200 を返してしまう。それを readiness で落とす。
+    const ctx = createExecutionContext();
+    const res = await worker.fetch(
+      new Request("https://example.com/api/ready"),
+      { ...testEnv, ISSUE_RATE_LIMIT_RELAXED_ENABLED: "1" } as unknown as Env,
+      ctx,
+    );
+    await waitOnExecutionContext(ctx);
+    expect(res.status).toBe(503);
+    const body = (await res.json()) as { ready: boolean; checks: Record<string, boolean> };
+    expect(body.ready).toBe(false);
+    expect(body.checks.rateLimiterStrict).toBe(false);
+    expect(body.checks.rateLimiter).toBe(true); // バインディング自体は存在する
   });
 
   it("reports an unusable TOKEN_KEY_VERSION instead of silently falling back to v1", async () => {
-    await applySchema(db);
     // env を差し替えるため SELF ではなくハンドラを直接呼ぶ（SELF.fetch は env を受け取らない）。
     const ctx = createExecutionContext();
     const res = await worker.fetch(
@@ -387,14 +401,11 @@ describe("DELETE /api/account", () => {
     expect(body.error.code).toBe("unauthenticated");
   });
 
-  it("destroys the token cookies and the user's remaining rows (FR-12)", async () => {
-    await applySchema(db);
+  it("destroys the token cookies and revokes the GitHub token (FR-12)", async () => {
     const bundle = testTokenBundle();
-    const userKey = String(bundle.u);
-    await reserveIssueLog(db, userKey, "kai-kou/alpha", "hash-delete", 30);
-    await reserveRequestId(db, userKey, "req-delete", 26 * 60 * 60);
     // GitHub 側のトークン失効呼び出し（ベストエフォート）は stub で受ける。
-    vi.stubGlobal("fetch", vi.fn(async () => new Response(null, { status: 204 })));
+    const revoke = vi.fn(async () => new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", revoke);
 
     const res = await SELF.fetch("https://example.com/api/account", {
       method: "DELETE",
@@ -405,33 +416,8 @@ describe("DELETE /api/account", () => {
     expect(setCookie).toContain("__Host-gh=");
     expect(setCookie).toContain("Max-Age=0");
 
-    // GitHub の数値ユーザー ID をキーに持つ一時行が残らないこと（保持ゼロの担保）。
-    expect(await db.prepare("SELECT 1 FROM issue_log WHERE user_key = ?").bind(userKey).first()).toBeNull();
-    expect(await db.prepare("SELECT 1 FROM request_ids WHERE user_key = ?").bind(userKey).first()).toBeNull();
-  });
-});
-
-describe("scheduled handler (一時行の保持期間クリーンアップ・#71 / #164)", () => {
-  it("deletes stale rows from every temporary table via the Cron Trigger wiring", async () => {
-    await applySchema(db);
-    const userKey = "3001";
-    const stale = nowSeconds() - 8 * 24 * 60 * 60;
-    await reserveIssueLog(db, userKey, "kai-kou/alpha", "hash-cron", 30);
-    await reserveRequestId(db, userKey, "req-cron", 26 * 60 * 60);
-    await db.prepare("INSERT INTO rate_limits (user_key, window_start, count) VALUES (?, ?, 1)").bind(userKey, stale).run();
-    await db
-      .prepare("UPDATE issue_log SET created_at = ? WHERE user_key = ? AND repo = ? AND content_hash = ?")
-      .bind(stale, userKey, "kai-kou/alpha", "hash-cron")
-      .run();
-    await db.prepare("UPDATE request_ids SET created_at = ? WHERE user_key = ?").bind(stale, userKey).run();
-
-    const ctx = createExecutionContext();
-    await worker.scheduled(createScheduledController(), env as unknown as Env, ctx);
-    await waitOnExecutionContext(ctx);
-
-    for (const table of ["issue_log", "request_ids", "rate_limits"]) {
-      const remaining = await db.prepare(`SELECT COUNT(*) as count FROM ${table}`).first<{ count: number }>();
-      expect(remaining?.count, table).toBe(0);
-    }
+    // Cookie を消すだけでは、値をコピーされていた相手を止められない（自己完結型のクレデンシャル）。
+    // GitHub 側の失効 API が呼ばれることまで確認する（P3 以降、サーバーに消すべき記録は無い）。
+    expect(revoke).toHaveBeenCalled();
   });
 });
