@@ -3,6 +3,7 @@ import { clearReposCache } from "../repos/reposCache";
 import { clearShortcuts } from "../shortcuts/shortcutsStore";
 import { clearAllCachedLabels } from "../issues/repoLabelsCache";
 import { clearAuthCache, loadAuthCache, saveAuthCache } from "./authCache";
+import { apiFetch } from "./apiFetch";
 
 export type Me = { login: string; avatarUrl: string | null; githubUserId: number };
 
@@ -51,7 +52,7 @@ export function useAuthState(): AuthStateResult {
     let active = true;
     // revalidate 開始時点のキャッシュ済みユーザー（別ユーザー切り替え検知に使う）。
     const cachedUserId = cachedAuth?.me.githubUserId ?? null;
-    fetch("/api/me", { credentials: "same-origin" })
+    apiFetch("/api/me")
       .then(async (res): Promise<AuthState> => {
         if (res.status === 401) return { status: "anonymous" };
         if (!res.ok) throw new Error(`unexpected status: ${res.status}`);
@@ -86,7 +87,7 @@ export function useAuthState(): AuthStateResult {
   useEffect(() => {
     if (auth.status !== "authenticated") return;
     let active = true;
-    fetch("/api/installations", { credentials: "same-origin" })
+    apiFetch("/api/installations")
       .then(async (res) => {
         if (!res.ok) throw new Error(`unexpected status: ${res.status}`);
         return (await res.json()) as { installed: boolean };

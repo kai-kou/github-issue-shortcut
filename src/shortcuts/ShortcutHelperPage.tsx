@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { apiFetch } from "../auth/apiFetch";
 import { useLanguage } from "../i18n/LanguageContext";
 import { savePendingRedirect } from "../issues/prefillParams";
 import { LabelPicker } from "../issues/LabelPicker";
@@ -343,7 +344,7 @@ export function ShortcutHelperPage() {
     let active = true;
     // ショートカットの保存先（localStorage）は GitHub ユーザー ID で所有者を紐付けるため、
     // ログイン判定だけでなく githubUserId も受け取る（#101・別アカウント混入防止）。
-    fetch("/api/me", { credentials: "same-origin" })
+    apiFetch("/api/me")
       .then(async (res): Promise<AuthState> => {
         if (res.status === 401) return { status: "anonymous" };
         if (!res.ok) throw new Error(`unexpected status: ${res.status}`);

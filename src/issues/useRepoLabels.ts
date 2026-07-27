@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { apiFetch } from "../auth/apiFetch";
 import { loadCachedLabels, saveCachedLabels } from "./repoLabelsCache";
 
 export type GitHubLabel = { name: string; color: string };
@@ -11,7 +12,7 @@ export type RepoLabelsState =
   | { status: "ready"; labels: GitHubLabel[]; stale: boolean };
 
 async function fetchLabels(repoFullName: string): Promise<GitHubLabel[]> {
-  const res = await fetch(`/api/labels?repo=${encodeURIComponent(repoFullName)}`, { credentials: "same-origin" });
+  const res = await apiFetch(`/api/labels?repo=${encodeURIComponent(repoFullName)}`);
   if (!res.ok) throw new Error(`unexpected status: ${res.status}`);
   const data = (await res.json()) as { labels: GitHubLabel[] };
   return data.labels;

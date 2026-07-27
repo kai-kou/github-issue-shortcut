@@ -1,106 +1,61 @@
 /**
- * ユーザーの有効な GitHub access token を取得する（透過リフレッシュ・A1-2）。
- * リフレッシュトークンは単回使用ローテーションのため、並行リフレッシュは競合して失効する。
- * D1 の行ロック（tokens.refreshing_until への条件付き UPDATE）でユーザー単位に直列化し、
- * ロックを取れなかったリクエストは完了をポーリングで待つ（OQ-3・Durable Object は導入せず解決）。
+ * トークンの鮮度判定とリフレッシュ（ステートレス版・stateless-architecture.md §5）。
+ *
+ * トークンは D1 ではなく暗号化 Cookie（`worker/session.ts`）にあるため、サーバー側の行ロックは
+ * 存在しない。リフレッシュトークンは単回使用ローテーションのため、並行リフレッシュの直列化は
+ * **クライアントの Web Locks API**（`src/auth/tokenRefresh.ts`）が担い、サーバーは
+ * 「復号 → 使用 → 必要なら Set-Cookie で書き戻し」の単純な流れに徹する。
+ *
+ * API プロキシ（/api/*）は暗黙のリフレッシュを行わない。access token が失効していれば
+ * `token_expired`（401）を返し、クライアントが `/auth/refresh` を 1 本化して呼び直す。
+ * こうすることで並行レスポンスの Set-Cookie が互いを上書きする事故を構造的に避ける。
  */
-import { decryptString, encryptString } from "./crypto";
 import { DEFAULT_ACCESS_TOKEN_TTL, DEFAULT_OAUTH_BASE, refreshAccessToken } from "./github";
-import { getTokens, nowSeconds, releaseRefreshLock, saveTokens, tryAcquireRefreshLock } from "./store";
+import type { TokenBundle } from "./session";
 import type { Env } from "./types";
 
 /** access token の期限切れ判定の前倒しバッファ（秒）。ぎりぎりでの失効を避ける。 */
-const EXPIRY_BUFFER = 60;
-/** リフレッシュロックの TTL（秒）。処理がクラッシュした場合にロックを自動失効させる。 */
-const LOCK_TTL = 30;
-/** 他リクエストがリフレッシュ中のときのポーリング間隔（ms）。 */
-const POLL_INTERVAL_MS = 100;
-/** ポーリングの最大試行回数。ロック保持者が LOCK_TTL いっぱい使う可能性があるため、それに合わせる。 */
-const POLL_MAX_ATTEMPTS = Math.ceil((LOCK_TTL * 1000) / POLL_INTERVAL_MS);
+export const EXPIRY_BUFFER = 60;
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+/** 再ログインが必要な状態（refresh token 不在・リフレッシュ拒否）を表す。 */
+export class ReauthRequiredError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ReauthRequiredError";
+  }
 }
 
-function isValid(accessExpiresAt: number): boolean {
-  return accessExpiresAt > nowSeconds() + EXPIRY_BUFFER;
+/** access token がまだ使えるか（バッファ込み）。 */
+export function isAccessTokenFresh(bundle: TokenBundle, now: number, buffer = EXPIRY_BUFFER): boolean {
+  return bundle.ae > now + buffer;
 }
 
 /**
- * ユーザーの有効な access token を返す。期限切れなら refresh token で自動更新する。
- * 更新済みトークンが存在しない、または refresh token がない場合は例外を投げる
- * （呼び出し側で再ログイン導線に振り分ける想定）。
+ * refresh token で access token を更新し、新しいトークン一式を返す（呼び出し側が Cookie へ書き戻す）。
+ * refresh token が無い・GitHub に拒否された場合は `ReauthRequiredError` を投げる。
+ * 単回使用ローテーションのため、失敗時に自動リトライしてはならない（§5-3: 即・再ログイン導線）。
  */
-export async function getValidAccessToken(env: Env, userId: string): Promise<string> {
-  let tokens = await getTokens(env.DB, userId);
-  if (!tokens) throw new Error("no tokens saved for user");
+export async function refreshTokenBundle(env: Env, bundle: TokenBundle, now: number): Promise<TokenBundle> {
+  if (!bundle.r) throw new ReauthRequiredError("access token expired and no refresh token available");
 
-  if (isValid(tokens.accessExpiresAt)) {
-    return decryptString(env.TOKEN_ENCRYPTION_KEY, tokens.accessEnc);
-  }
-  if (!tokens.refreshEnc) {
-    throw new Error("access token expired and no refresh token available");
-  }
-
-  const lockUntil = nowSeconds() + LOCK_TTL;
-  const acquired = await tryAcquireRefreshLock(env.DB, userId, lockUntil);
-  if (acquired) {
-    try {
-      // ロック獲得直前に他リクエストが refresh を完了させている可能性があるため再読込する。
-      // 再読込せず最初に読んだ refreshEnc をそのまま使うと、既に消費済みの単回使用トークンで
-      // refresh を試みて失敗する（TOCTOU）。
-      const fresh = await getTokens(env.DB, userId);
-      if (!fresh) throw new Error("no tokens saved for user");
-      if (isValid(fresh.accessExpiresAt)) {
-        await releaseRefreshLock(env.DB, userId, lockUntil);
-        return decryptString(env.TOKEN_ENCRYPTION_KEY, fresh.accessEnc);
-      }
-      if (!fresh.refreshEnc) throw new Error("access token expired and no refresh token available");
-
-      const refreshToken = await decryptString(env.TOKEN_ENCRYPTION_KEY, fresh.refreshEnc);
-      const refreshed = await refreshAccessToken({
-        oauthBase: env.GITHUB_OAUTH_BASE ?? DEFAULT_OAUTH_BASE,
-        clientId: env.GITHUB_CLIENT_ID,
-        clientSecret: env.GITHUB_CLIENT_SECRET,
-        refreshToken,
-      });
-      const now = nowSeconds();
-      const accessEnc = await encryptString(env.TOKEN_ENCRYPTION_KEY, refreshed.access_token!);
-      // GitHub がローテーション後の refresh_token を返さない場合は既存値を維持する。
-      const refreshEnc = refreshed.refresh_token
-        ? await encryptString(env.TOKEN_ENCRYPTION_KEY, refreshed.refresh_token)
-        : fresh.refreshEnc;
-      await saveTokens(env.DB, userId, {
-        accessEnc,
-        accessExpiresAt: now + (refreshed.expires_in ?? DEFAULT_ACCESS_TOKEN_TTL),
-        refreshEnc,
-        refreshExpiresAt: refreshed.refresh_token_expires_in
-          ? now + refreshed.refresh_token_expires_in
-          : fresh.refreshExpiresAt,
-      });
-      return refreshed.access_token!;
-    } catch (err) {
-      // lockUntil 一致時のみ解放するため、TTL 切れ後に他リクエストが獲得した
-      // 新しいロックを誤って解放することはない（CAS）。
-      await releaseRefreshLock(env.DB, userId, lockUntil);
-      throw err;
-    }
+  let refreshed;
+  try {
+    refreshed = await refreshAccessToken({
+      oauthBase: env.GITHUB_OAUTH_BASE ?? DEFAULT_OAUTH_BASE,
+      clientId: env.GITHUB_CLIENT_ID,
+      clientSecret: env.GITHUB_CLIENT_SECRET,
+      refreshToken: bundle.r,
+    });
+  } catch (err) {
+    throw new ReauthRequiredError(err instanceof Error ? err.message : "token refresh failed");
   }
 
-  // 他リクエストがリフレッシュ中: 完了をポーリングで待ち、その結果を使う（リフレッシュは二重実行しない）。
-  for (let attempt = 0; attempt < POLL_MAX_ATTEMPTS; attempt++) {
-    await sleep(POLL_INTERVAL_MS);
-    tokens = await getTokens(env.DB, userId);
-    if (!tokens) throw new Error("no tokens saved for user");
-    if (isValid(tokens.accessExpiresAt)) {
-      return decryptString(env.TOKEN_ENCRYPTION_KEY, tokens.accessEnc);
-    }
-    // ロックが解放済み（＝相手のリフレッシュ試行は終わっている）なのにまだ無効ならリフレッシュは
-    // 失敗している。フルのポーリング予算を待たず、この呼び出し自身でリフレッシュを再試行する。
-    const stillLocked = tokens.refreshingUntil !== null && tokens.refreshingUntil > nowSeconds();
-    if (!stillLocked) {
-      return getValidAccessToken(env, userId);
-    }
-  }
-  throw new Error("timed out waiting for concurrent token refresh");
+  return {
+    a: refreshed.access_token!,
+    ae: now + (refreshed.expires_in ?? DEFAULT_ACCESS_TOKEN_TTL),
+    // GitHub がローテーション後の refresh_token を返さない場合は既存値を維持する。
+    r: refreshed.refresh_token ?? bundle.r,
+    re: refreshed.refresh_token_expires_in ? now + refreshed.refresh_token_expires_in : bundle.re,
+    u: bundle.u,
+  };
 }

@@ -1,6 +1,7 @@
 // E2E 用のモック GitHub OAuth サーバー（実 GitHub に触れず OAuth 往復を再現する）。
 // - GET  /login/oauth/authorize             : ユーザー承認をシミュレートし redirect_uri へ code+state を返す
-// - POST /login/oauth/access_token          : トークン交換のレスポンスを返す
+// - POST /login/oauth/access_token          : トークン交換 / リフレッシュのレスポンスを返す（単回使用ローテーションを再現）
+// - GET  /mock/refresh-count                : refresh_token グラントが走った回数（Web Locks 1本化の検証用・#164）
 // - GET  /user                              : ログインユーザー情報を返す
 // - GET  /user/installations                : App インストール一覧を返す（既定は e2e-user 常に 0 件・A2-1）
 // - GET  /user/installations/:id/repositories: インストール別のアクセス可能リポジトリを返す（B2-1/B2-2）
@@ -27,6 +28,15 @@ const MOCK_USER = { id: 424242, login: "e2e-user", avatar_url: "http://localhost
 let mockConfig = { installations: [], labels: [], labelsByRepo: {} };
 let nextIssueNumber = 1;
 let lastIssueRequestBody = null;
+// GitHub App の access token 既定 TTL（8 時間）。`POST /mock/config` の `accessTokenTtl` で
+// 上書きすると「ログイン直後から失効している」状況を作れる（自動リフレッシュの E2E・#164）。
+const DEFAULT_ACCESS_TOKEN_TTL = 28800;
+let accessTokenTtl = DEFAULT_ACCESS_TOKEN_TTL;
+// GitHub の refresh token は単回使用ローテーション。いま有効な 1 本だけを保持し、古い値での
+// リフレッシュは bad_refresh_token で拒否する（多重リフレッシュが起きたらテストが落ちる）。
+let validRefreshToken = "mock_refresh_token";
+let refreshCount = 0;
+let nextRefreshSerial = 0;
 // 実際に作成された Issue の件数（#148）。オフラインキューの再送で「GitHub 側に 1 件だけ
 // 作られたか」を、キュー表示が消えたという間接証拠ではなく直接検証するために数える。
 let issueCreateCount = 0;
@@ -42,6 +52,15 @@ const ISSUE_CREATION_ERROR_TRIGGERS = {
   },
   __mock_422__: { status: 422, body: { message: "Validation failed" } },
 };
+
+function readRawBody(req) {
+  return new Promise((resolve, reject) => {
+    let body = "";
+    req.on("data", (chunk) => (body += chunk));
+    req.on("end", () => resolve(body));
+    req.on("error", reject);
+  });
+}
 
 function readJsonBody(req) {
   return new Promise((resolve, reject) => {
@@ -88,11 +107,30 @@ const server = createServer(async (req, res) => {
   }
 
   if (req.method === "POST" && url.pathname === "/login/oauth/access_token") {
+    const params = new URLSearchParams(await readRawBody(req));
+    if (params.get("grant_type") === "refresh_token") {
+      // 単回使用ローテーション: 既に消費済み（＝古い）refresh token は拒否する。
+      if (params.get("refresh_token") !== validRefreshToken) {
+        return json(200, { error: "bad_refresh_token", error_description: "refresh token already used" });
+      }
+      refreshCount += 1;
+      validRefreshToken = `mock_refresh_token_${++nextRefreshSerial}`;
+      return json(200, {
+        access_token: `mock_access_token_${nextRefreshSerial}`,
+        token_type: "bearer",
+        // リフレッシュ後は通常 TTL に戻す（リフレッシュ直後の再リフレッシュ連鎖を避ける）。
+        expires_in: DEFAULT_ACCESS_TOKEN_TTL,
+        refresh_token: validRefreshToken,
+        refresh_token_expires_in: 15897600,
+        scope: "",
+      });
+    }
+    validRefreshToken = "mock_refresh_token";
     return json(200, {
       access_token: "mock_access_token",
       token_type: "bearer",
-      expires_in: 28800,
-      refresh_token: "mock_refresh_token",
+      expires_in: accessTokenTtl,
+      refresh_token: validRefreshToken,
       refresh_token_expires_in: 15897600,
       scope: "",
     });
@@ -113,8 +151,11 @@ const server = createServer(async (req, res) => {
         labelsByRepo:
           body.labelsByRepo && typeof body.labelsByRepo === "object" ? body.labelsByRepo : {},
       };
-      // テストごとの初期化点。作成件数もここでリセットし、spec 間で持ち越さない。
+      // access token の TTL（既定 8 時間）。小さくすると「失効済みトークンでの再訪」を再現できる。
+      accessTokenTtl = Number.isFinite(body.accessTokenTtl) ? body.accessTokenTtl : DEFAULT_ACCESS_TOKEN_TTL;
+      // テストごとの初期化点。作成件数・リフレッシュ回数もここでリセットし、spec 間で持ち越さない。
       issueCreateCount = 0;
+      refreshCount = 0;
       return json(200, { ok: true });
     } catch {
       res.writeHead(400);
@@ -128,6 +169,10 @@ const server = createServer(async (req, res) => {
 
   if (req.method === "GET" && url.pathname === "/mock/issue-count") {
     return json(200, { count: issueCreateCount });
+  }
+
+  if (req.method === "GET" && url.pathname === "/mock/refresh-count") {
+    return json(200, { count: refreshCount });
   }
 
   if (req.method === "GET" && url.pathname === "/user/installations") {

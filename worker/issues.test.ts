@@ -1,13 +1,11 @@
 import { env, SELF } from "cloudflare:test";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { encryptString, hashSessionId, randomToken } from "./crypto";
-import { applySchema, createSession, nowSeconds, saveTokens, upsertUser } from "./store";
+import { applySchema } from "./store";
+import { loginCookie, testTokenBundle, tokenCookieHeader } from "./test-support";
 import type { Env } from "./types";
 
 const testEnv = env as unknown as Env;
 const db = testEnv.DB;
-
-const SESSION_COOKIE = "__Host-session";
 
 beforeAll(async () => {
   await applySchema(db);
@@ -17,21 +15,13 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-/** ログイン済みユーザーを作り、`/api/issues` に使えるセッション Cookie ヘッダを返す。 */
-async function loginSession(): Promise<string> {
-  const userId = await upsertUser(db, { id: Math.floor(Math.random() * 1e9), login: "u", avatar_url: "" });
-  // access token は期限内にしておき、getValidAccessToken がリフレッシュ用の fetch を呼ばないようにする
-  // （テストで stub する fetch は GitHub Issue 作成の 1 回だけに絞りたいため）。復号は実際に走るため、
-  // 正しく暗号化した値を保存する。
-  await saveTokens(db, userId, {
-    accessEnc: await encryptString(testEnv.TOKEN_ENCRYPTION_KEY, "test-access-token"),
-    accessExpiresAt: nowSeconds() + 3600,
-    refreshEnc: null,
-    refreshExpiresAt: null,
-  });
-  const sessionId = randomToken(32);
-  await createSession(db, await hashSessionId(sessionId), userId, 3600);
-  return `${SESSION_COOKIE}=${sessionId}`;
+/**
+ * ログイン済み（＝有効なトークン Cookie を持つ）リクエスト用のヘッダを返す。
+ * access token は期限内にしておき、テストで stub する fetch が GitHub Issue 作成の 1 回だけに絞られるようにする
+ * （API プロキシは暗黙のリフレッシュをしないため、期限内なら追加の fetch は発生しない）。
+ */
+function loginSession(): Promise<string> {
+  return loginCookie(testEnv);
 }
 
 function jsonResponse(status: number, body: unknown, headers: Record<string, string> = {}): Response {
@@ -206,23 +196,15 @@ describe("POST /api/issues の二重送信防止 (B4-3/FR-24)", () => {
   });
 });
 
-/** clientRequestId ベースの検証のため userId も返すログインヘルパー（loginSession は cookie のみ返す）。 */
-async function loginSessionForUser(): Promise<{ cookie: string; userId: string }> {
-  const userId = await upsertUser(db, { id: Math.floor(Math.random() * 1e9), login: "u2", avatar_url: "" });
-  await saveTokens(db, userId, {
-    accessEnc: await encryptString(testEnv.TOKEN_ENCRYPTION_KEY, "test-access-token"),
-    accessExpiresAt: nowSeconds() + 3600,
-    refreshEnc: null,
-    refreshExpiresAt: null,
-  });
-  const sessionId = randomToken(32);
-  await createSession(db, await hashSessionId(sessionId), userId, 3600);
-  return { cookie: `${SESSION_COOKIE}=${sessionId}`, userId };
+/** D1 の予約行を直接いじる検証のため、重複防止キー（GitHub 数値ユーザー ID）も返すログインヘルパー。 */
+async function loginSessionForUser(): Promise<{ cookie: string; userKey: string }> {
+  const bundle = testTokenBundle();
+  return { cookie: await tokenCookieHeader(testEnv, bundle), userKey: String(bundle.u) };
 }
 
 describe("POST /api/issues のオフラインキュー再送の重複防止 (B4-4/OQ-8)", () => {
   it("keeps blocking a resend with the same clientRequestId even after the FR-24 short window (30s) has elapsed", async () => {
-    const { cookie, userId } = await loginSessionForUser();
+    const { cookie, userKey } = await loginSessionForUser();
     const fetchSpy = vi.fn(async () => jsonResponse(201, { number: 50, html_url: "https://github.com/kai-kou/alpha/issues/50" }));
     vi.stubGlobal("fetch", fetchSpy);
 
@@ -232,8 +214,8 @@ describe("POST /api/issues のオフラインキュー再送の重複防止 (B4-
     // FR-24 の短時間窓（30秒・content_hash）が経過した体にする。client_request_id は別テーブル
     // （長時間窓）なので影響を受けず、B4-4 の重複防止が単独で機能することを確認する。
     await db
-      .prepare("UPDATE issue_log SET created_at = created_at - 60 WHERE user_id = ? AND repo = ?")
-      .bind(userId, "kai-kou/alpha")
+      .prepare("UPDATE issue_log SET created_at = created_at - 60 WHERE user_key = ? AND repo = ?")
+      .bind(userKey, "kai-kou/alpha")
       .run();
 
     const second = await postIssue(cookie, { clientRequestId: "cr-1" });
@@ -275,7 +257,7 @@ describe("POST /api/issues のオフラインキュー再送の重複防止 (B4-
   });
 
   it("releases the content_hash reservation when rejected solely by the clientRequestId check, so a genuinely new submission with the same content is not blocked afterwards", async () => {
-    const { cookie, userId } = await loginSessionForUser();
+    const { cookie, userKey } = await loginSessionForUser();
     const fetchSpy = vi.fn(async () => jsonResponse(201, { number: 53, html_url: "https://github.com/kai-kou/alpha/issues/53" }));
     vi.stubGlobal("fetch", fetchSpy);
 
@@ -286,8 +268,8 @@ describe("POST /api/issues のオフラインキュー再送の重複防止 (B4-
     // client_request_id ("cr-5") は 26h 窓内でまだ有効なため、再送はここで初めて
     // client_request_id 側の判定でブロックされる（reserveIssueLog は一旦 true を返す）。
     await db
-      .prepare("UPDATE issue_log SET created_at = created_at - 60 WHERE user_id = ? AND repo = ?")
-      .bind(userId, "kai-kou/alpha")
+      .prepare("UPDATE issue_log SET created_at = created_at - 60 WHERE user_key = ? AND repo = ?")
+      .bind(userKey, "kai-kou/alpha")
       .run();
 
     const resend = await postIssue(cookie, { clientRequestId: "cr-5" });

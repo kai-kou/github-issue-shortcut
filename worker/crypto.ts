@@ -1,9 +1,9 @@
 /**
  * 認証で使う暗号ユーティリティ（WebCrypto ベース）。
- * - セッション ID / state / PKCE verifier のランダム生成
- * - セッション ID のハッシュ化（サーバー側はハッシュのみ保存・NFR-6）
+ * - state / PKCE verifier のランダム生成
  * - PKCE code_challenge（S256・NFR-4）
  * - GitHub トークンの AES-256-GCM 暗号化・復号（NFR-7）
+ * - 鍵バージョン付きの封入・開封（トークン Cookie 用・鍵ローテーション可能・stateless-architecture.md §4）
  */
 
 const encoder = new TextEncoder();
@@ -42,9 +42,6 @@ export async function sha256Base64url(input: string): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", encoder.encode(input));
   return bytesToBase64url(new Uint8Array(digest));
 }
-
-/** セッション ID をサーバー保存用にハッシュ化する（生の ID は Cookie にのみ存在）。 */
-export const hashSessionId = sha256Base64url;
 
 /** PKCE code_verifier を生成する（43〜128 文字の base64url）。 */
 export function createCodeVerifier(): string {
@@ -98,5 +95,71 @@ export async function decryptString(base64Key: string, blob: string): Promise<st
   const iv = combined.slice(0, 12);
   const cipher = combined.slice(12);
   const plain = await crypto.subtle.decrypt({ name: "AES-GCM", iv }, key, cipher);
+  return decoder.decode(plain);
+}
+
+/** 鍵バージョンとして表現できる範囲（先頭 1 バイトに埋め込む）。 */
+export const MIN_KEY_VERSION = 1;
+export const MAX_KEY_VERSION = 255;
+
+/** 鍵バージョンが現行と異なる blob を開こうとしたときに送出する（＝再ログインが必要）。 */
+export class KeyVersionMismatchError extends Error {
+  readonly found: number;
+  readonly expected: number;
+
+  constructor(found: number, expected: number) {
+    super(`key version mismatch: found ${found}, expected ${expected}`);
+    this.name = "KeyVersionMismatchError";
+    this.found = found;
+    this.expected = expected;
+  }
+}
+
+/** 鍵バージョンとして妥当な整数か（1〜255）。 */
+export function isValidKeyVersion(version: number): boolean {
+  return Number.isInteger(version) && version >= MIN_KEY_VERSION && version <= MAX_KEY_VERSION;
+}
+
+/**
+ * 平文を「鍵バージョン付き」で封入する（トークン Cookie 用・stateless-architecture.md §4）。
+ * 形式は `base64url( keyVersion(1B) || iv(12B) || AES-256-GCM(plaintext) )`。
+ * 鍵バージョンは AAD として GCM の認証対象に含めるため、バージョンバイトだけを差し替える
+ * 改ざんは復号時に検出される（バージョン混同攻撃の防止）。
+ */
+export async function sealVersioned(base64Key: string, keyVersion: number, plaintext: string): Promise<string> {
+  if (!isValidKeyVersion(keyVersion)) {
+    throw new Error(`key version must be an integer in ${MIN_KEY_VERSION}..${MAX_KEY_VERSION}`);
+  }
+  const key = await importAesKey(base64Key);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const version = new Uint8Array([keyVersion]);
+  const cipher = new Uint8Array(
+    await crypto.subtle.encrypt({ name: "AES-GCM", iv, additionalData: version }, key, encoder.encode(plaintext)),
+  );
+  const combined = new Uint8Array(1 + iv.byteLength + cipher.byteLength);
+  combined.set(version, 0);
+  combined.set(iv, 1);
+  combined.set(cipher, 1 + iv.byteLength);
+  return bytesToBase64url(combined);
+}
+
+/**
+ * `sealVersioned` で作った blob を開封する。鍵バージョンが期待値と異なる場合は復号を試みずに
+ * `KeyVersionMismatchError` を投げる（旧鍵で封入された Cookie は復号せず再ログインへ倒す）。
+ * 改ざん・鍵不一致時も例外を投げる。
+ */
+export async function openVersioned(base64Key: string, keyVersion: number, blob: string): Promise<string> {
+  const combined = base64urlToBytes(blob);
+  if (combined.byteLength <= 1 + 12) throw new Error("sealed value too short");
+  const found = combined[0];
+  if (found !== keyVersion) throw new KeyVersionMismatchError(found, keyVersion);
+  const key = await importAesKey(base64Key);
+  const iv = combined.slice(1, 13);
+  const cipher = combined.slice(13);
+  const plain = await crypto.subtle.decrypt(
+    { name: "AES-GCM", iv, additionalData: new Uint8Array([found]) },
+    key,
+    cipher,
+  );
   return decoder.decode(plain);
 }

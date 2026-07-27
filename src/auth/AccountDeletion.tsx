@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useLanguage } from "../i18n/LanguageContext";
 import { clearAllUserCaches } from "./useAuthState";
+import { apiFetch } from "./apiFetch";
 
 type DeleteState = "idle" | "confirming" | "deleting" | "error";
 
@@ -12,7 +13,7 @@ export function AccountDeletion({ onDeleted }: { onDeleted: () => void }) {
   async function handleDelete() {
     setState("deleting");
     try {
-      const res = await fetch("/api/account", { method: "DELETE", credentials: "same-origin" });
+      const res = await apiFetch("/api/account", { method: "DELETE" });
       if (!res.ok) throw new Error(`unexpected status: ${res.status}`);
       // 端末内に残るデータ（ショートカット設定・認証/リポジトリ/ラベルのキャッシュ）も消す。
       // ショートカット設定は P1 で正本が localStorage へ移ったため、サーバー側の削除だけでは
