@@ -139,8 +139,12 @@ Cookie 化すると同じ競合が戻ってくるため、以下の三段構え�
 
 - `wrangler.jsonc` に `observability` を明記し、**ログを無効化するか head sampling を 1〜5% に絞る**
   （既定は「新規 Worker で有効・サンプリング 100%」のため、未設定のままでは 100% 記録される）
+  → **P4 で `enabled: true` + `head_sampling_rate: 0.05`（5%）を採用**。完全無効化だと障害調査の手掛かりが
+  ゼロになるため、記録量を絞ったうえで存在と保持期間を対外的に開示する側に倒した
+- Workers Logs の保持は **最長 7 日**（Cloudflare の上限・[Workers Logs](https://developers.cloudflare.com/workers/observability/logs/workers-logs/)）。
+  記録されるのはリクエストのメタデータで、Issue 本文・トークンは含まれない
 - D1 廃止により **Time Travel（復元履歴）も消滅** する
-- プライバシーポリシーを「サーバーには保存しない / 端末内に保存する / Cloudflare 基盤の記録は◯日」に全面改訂する
+- プライバシーポリシーを「サーバーには保存しない / 端末内に保存する / Cloudflare 基盤の記録は 7 日」に全面改訂する（P4 で完了）
 
 ## 9. 移行フェーズ
 
@@ -151,7 +155,7 @@ Cookie 化すると同じ競合が戻ってくるため、以下の三段構え�
 | **P1** ✅ | ショートカットのクライアント移行（完了・#163） | `/api/shortcuts` 廃止・localStorage を正本化・manifest を静的に戻す（§7） |
 | **P2** ✅ | 認証のステートレス化（完了・2026-07-27・#164） | 暗号化トークン Cookie（鍵バージョン付き）・`/auth/refresh`・Web Locks 直列化・`/api/me` を GitHub 直取得へ。`users` / `sessions` / `tokens` / `shortcuts` は D1 から削除済み |
 | **P3** ✅ | 重複防止とレート制限の移行（完了・2026-07-27・#165） | 30 秒窓を localStorage・client_request_id を IndexedDB へ・Rate Limiting binding 導入。`worker/store.ts` と保持期間 Cron を削除し、Worker から D1 の利用が消えた |
-| **P4** | D1 撤去と対外文書の更新 | バインディング / migrations 削除（`store.ts` は P3 で削除済み）・`observability` 設定・利用規約の改訂（PP / 要件定義は P2・P3 で先行改訂済み。D1 撤去に伴う差分のみ追随する） |
+| **P4** ✅ | D1 撤去と対外文書の更新（完了・2026-07-27・#166） | バインディングと `migrations/` を削除・`observability` を 5% サンプリングで明示設定・プライバシーポリシーに「基盤の記録」「問い合わせ窓口」を追加・利用規約に端末内データ前提の記述を追加。Cloudflare 上の DB 実体はデプロイ確認後に削除し #166 に記録する |
 
 ### 移行時のデータ
 
@@ -160,9 +164,9 @@ Cookie 化すると同じ競合が戻ってくるため、以下の三段構え�
 
 ## 10. 完了の定義
 
-- [ ] D1 バインディング・`migrations/`・`worker/store.ts` が存在しない
+- [x] D1 バインディング・`migrations/`・`worker/store.ts` が存在しない（P4。Cloudflare 上の DB 実体の削除は #166 で記録）
 - [x] Worker が永続化 API（D1 / KV / R2 / DO）をひとつも使っていない（P3）
-- [ ] ログイン → 起票 → ショートカット作成 → 再訪の E2E が通る
-- [ ] トークンが JS から読めない（`document.cookie` に現れない）ことをテストで担保
-- [ ] 鍵バージョンを変えると再ログインが要求され、それ以外のデータが壊れないことをテストで担保
-- [ ] プライバシーポリシー・利用規約・要件定義（NFR-7 / NFR-14 / NFR-17・§6.2）が新構成と一致
+- [x] ログイン → 起票 → ショートカット作成 → 再訪の E2E が通る（`npm run e2e` 79 件 green・P4）
+- [x] トークンが JS から読めない（`document.cookie` に現れない）ことをテストで担保（`e2e/stateless-auth.spec.ts`）
+- [x] 鍵バージョンを変えると再ログインが要求され、それ以外のデータが壊れないことをテストで担保（`worker/tokenCookie.test.ts`）
+- [x] プライバシーポリシー・利用規約・要件定義（NFR-7 / NFR-14 / NFR-17・§6.2）が新構成と一致（P4）

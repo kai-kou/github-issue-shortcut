@@ -43,13 +43,14 @@
       "simple": { "limit": 1000, "period": 60 }
     }
   ],
-  // D1（バインディング・migrations）は P3 で全ての利用が無くなった。撤去そのものは P4（#166）で行う。
-  "d1_databases": [
-    {
-      "binding": "DB",
-      "database_name": "github-issue-shortcut-db",
-      "database_id": "8c403d10-29b8-4a51-9f63-9e79b19aed46",
-      "migrations_dir": "migrations"
-    }
-  ]
+  // Workers Logs（既定は有効・サンプリング 100%）。未設定だと全リクエストのメタデータ（URL・
+  // ステータス等）が最長 7 日 Cloudflare 側に記録され、「サーバーに個人データを保持しない」の
+  // 建て付けと食い違う（P4・stateless-architecture.md §8）。障害調査の手掛かりは残したいので
+  // 無効化ではなく 5% サンプリングにし、記録の存在と保持日数はプライバシーポリシーに明記する。
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 0.05
+  }
+  // D1 は P1〜P3 で全用途が移設され、バインディングと migrations/ は P4（#166）で撤去した。
+  // Worker は永続化 API（D1 / KV / R2 / DO）をひとつも持たない。
 }
