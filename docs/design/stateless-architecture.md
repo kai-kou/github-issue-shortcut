@@ -139,8 +139,8 @@ Cookie 化すると同じ競合が戻ってくるため、以下の三段構え�
 
 | Phase | 内容 | 主な変更 |
 |-------|------|---------|
-| **P1** | ショートカットのクライアント移行 | `/api/shortcuts` 廃止・localStorage を正本化・manifest を静的に戻す（§7） |
-| **P2** | 認証のステートレス化 | 暗号化トークン Cookie（鍵バージョン付き）・`/auth/refresh`・Web Locks 直列化・`/api/me` を GitHub 直取得へ |
+| **P1** ✅ | ショートカットのクライアント移行（完了・#163） | `/api/shortcuts` 廃止・localStorage を正本化・manifest を静的に戻す（§7） |
+| **P2** ✅ | 認証のステートレス化（完了・2026-07-27・#164） | 暗号化トークン Cookie（鍵バージョン付き）・`/auth/refresh`・Web Locks 直列化・`/api/me` を GitHub 直取得へ。`users` / `sessions` / `tokens` / `shortcuts` は D1 から削除済み |
 | **P3** | 重複防止とレート制限の移行 | 30 秒窓 / client_request_id をクライアントへ・Rate Limiting binding 導入 |
 | **P4** | D1 撤去と対外文書の更新 | バインディング / migrations / `store.ts` 削除・`observability` 設定・PP / 利用規約 / 要件定義の改訂 |
 

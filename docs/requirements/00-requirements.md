@@ -74,7 +74,7 @@ GitHub Issue Shortcut は、Android スマホのホーム画面から数秒で�
 | ショートカット起動 | `/new?repo=...&labels=...` のような URL パラメータ付き起動で、リポジトリ・ラベルが初期選択された状態で起票画面を開くこと |
 | Web Share Target | インストール済み PWA を Android の共有シートの送信先にする仕組み |
 | app shell | 事前キャッシュされる UI の骨格。再訪時のサブ秒起動を実現する |
-| セッション | 本アプリ独自のログイン状態。128bit 以上のランダム ID を Cookie で保持し、サーバー側にはハッシュのみ保存する |
+| セッション | 本アプリ独自のログイン状態。**サーバーは何も保持しない**（P2・ステートレス化）。GitHub のトークンを Worker の鍵で暗号化した HttpOnly Cookie（`__Host-gh`）そのものがセッションを兼ねる |
 | 下書き保全 | 送信失敗・中断時に入力内容を失わず復元可能に保持すること |
 | silently dropped | GitHub API が権限不足のパラメータ（labels 等）をエラーにせず黙って無視する挙動 |
 
@@ -102,7 +102,7 @@ Chrome で気になる記事を開く → 共有シートから本アプリを�
 LP にアクセス →「GitHub でログイン」→ GitHub の認可画面（要求権限が Issues: write のみであることを確認）→ 対象リポジトリへの App インストール → 起票画面でテスト起票 → PWA インストール導線からホーム画面へ追加。ログインから初起票まで 5 分以内。
 
 シナリオ B-2（退会）:
-設定画面から「アカウント削除」を実行 → 本アプリ側のデータ（セッション・トークン・設定）が削除され、GitHub 側の App 連携解除手順が案内される。
+設定画面から「アカウント削除」を実行 → 端末内のデータ（トークン Cookie・ショートカット設定・キャッシュ）が削除され、GitHub 側の App 連携解除手順が案内される（サーバーには削除すべき個人データが無い・P2）。
 
 ## 4. 機能要件
 
@@ -111,8 +111,8 @@ LP にアクセス →「GitHub でログイン」→ GitHub の認可画面（�
 | ID | 要件 | レベル | MS |
 |----|------|--------|----|
 | FR-1 | GitHub App の認可フロー（フルページリダイレクト + state + PKCE S256）で GitHub ログインができること | MUST | M1 |
-| FR-2 | ログアウトができ、サーバー側セッションが無効化されること | MUST | M1 |
-| FR-3 | user access token の期限切れ時、ユーザー操作なしにリフレッシュトークンで自動更新されること（ユーザー単位で直列化） | MUST | M1 |
+| FR-2 | ログアウトができ、トークン Cookie が破棄されること（サーバー側に無効化すべきセッションは存在しない・P2） | MUST | M1 |
+| FR-3 | user access token の期限切れ時、ユーザー操作なしにリフレッシュトークンで自動更新されること（単回使用ローテーションのため、クライアントの Web Locks API で 1 本化する・P2） | MUST | M1 |
 | FR-4 | 初回オンボーディングで GitHub App のインストール（対象リポジトリの選択）へ誘導できること。Organization リポジトリでは非管理者はインストール申請となり承認待ちが発生するため、その旨をユーザーに案内表示すること | MUST | M1 |
 | FR-5 | App がインストール済みかつユーザーがアクセス可能なリポジトリの一覧から起票先を選択できること | MUST | M1 |
 | FR-6 | タイトル（必須）と本文（任意）を入力して Issue を作成できること | MUST | M1 |
@@ -144,8 +144,8 @@ LP にアクセス →「GitHub でログイン」→ GitHub の認可画面（�
 1. `GET /auth/login`: Worker が `state`（ランダム 128bit 以上）と PKCE `code_verifier` を生成し、pre-auth Cookie（`__Host-` prefix・`HttpOnly; Secure; Path=/; SameSite=Lax`・TTL 10 分）に保存して GitHub の認可 URL（`code_challenge` S256 付き）へ **フルページリダイレクト** する。ポップアップ（`window.open`）は standalone PWA で壊れるため使用しないこと（MUST）。
 2. GitHub 認可画面: 要求権限は Issues: write（+ 自動付与の Metadata: read）のみであること（MUST）。
 3. `GET /auth/callback`: manifest `scope` 内の URL であること（MUST・in-app browser からの自動復帰のため）。Worker は pre-auth Cookie の `state` を検証し、`code` + `code_verifier` をサーバー側でトークンに交換する（`github.com/login/oauth/access_token` は CORS 非対応のためフロントエンドでの交換は不可）。
-4. セッション確立: セッション ID（128bit 以上のランダム値）を `__Host-` セッション Cookie で発行し、サーバー側（D1）には **ハッシュのみ** 保存する。access / refresh トークンは AES-256-GCM（WebCrypto・マスターキーは Worker Secret・IV は毎回ランダム 96bit）で暗号化して保存する（MUST）。
-5. トークンリフレッシュ: API 呼び出し時に期限切れ（8 時間）を検知したら refresh token（単回使用ローテーション）で更新する。並行リフレッシュによる失効を防ぐため、ユーザー単位で直列化すること（MUST。D1 上のロック行または Durable Object）。
+4. セッション確立: access / refresh トークンと有効期限を **鍵バージョン付きの AES-256-GCM**（WebCrypto・マスターキーは Worker Secret・IV は毎回ランダム 96bit）で暗号化し、`__Host-gh` Cookie に格納する（MUST）。**サーバー側には何も保存しない**（P2・保持ゼロ）。access token の有効期限のみ `__Host-gh-exp`（JS から読める・個人データではない）に併置する。鍵バージョンを先頭に持たせることで暗号鍵をローテーションでき、旧鍵の Cookie は復号せず再ログインへ倒す（`docs/design/stateless-architecture.md` §4）。
+5. トークンリフレッシュ: クライアントが `__Host-gh-exp` を見て期限が近ければ `POST /auth/refresh` を呼び、Worker が refresh token（単回使用ローテーション）を更新して `Set-Cookie` で書き戻す。並行リフレッシュによる失効を防ぐため、**クライアントが Web Locks API（`navigator.locks`）でリフレッシュを 1 本化** すること（MUST・多タブと Service Worker をまたいで直列化できる）。API プロキシ（`/api/*`）は暗黙のリフレッシュをせず、失効時は `token_expired`（401）を返す（並行レスポンスの `Set-Cookie` 上書きを構造的に避けるため・設計 §5）。
 6. App インストール誘導: 起票先リポジトリが「App インストール済み ∩ ユーザーがアクセス可」に含まれない場合、GitHub App のインストールページへ誘導する UX を提供すること（MUST）。GitHub App の Setup URL を本アプリに設定し、インストール / 承認完了後にアプリへ復帰させ、リポジトリ一覧を再取得すること（MUST・M1）。
 7. Service Worker のナビゲーションフォールバックから `/auth/*` を除外すること（MUST。SW がコールバックをキャッシュ応答して認証が壊れる既知問題の回避）。
 
@@ -180,8 +180,8 @@ LP にアクセス →「GitHub でログイン」→ GitHub の認可画面（�
 | NFR-3 | パフォーマンス | 初期バンドルを常に監視し、起票フローに不要なコードを遅延ロードすること（起動速度 > リッチ UI の優先順位）。初期ロード JS は gzip 後 200KB 以下を予算とする | SHOULD |
 | NFR-4 | セキュリティ | 認可フローは state + PKCE S256 併用・フルページリダイレクトであること | MUST |
 | NFR-5 | セキュリティ | Cookie は `__Host-` prefix + `HttpOnly; Secure; Path=/; SameSite=Lax` であること（`Strict` は OAuth コールバックで state 検証が壊れるため禁止） | MUST |
-| NFR-6 | セキュリティ | セッション ID は 128bit 以上のランダム値とし、サーバー側にはハッシュのみ保存すること | MUST |
-| NFR-7 | セキュリティ | GitHub トークンは AES-256-GCM でアプリケーション層暗号化して保存し、平文をログ・クライアントに出さないこと。鍵は Workers Secrets で管理すること | MUST |
+| NFR-6 | セキュリティ | サーバー（Worker）は個人データ（GitHub トークン・ユーザー情報・セッション）を永続化しないこと。認証状態は暗号化 Cookie として利用者の端末にのみ存在すること | MUST |
+| NFR-7 | セキュリティ | GitHub トークンは鍵バージョン付きの AES-256-GCM で暗号化して HttpOnly Cookie に格納し、平文をログ・JS から読める場所に出さないこと。鍵は Workers Secrets で管理し、鍵バージョンを上げるだけでローテーションできること | MUST |
 | NFR-8 | セキュリティ | GitHub への要求権限を Issues: write のみに保ち、追加権限を要求しないこと（最小権限） | MUST |
 | NFR-9 | セキュリティ | API は認証必須とし、CSRF 対策（SameSite + Origin 検証等）を備えること | MUST |
 | NFR-10 | 可用性 | 送信失敗時に入力内容が失われないこと（下書き保全はリリースゲート） | MUST |
@@ -208,7 +208,8 @@ Cloudflare Workers（単一 Worker）
 ├── API: Hono（/api/*, /auth/*）… run_worker_first
 │     ├── GitHub App 認可（state + PKCE・トークン交換・リフレッシュ直列化）
 │     └── Issue 作成プロキシ（POST /repos/{owner}/{repo}/issues・API version pin）
-├── D1: users / sessions / tokens / issue_log（shortcuts は端末内保存へ移行済み・P1）
+├── D1: issue_log / request_ids / rate_limits（重複防止・レート制限のみ。P3 で撤去予定）
+│     └── users / sessions / tokens / shortcuts は廃止（P1・P2・個人データ保持ゼロ）
 └── Workers Secrets: GitHub App client secret・トークン暗号鍵
 
 開発: wrangler v4（wrangler.jsonc）/ TypeScript / @cloudflare/vitest-pool-workers
@@ -217,33 +218,38 @@ CI/CD: GitHub Actions（test / lint）+ Workers Builds（git 連携・push で�
 ```
 
 - 単一 Worker + static assets 構成であること（MUST）。Pages は採用しない（投資凍結）。
-- セッション・トークンの保存先は D1 であること（MUST）。KV は結果整合・1 key 1 write/秒の制約により認証データには使用しない。リフレッシュ直列化に必要なら Durable Object をユーザー単位で導入してよい（MAY）。
+- **認証データをサーバーに保存しないこと（MUST・P2）**。トークンは暗号化 Cookie として端末に置き、Worker は復号して使うだけにする。残る D1 の用途は重複防止・レート制限のみで、これも P3 で端末内 / Workers Rate Limiting binding へ移す（`docs/design/stateless-architecture.md`）。
 
 ### 6.2 データモデル案（D1）
 
 | テーブル | 主な列 | 備考 |
 |------|------|------|
-| users | id (PK), github_user_id (UNIQUE), login, avatar_url, created_at, deleted_at | GitHub ユーザーと 1:1 |
-| sessions | id_hash (PK), user_id (FK), created_at, expires_at, last_used_at | セッション ID はハッシュのみ保存 |
-| tokens | user_id (PK/FK), access_token_enc, access_expires_at, refresh_token_enc, refresh_expires_at, updated_at | AES-256-GCM 暗号化・ユーザー単位 1 行（ローテーション直列化の単位） |
+| ~~users~~ / ~~sessions~~ / ~~tokens~~ | — | **廃止**（P2）。GitHub ユーザー情報は `/api/me` が GitHub から都度取得し、セッションとトークンは暗号化 Cookie が担う |
 | ~~shortcuts~~ | — | ユーザー作成のショートカット設定（M2）。**サーバー保存を廃止** し、正本を端末内 localStorage へ移した（`docs/design/stateless-architecture.md` P1） |
-| issue_log | id (PK), user_id (FK), repo, content_hash, created_at | 二重送信防止（FR-24）と成功率計測用の最小記録。タイトル・本文の平文は保存しない |
+| issue_log | user_key, repo, content_hash, created_at (PK: user_key + repo + content_hash) | 二重送信防止（FR-24）の最小記録。タイトル・本文の平文は保存しない。P3 で端末内へ移す |
+| request_ids | user_key, client_request_id, created_at | オフラインキュー再送の重複防止（B4-4・26 時間窓）。P3 で IndexedDB へ移す |
+| rate_limits | user_key, window_start, count | 起票のレート制限カウンタ。P3 で Workers Rate Limiting binding へ移す |
 
-アカウント削除（FR-12）時は上記全テーブルの該当ユーザー行を削除すること（MUST）。
+`user_key` は GitHub の数値ユーザー ID（内部 UUID・`users` テーブルは廃止済み）。値は暗号化 Cookie から取り出すため、
+クライアントが他人の ID を騙ることはできない（AES-GCM で認証済み）。
+
+アカウント削除（FR-12）は **トークン Cookie の破棄 + 端末内データの削除 + GitHub 連携解除の案内** で完了する（MUST）。
+サーバーに残るのは重複防止・レート制限の一時行のみで、いずれも短時間で自動削除される（個人を特定する情報を含まない）。
 
 ### 6.3 API エンドポイント一覧案
 
 | メソッド / パス | 概要 | 認証 |
 |------|------|------|
 | GET /auth/login | 認可開始（state + PKCE 生成 → GitHub へリダイレクト） | 不要 |
-| GET /auth/callback | コールバック。state 検証・トークン交換・セッション発行 | pre-auth Cookie |
-| POST /auth/logout | セッション破棄 | 必要 |
+| GET /auth/callback | コールバック。state 検証・トークン交換・暗号化トークン Cookie 発行 | pre-auth Cookie |
+| POST /auth/refresh | refresh token のローテーションと Cookie 書き戻し（クライアントが Web Locks で 1 本化・P2） | トークン Cookie |
+| POST /auth/logout | トークン Cookie の破棄 | 必要 |
 | GET /api/me | ログインユーザー情報 | 必要 |
 | GET /api/repos | 起票可能リポジトリ一覧（App インストール済み ∩ アクセス可・push 権限有無を含む） | 必要 |
 | GET /api/repos/:owner/:repo/labels | ラベル一覧（M2） | 必要 |
 | POST /api/issues | Issue 作成プロキシ（重複防止・エラー正規化を含む） | 必要 |
 | ~~GET/POST/PUT/DELETE /api/shortcuts~~ | ショートカット設定 CRUD（M2）。**廃止**: 正本を端末内 localStorage へ移した（`docs/design/stateless-architecture.md` P1） | — |
-| DELETE /api/account | アカウント削除（FR-12） | 必要 |
+| DELETE /api/account | アカウント削除（FR-12）。トークン Cookie を破棄する（サーバーに個人データが無いため削除対象はこれだけ） | 必要 |
 
 - トークンリフレッシュは専用エンドポイントを設けず、API 呼び出し時にサーバー側で透過的に行うこと（SHOULD）。
 - エラーレスポンスは `{ error: { code, message } }` 形式に正規化し、FR-9 の表示分岐が code のみで行えること（SHOULD）。
@@ -260,7 +266,7 @@ CI/CD: GitHub Actions（test / lint）+ Workers Builds（git 連携・push で�
 | 冪等性キーなし → タイムアウト再送で重複起票リスク | 自前の重複防止（FR-24・issue_log）（MUST） |
 | API バージョン 2026-03-10 で単数 assignee 廃止 | `X-GitHub-Api-Version: 2026-03-10` を pin（MUST） |
 | user token の到達範囲は「App インストール済み ∩ ユーザーがアクセス可」 | 任意の公開リポジトリへは起票できない。オンボーディングでインストール誘導（FR-4）で吸収 |
-| トークン: access 8h / refresh 6 ヶ月・単回使用ローテーション | 自動リフレッシュ + ユーザー単位直列化（FR-3）（MUST） |
+| トークン: access 8h / refresh 6 ヶ月・単回使用ローテーション | 自動リフレッシュ + クライアント Web Locks による 1 本化（FR-3）（MUST） |
 | トークン交換エンドポイントは CORS 非対応 | トークン交換はサーバー側（Worker）実装（MUST） |
 
 ### 7.2 PWA / Android 制約（[モバイル UX リサーチ](../research/2026-07-10-mobile-ux-pwa.md)）
@@ -289,7 +295,7 @@ CI/CD: GitHub Actions（test / lint）+ Workers Builds（git 連携・push で�
 |----|------|--------|----|
 | PR-1 | 利用規約を公開し、無保証・自己責任・禁止行為（スパム起票等）・サービス変更/終了の可能性を明記すること | MUST | M1 |
 | PR-2 | プライバシーポリシーを公開し、収集データ（GitHub アカウント情報・暗号化トークン・ショートカット設定・最小限の計測イベント）・保存先（Cloudflare）・保持期間・削除方法を明記すること | MUST | M1 |
-| PR-3 | アカウント削除機能（FR-12）で本アプリ側データを即時削除し、GitHub 側の連携解除（App の authorization 取消・インストール削除）の手順を案内すること | MUST | M1 |
+| PR-3 | アカウント削除機能（FR-12）で端末内データ（トークン Cookie・ショートカット設定・キャッシュ）を即時削除し、GitHub 側の連携解除（App の authorization 取消・インストール削除）の手順を案内すること。サーバーには削除すべき個人データが無い（P2） | MUST | M1 |
 | PR-4 | 不正利用対策: 本アプリ経由の起票にアプリ側レート制限（例: ユーザーあたり分間・時間あたり上限）を設け、GitHub の二次制限（80 req/min）より十分低く抑えること | MUST | M1 |
 | PR-5 | 不正利用対策: 422（spam 判定）が続くユーザーを検知し、一時的に送信を抑止できること | SHOULD | M2 |
 | PR-6 | GitHub App を公開設定（public）にし、App の説明・権限理由・ホームページ URL・プライバシーポリシー URL を整備すること | MUST | M1 |
@@ -316,13 +322,13 @@ CI/CD: GitHub Actions（test / lint）+ Workers Builds（git 連携・push で�
 |---|------|------|
 | OQ-1 | クエリパラメータ付き「ホーム画面に追加」ショートカットのタップ時挙動（standalone WebAPK かブラウザタブか）の実機検証 | M2 着手時 |
 | OQ-2 | 認証ライブラリの最終選定: 手書き fetch + `hono/cookie` か `@octokit/auth-oauth-user`（自動リフレッシュ内蔵）か。**選定方針は高速性（バンドル最小・起動速度）最優先（2026-07-10 決定）** → 第一候補は手書き fetch + `hono/cookie`（依存ゼロ）。ライブラリ全般もこの方針で選ぶ | M1 実装開始時 |
-| OQ-3 | ~~リフレッシュ直列化の実装方式~~ **決定済み（2026-07-14・#17 実装時）**: D1 行ロックで解決（`tokens.refreshing_until` への条件付き UPDATE でユーザー単位に直列化。ロック未獲得時はポーリングで完了を待つ）。Durable Object は導入しない（KV 不採用と同じ理由でバインディングを増やさない方針・YAGNI） | 決定済み |
+| OQ-3 | ~~リフレッシュ直列化の実装方式~~ **再決定済み（2026-07-27・#164 P2）**: サーバー側の D1 行ロックを撤去し、**クライアントの Web Locks API（`navigator.locks`）で 1 本化** する（多タブ・Service Worker をまたいで直列化できる）。サーバーは「復号 → 使用 → 必要なら Set-Cookie」に徹する。稀な同時実行では再ログインが起こりうることを受容する（`docs/design/stateless-architecture.md` §5）。旧決定（2026-07-14・#17）の D1 行ロックはトークンをサーバーに保存しなくなったため消滅した | 決定済み |
 | OQ-4 | 計測イベント（FR-26）の実装方式: 自前 D1 集計か Workers Analytics Engine か。プライバシーポリシー文面との整合 | M2 |
 | OQ-5 | ~~i18n（NFR-13）の初期リリース範囲~~ **決定済み（2026-07-10）: M1 から日本語・英語の 2 言語** | 決定済み |
 | OQ-6 | アプリ側レート制限（PR-4）の具体値（分間 / 時間あたり上限）と実装層（Worker ミドルウェア） | M1 実装開始時 |
 | OQ-7 | ~~カスタムドメインの選定~~ **決定済み（2026-07-10）: カスタムドメインは現時点で取得しない**。本番 URL は workers.dev サブドメイン（名称は M0 で確定）で運用する。`__Host-` Cookie はホスト単位のため workers.dev でも問題ない。TWA（M4・保留）を実施判断する際にドメイン要否を再検討する | 決定済み |
 | OQ-8 | ~~オフラインキュー（FR-22）採用時の重複防止（FR-24）との整合~~ **決定済み（2026-07-25・#20 / #91 実装時）**: 再送は `client_request_id` を固定し、サーバー側の予約テーブル（26 時間窓）で重複を弾く（B4-4）。窓を超えて滞留したキューはクライアント側 TTL（24 時間・Background Sync の保持期間と同値）で自動再送を打ち切り、D2-1 の一覧から手動で再送・破棄させる | 決定済み |
-| OQ-9 | セッション TTL の設計（案: refresh token の 6 ヶ月に揃え、失効時は再ログイン誘導。アイドル失効は設けない） | M1 実装開始時 |
+| OQ-9 | ~~セッション TTL の設計~~ **決定済み（2026-07-27・#164 P2）**: サーバー側セッションを廃止し、トークン Cookie の `Max-Age` を refresh token の有効期限（約 6 ヶ月）に揃える。アイドル失効は設けず、失効・鍵ローテーション時は再ログインへ誘導する | 決定済み |
 | OQ-10 | ~~GitHub App の表示名・公開名~~ **決定済み（2026-07-10）: 「Issue Shortcut」**（商標配慮で名称に「GitHub」を含めない。プロダクト名・リポジトリ名は GitHub Issue Shortcut のまま） | 決定済み |
 
 ## 11. 関連ドキュメント

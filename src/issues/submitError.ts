@@ -14,7 +14,11 @@ export async function submitErrorCode(res: Response): Promise<string> {
 /** エラー種別ごとに識別可能な文言へ振り分ける（B5-2）。未知のコードは汎用メッセージにフォールバックする。 */
 export function submitErrorMessage(code: string, t: Translations): string {
   switch (code) {
+    // reauth_required: GitHub がトークンを拒否した / token_expired・unauthenticated: リフレッシュに
+    // 失敗した（単回使用トークンの失効・鍵ローテーション）。いずれも再ログインが必要な状態（P2・#164）。
     case "reauth_required":
+    case "token_expired":
+    case "unauthenticated":
       return t.issueForm.errors.reauthRequired;
     case "rate_limited":
       return t.issueForm.errors.rateLimited;

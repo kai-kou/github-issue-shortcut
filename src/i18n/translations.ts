@@ -195,7 +195,7 @@ export const translations = {
     },
     account: {
       deleteButton: "アカウント削除",
-      confirmMessage: "本アプリ内のデータ（セッション・トークン）を完全に削除します。よろしいですか？",
+      confirmMessage: "この端末に保存されたデータ（ログイン情報・ショートカット設定・キャッシュ）を完全に削除します。よろしいですか？",
       confirmButton: "削除する",
       cancelButton: "キャンセル",
       error: "アカウント削除に失敗しました。もう一度お試しください。",
@@ -247,7 +247,7 @@ export const translations = {
       labelSuggestListLabel: "ラベルの候補",
       removeSmartTokenLabel: "ラベル指定を解除",
       errors: {
-        reauthRequired: "ログインの有効期限が切れました。再度ログインしてください。",
+        reauthRequired: "ログインの有効期限が切れたか、無効になりました。再度ログインしてください（入力内容は下書きとして保存されています）。",
         rateLimited: "リクエストが多すぎます。しばらく時間をおいてから再試行してください。",
         forbidden: "このリポジトリへの権限がありません。App のインストール状態をご確認ください。",
         notFound: "リポジトリが見つからないか、アクセスできません。",
@@ -361,10 +361,10 @@ export const translations = {
           blocks: [
             {
               ul: [
-                "GitHub アカウント情報（ユーザー ID・ユーザー名など、ログインに必要な範囲）",
-                "GitHub アクセストークン・リフレッシュトークン（暗号化して保管）",
+                "GitHub アクセストークン・リフレッシュトークン。暗号化した Cookie としてお使いの端末に保存し、サーバーには保存しません",
+                "GitHub アカウント情報（ユーザー名・アイコンなど）。表示のたびに GitHub から取得し、サーバーには保存しません",
                 "ショートカット設定（よく使うリポジトリ・ラベルの組み合わせ）。サーバーへは送信せず、お使いの端末内にのみ保存します",
-                "最小限の計測イベント（起票の成功・失敗など、機能改善に必要な範囲のみ。Issue のタイトル・本文などのユーザーコンテンツは分析目的で保存しません）",
+                "Issue のタイトル・本文などのユーザーコンテンツは、GitHub へ送信するためだけに使用し、保存しません",
               ],
             },
           ],
@@ -373,7 +373,7 @@ export const translations = {
           heading: "2. 保存先",
           blocks: [
             {
-              p: "サーバーで保管するデータは Cloudflare（Workers / D1）上に保存します。アクセストークン・リフレッシュトークンは AES-256-GCM で暗号化して保管し、平文では保存しません。ショートカット設定はサーバーには保存されず、お使いの端末内（ブラウザのローカルストレージ）にのみ保存されます。",
+              p: "本アプリのサーバー（Cloudflare Workers）は、お客様の個人データを保存しません。GitHub のトークンは AES-256-GCM で暗号化した Cookie としてお使いの端末に保存され（JavaScript からは読み取れない HttpOnly Cookie）、サーバーはリクエストのたびに復号して使うだけです。ショートカット設定・下書き・各種キャッシュも、お使いの端末内（ブラウザのローカルストレージ）にのみ保存されます。二重起票の防止とレート制限のため、GitHub のユーザー ID と送信内容のハッシュ値を最長 26 時間だけ一時的に保持します（Issue のタイトル・本文は含みません）。",
             },
           ],
         },
@@ -383,13 +383,13 @@ export const translations = {
         },
         {
           heading: "4. 保持期間",
-          blocks: [{ p: "アカウントが存在する間、上記データを保持します。ログアウトによりセッション情報は無効化されます。" }],
+          blocks: [{ p: "端末内のデータは、お客様が削除するまで保持されます（トークン Cookie は最長 6 か月で失効します）。サーバー側に保持する一時データ（二重起票防止・レート制限）は最長 26 時間で自動的に削除されます。ログアウトすると端末のトークン Cookie が破棄されます。" }],
         },
         {
           heading: "5. 削除方法",
           blocks: [
             {
-              p: "アプリ内のアカウント削除機能により、サーバー側のデータ（ユーザー情報・セッション・トークン・起票履歴）と、端末内に保存されたデータ（ショートカット設定・各種キャッシュ）をあわせて即時に削除できます。あわせて GitHub 側の連携解除（本アプリの GitHub App 認可の取り消し）の手順を案内します。",
+              p: "アプリ内のアカウント削除機能により、端末内に保存されたデータ（トークン Cookie・ショートカット設定・各種キャッシュ）を即時に削除できます。サーバーには削除すべき個人データがありません。あわせて GitHub 側の連携解除（本アプリの GitHub App 認可の取り消し）の手順を案内します。",
             },
           ],
         },
@@ -432,7 +432,7 @@ export const translations = {
     },
     account: {
       deleteButton: "Delete account",
-      confirmMessage: "This permanently deletes your data in this app (session, tokens). Are you sure?",
+      confirmMessage: "This permanently deletes the data stored on this device (login info, shortcut settings, caches). Are you sure?",
       confirmButton: "Delete",
       cancelButton: "Cancel",
       error: "Failed to delete account. Please try again.",
@@ -484,7 +484,7 @@ export const translations = {
       labelSuggestListLabel: "Label suggestions",
       removeSmartTokenLabel: "Remove label",
       errors: {
-        reauthRequired: "Your login has expired. Please sign in again.",
+        reauthRequired: "Your login has expired or is no longer valid. Please sign in again (your input is kept as a draft).",
         rateLimited: "Too many requests. Please wait a bit and try again.",
         forbidden: "You don't have access to this repository. Check that the App is installed.",
         notFound: "The repository could not be found or is not accessible.",
@@ -598,10 +598,10 @@ export const translations = {
           blocks: [
             {
               ul: [
-                "GitHub account information (user ID, username, and other data needed for login)",
-                "GitHub access and refresh tokens (stored encrypted)",
+                "GitHub access and refresh tokens. They are stored on your device as an encrypted cookie and are never stored on the server",
+                "GitHub account information (username, avatar). It is fetched from GitHub each time it is displayed and is never stored on the server",
                 "Shortcut settings (combinations of frequently used repositories and labels). These are never sent to the server and are stored only on your device",
-                "Minimal usage events (e.g. issue submission success/failure, only as needed for product improvement; issue titles and bodies are never stored for analytics purposes)",
+                "Issue titles and bodies are used solely to submit them to GitHub and are never stored",
               ],
             },
           ],
@@ -610,7 +610,7 @@ export const translations = {
           heading: "2. Where Data Is Stored",
           blocks: [
             {
-              p: "Data kept on the server is stored on Cloudflare (Workers / D1). Access and refresh tokens are encrypted with AES-256-GCM and are never stored in plaintext. Shortcut settings are not stored on the server: they live only on your device (browser local storage).",
+              p: "The App's server (Cloudflare Workers) does not store your personal data. GitHub tokens live on your device inside a cookie encrypted with AES-256-GCM (an HttpOnly cookie that JavaScript cannot read); the server merely decrypts it for the duration of each request. Shortcut settings, drafts, and caches are likewise stored only on your device (browser local storage). To prevent duplicate submissions and to rate-limit abuse, we temporarily keep your GitHub user ID and a hash of the submitted content for at most 26 hours (issue titles and bodies are not included).",
             },
           ],
         },
@@ -620,13 +620,13 @@ export const translations = {
         },
         {
           heading: "4. Retention Period",
-          blocks: [{ p: "Data is retained while your account exists. Session information is invalidated upon logout." }],
+          blocks: [{ p: "Data on your device is retained until you delete it (the token cookie expires after at most six months). The temporary server-side records used for duplicate prevention and rate limiting are deleted automatically within 26 hours. Signing out destroys the token cookie on your device." }],
         },
         {
           heading: "5. How to Delete Your Data",
           blocks: [
             {
-              p: "The in-app account deletion feature immediately deletes both the server-side data (user info, sessions, tokens, and issue submission history) and the data stored on your device (shortcut settings and caches). It also guides you through revoking the App's GitHub authorization.",
+              p: "The in-app account deletion feature immediately deletes the data stored on your device (the token cookie, shortcut settings, and caches). There is no personal data on the server to delete. It also guides you through revoking the App's GitHub authorization.",
             },
           ],
         },
