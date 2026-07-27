@@ -22,6 +22,26 @@
     // manifest はユーザーごとの差し替えをやめ静的アセットのまま返す（P1・stateless-architecture.md §7）。
     "run_worker_first": ["/api/*", "/auth/*", "/setup"]
   },
+  // 起票のアプリ側レート制限（PR-4・OQ-6）。カウンタは Cloudflare が管理し、Worker は永続層を持たない
+  // （P3・stateless-architecture.md §3）。データセンター単位の best-effort でグローバル厳密ではないため、
+  // スパム抑止の一次防御として使う（厳密なカウントを前提にした表示・テストにしないこと）。
+  "ratelimits": [
+    {
+      // 本番の上限: 起票 10 件/分（GitHub の二次制限 80 req/min の 1/8）。
+      "name": "ISSUE_RATE_LIMIT",
+      "namespace_id": "1001",
+      "simple": { "limit": 10, "period": 60 }
+    },
+    {
+      // E2E 専用の緩い上限（`ISSUE_RATE_LIMIT_RELAXED_ENABLED=1` のときだけ使う）。E2E は単一の
+      // モックユーザーを全 spec が使い回すため、本番の上限では後半のテストが 429 で落ちる
+      // （テスト分離の問題であってアプリのバグではない）。本番では参照されない。
+      "name": "ISSUE_RATE_LIMIT_RELAXED",
+      "namespace_id": "1002",
+      "simple": { "limit": 1000, "period": 60 }
+    }
+  ],
+  // D1（バインディング・migrations）は P3 で全ての利用が無くなった。撤去そのものは P4（#166）で行う。
   "d1_databases": [
     {
       "binding": "DB",
@@ -29,9 +49,5 @@
       "database_id": "8c403d10-29b8-4a51-9f63-9e79b19aed46",
       "migrations_dir": "migrations"
     }
-  ],
-  "triggers": {
-    // issue_log の保持期間クリーンアップ（#71）。毎日 03:00 UTC（12:00 JST・オフピーク）に実行。
-    "crons": ["0 3 * * *"]
-  }
+  ]
 }

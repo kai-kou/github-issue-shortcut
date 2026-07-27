@@ -24,18 +24,7 @@ import {
   GitHubApiError,
   revokeAccessToken,
 } from "./github";
-import {
-  checkRateLimit,
-  cleanupStaleIssueLog,
-  cleanupStaleRateLimits,
-  cleanupStaleRequestIds,
-  deleteUserRecords,
-  nowSeconds,
-  releaseIssueLogReservation,
-  releaseRequestIdReservation,
-  reserveIssueLog,
-  reserveRequestId,
-} from "./store";
+import { nowSeconds } from "./time";
 import {
   clearTokenCookies,
   currentKeyVersion,
@@ -49,42 +38,21 @@ import { isAccessTokenFresh, ReauthRequiredError, refreshTokenBundle } from "./t
 
 /** pre-auth Cookie の TTL（10 分・§4.2-1）。 */
 const PREAUTH_TTL = 10 * 60;
-/** 二重送信防止（FR-24）の照合ウィンドウ（秒）。再タップ・タイムアウト再送を吸収する短時間ウィンドウ。 */
-const DUPLICATE_SUBMISSION_WINDOW = 30;
 /**
- * オフラインキュー再送の重複防止（B4-4・OQ-8）の照合ウィンドウ（秒）。Service Worker の
- * Background Sync（`vite.config.ts` の `maxRetentionTime: 24 * 60` 分＝24h）保持期間に
- * 安全マージンを加えた長時間ウィンドウ。DUPLICATE_SUBMISSION_WINDOW（30秒・再タップ対策）とは
- * 独立に、client_request_id が同じリクエストを日をまたいでも重複と判定する。
- */
-const OFFLINE_QUEUE_DEDUPE_WINDOW = 26 * 60 * 60;
-/**
- * 一時行（`issue_log` / `request_ids` / `rate_limits`）の保持期間（#71・#164）。
- * 最長の照合ウィンドウ（`OFFLINE_QUEUE_DEDUPE_WINDOW` = 26 時間）に十分な安全マージンを取った上で、
- * Cron Trigger（`scheduled` ハンドラ）が古い行を削除する。プライバシーポリシーの「最長 7 日で
- * 自動削除」はこの値が根拠なので、変更するときはポリシー文言も合わせること。
- */
-const TEMP_RECORD_RETENTION_SECONDS = 7 * 24 * 60 * 60;
-/** client_request_id の長さ上限（crypto.randomUUID() は36文字・将来の形式変更を見込んだ余裕）。 */
-const CLIENT_REQUEST_ID_MAX_LENGTH = 100;
-/**
- * アプリ側レート制限（不正利用対策・PR-4・OQ-6・2026-07-16 決定）: ユーザーあたり 1 分間に
- * 起票できる回数の上限。GitHub の二次制限（コンテンツ生成系 80 req/min）の 1/8 に抑え、
- * 本アプリ経由の連続起票が GitHub 側の制裁対象になる前にアプリ側で止める。
- *
- * E2E では単一のモックユーザーを ~40 個の spec が使い回すため、この本番向けの上限だと
- * スイート後半のテストが本物の不正利用と誤判定され 429 で落ちる（テスト分離の問題であり
- * アプリのバグではない）。`ISSUE_RATE_LIMIT_PER_WINDOW_OVERRIDE`（E2E の wrangler dev
- * 起動時のみ設定・playwright.config.ts 参照）で上限を引き上げられるようにし、本番の
- * デフォルト値はこの定数のまま変更しない。
+ * アプリ側レート制限（不正利用対策・PR-4・OQ-6）のウィンドウ長（秒）。上限値そのものは
+ * Workers Rate Limiting binding 側の設定（wrangler.jsonc の `ratelimits`・起票 10 件/分）で、
+ * ここではその period と揃えた値を 429 の `Retry-After` に使う。binding は残り時間を返さないため、
+ * 「最長でも 1 ウィンドウ待てば回復する」上界として保守的に固定値を返す（従来の互換）。
  */
 const ISSUE_RATE_LIMIT_WINDOW_SECONDS = 60;
-const ISSUE_RATE_LIMIT_PER_WINDOW = 10;
 
-/** override が正の整数として解釈できればそれを使い、それ以外（未設定・不正値）は本番既定値のまま。 */
-function resolveIssueRateLimitPerWindow(override: string | undefined): number {
-  const parsed = override ? Number(override) : NaN;
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : ISSUE_RATE_LIMIT_PER_WINDOW;
+/**
+ * 使用するレート制限バインディングを選ぶ。既定は本番の上限（10 件/分）で、E2E の
+ * wrangler dev 起動時（`ISSUE_RATE_LIMIT_RELAXED_ENABLED=1`）だけ緩い上限へ切り替える
+ * （単一モックユーザーを全 spec が使い回すため・playwright.config.ts）。
+ */
+function resolveIssueRateLimiter(env: Env): RateLimit {
+  return env.ISSUE_RATE_LIMIT_RELAXED_ENABLED === "1" ? env.ISSUE_RATE_LIMIT_RELAXED : env.ISSUE_RATE_LIMIT;
 }
 
 const PREAUTH_COOKIE = "__Host-preauth";
@@ -177,35 +145,32 @@ async function revokeTokenBestEffort(c: Context<{ Bindings: Env }>, bundle: Toke
   });
 }
 
-/** 重複防止・レート制限のキー（P3 でクライアント側へ移すまでの暫定・GitHub の数値ユーザー ID）。 */
-function userKeyOf(bundle: TokenBundle): string {
-  return String(bundle.u);
+/**
+ * レート制限のキー（PR-4）。GitHub の数値ユーザー ID を **ハッシュ化** して渡し、
+ * Cloudflare 側にはカウンタと不可逆な鍵だけが載るようにする（保持ゼロ方針・§8）。
+ * ID は AEAD で認証済みの Cookie 由来のため、他人になりすましてキーを分散させることはできない。
+ */
+function rateLimitKey(bundle: TokenBundle): Promise<string> {
+  return sha256Base64url(`issue-rate-limit:${bundle.u}`);
 }
 
 app.get("/api/health", (c) => c.json({ status: "ok" }));
 
 // GET /api/ready: 本番の設定・プロビジョニングを自己診断する（デプロイ後スモークテスト用）。
-// 「コードは正しいが本番構成が不正（鍵不正・var 欠落・D1 未マイグレーション）」を検知して
+// 「コードは正しいが本番構成が不正（鍵不正・var 欠落・バインディング未設定）」を検知して
 // 汎用 500 でなく可視化する。E2E green ≠ 本番動作、のギャップを埋める（docs/testing-e2e.md）。
-app.get("/api/ready", async (c) => {
+app.get("/api/ready", (c) => {
   const checks = {
     encryptionKey: isValidEncryptionKey(c.env.TOKEN_ENCRYPTION_KEY),
     // TOKEN_KEY_VERSION の不正値はサイレントに 1 へフォールバックするため、設定ミスをここで可視化する
     // （鍵を交換したのにバージョンが上がらないと、旧鍵の Cookie を安価に弾けない）。
     keyVersion: hasValidKeyVersionSetting(c.env),
     clientId: Boolean(c.env.GITHUB_CLIENT_ID),
-    database: false,
+    // レート制限バインディング（PR-4）の設定漏れは、起票が全て素通りする＝不正利用対策が
+    // 効いていない状態になる。500 になるまで気づけないので ready で先に可視化する。
+    rateLimiter: typeof resolveIssueRateLimiter(c.env)?.limit === "function",
   };
-  try {
-    // 個人データは持たないが、重複防止・レート制限用のテーブル（P3 まで暫定）は必要。
-    // 列まで指定するのは「Worker だけ先にデプロイされ migration が未適用」を検知するため
-    // （テーブルの存在だけを見ると、旧スキーマ（user_id 列）でも ready を返してしまう）。
-    await c.env.DB.prepare("SELECT user_key FROM issue_log LIMIT 1").all();
-    checks.database = true;
-  } catch {
-    checks.database = false;
-  }
-  const ready = checks.encryptionKey && checks.keyVersion && checks.clientId && checks.database;
+  const ready = checks.encryptionKey && checks.keyVersion && checks.clientId && checks.rateLimiter;
   return c.json({ ready, checks }, ready ? 200 : 503);
 });
 
@@ -401,17 +366,15 @@ app.get("/api/labels", async (c) => {
 app.post("/api/issues", async (c) => {
   const csrfRejection = requireSameOrigin(c);
   if (csrfRejection) return csrfRejection;
-  // 認証・トークンの鮮度はレート制限や重複予約より前に確定させる。期限切れ（401 token_expired）で
-  // 引き返す場合に予約・カウンタを消費してしまうと、クライアントがリフレッシュ後に同じ内容を
-  // 再送したとき duplicate_submission で弾かれてしまうため。
+  // 認証・トークンの鮮度はレート制限より前に確定させる。期限切れ（401 token_expired）で引き返す
+  // 場合にカウンタを消費してしまうと、クライアントがリフレッシュ後に再送したとき本来より早く
+  // 上限に達してしまうため。
   const bundle = await resolveTokens(c);
   if (bundle instanceof Response) return bundle;
-  const userKey = userKeyOf(bundle);
 
-  const rateLimitPerWindow = resolveIssueRateLimitPerWindow(c.env.ISSUE_RATE_LIMIT_PER_WINDOW_OVERRIDE);
-  const rateLimit = await checkRateLimit(c.env.DB, userKey, ISSUE_RATE_LIMIT_WINDOW_SECONDS, rateLimitPerWindow);
-  if (!rateLimit.allowed) {
-    c.header("Retry-After", String(rateLimit.retryAfterSeconds));
+  const rateLimit = await resolveIssueRateLimiter(c.env).limit({ key: await rateLimitKey(bundle) });
+  if (!rateLimit.success) {
+    c.header("Retry-After", String(ISSUE_RATE_LIMIT_WINDOW_SECONDS));
     return c.json(jsonError("rate_limited", "too many issues submitted; please wait before retrying"), 429);
   }
 
@@ -424,69 +387,25 @@ app.post("/api/issues", async (c) => {
   if (typeof payload !== "object" || payload === null) {
     return c.json(jsonError("invalid_request", "invalid JSON body"), 400);
   }
-  const { repo: repoValue, title: titleValue, body: bodyValue, labels: labelsValue, clientRequestId: clientRequestIdValue } =
-    payload as Record<string, unknown>;
+  const { repo: repoValue, title: titleValue, body: bodyValue, labels: labelsValue } = payload as Record<string, unknown>;
   const repo = typeof repoValue === "string" ? repoValue.trim() : "";
   const title = typeof titleValue === "string" ? titleValue.trim() : "";
   const body = typeof bodyValue === "string" ? bodyValue.trim() : "";
   const labels = Array.isArray(labelsValue)
     ? labelsValue.filter((l): l is string => typeof l === "string" && l.trim().length > 0)
     : [];
-  // クライアントが起票の最初の送信試行時に生成し、SW/クライアント双方の再送経路で使い回す
-  // 冪等性キー（B4-4・OQ-8）。省略可（旧クライアント・queue を経由しない直接呼び出し等）。
-  // 上限超過は他の入力（shortcut フィールド等）と同様「無視」であり、切り詰めはしない
-  // （切り詰めると、別々の長い ID が同じ切り詰め後の値に衝突し、無関係な送信を誤って
-  // 重複判定してしまうため）。
-  const clientRequestIdTrimmed = typeof clientRequestIdValue === "string" ? clientRequestIdValue.trim() : "";
-  const clientRequestId =
-    clientRequestIdTrimmed.length > 0 && clientRequestIdTrimmed.length <= CLIENT_REQUEST_ID_MAX_LENGTH
-      ? clientRequestIdTrimmed
-      : null;
   if (!repo || !title) {
     return c.json(jsonError("invalid_request", "repo and title are required"), 400);
   }
 
-  // 送信中の再タップ抑止は client 側（送信ボタン無効化）に加え、ほぼ同時の二重タップ・
-  // タイムアウト再送等でも GitHub に二重作成させないよう、同一内容（リポジトリ + タイトル + 本文）の
-  // 送信枠をサーバー側で原子的に予約してから GitHub を呼ぶ（MUST・FR-24）。GitHub API には
-  // 冪等性キーがないため自前で担保する。JSON 配列でハッシュ化し、フィールド境界の曖昧さ
-  // （例: repo="a", title="b\nc" と repo="a\nb", title="c" が同一ハッシュになる）を避ける。
-  const contentHash = await sha256Base64url(JSON.stringify([repo, title, body, labels]));
-  const reserved = await reserveIssueLog(c.env.DB, userKey, repo, contentHash, DUPLICATE_SUBMISSION_WINDOW);
-  if (!reserved) {
-    return c.json(
-      jsonError("duplicate_submission", "this issue was already submitted moments ago"),
-      409,
-    );
-  }
-
-  // オフラインキュー（B4-2）の Background Sync（SW）とクライアント側キューは同一の失敗送信を
-  // 独立に再送しうるため、上記の短時間窓（30秒）だけでは日をまたぐ再送の重複を防げない（B4-4・OQ-8）。
-  // client_request_id が同じ再送は、経過時間に関わらず長時間窓で重複と判定する。
-  if (clientRequestId !== null) {
-    const requestIdReserved = await reserveRequestId(c.env.DB, userKey, clientRequestId, OFFLINE_QUEUE_DEDUPE_WINDOW);
-    if (!requestIdReserved) {
-      // この呼び出しでは GitHub を呼んでいない（=実質的に何も送信していない）ため、直前に
-      // reserveIssueLog が新規予約・更新した content_hash 予約を残したままにしない。残すと、
-      // 以降 30 秒はこの内容の正当な別送信まで duplicate_submission としてブロックしてしまう。
-      await releaseIssueLogReservation(c.env.DB, userKey, repo, contentHash);
-      return c.json(
-        jsonError("duplicate_submission", "this issue was already submitted moments ago"),
-        409,
-      );
-    }
-  }
-
+  // 二重送信防止（FR-24）はサーバーに記録を持たず、端末内（localStorage / IndexedDB）で判定する
+  // （P3・stateless-architecture.md §3）。同一内容の短時間窓・オフラインキュー再送の
+  // client_request_id 窓はどちらも同一端末で完結する事象のため、クライアント側の予約
+  // （src/issues/submitGuard.ts・src/issues/sentRequestIds.ts）で担保する。
   try {
     const issue = await createIssue(c.env.GITHUB_API_BASE ?? DEFAULT_API_BASE, bundle.a, repo, { title, body, labels });
     return c.json({ number: issue.number, htmlUrl: issue.htmlUrl }, 201);
   } catch (err) {
-    // 予約したまま失敗すると、正当な再試行まで duplicate_submission でブロックし続けてしまうため解放する。
-    // 一方の解放が例外を投げても他方は解放を試みる（片方だけ最大 26h 取り残される事故を避ける）。
-    await Promise.allSettled([
-      releaseIssueLogReservation(c.env.DB, userKey, repo, contentHash),
-      ...(clientRequestId !== null ? [releaseRequestIdReservation(c.env.DB, userKey, clientRequestId)] : []),
-    ]);
     return issueCreationErrorResponse(c, err);
   }
 });
@@ -513,9 +432,8 @@ app.delete("/api/account", async (c) => {
   const bundle = await readTokenBundle(c, nowSeconds());
   if (!bundle) return c.json(jsonError("unauthenticated", "not logged in"), 401);
 
-  // 個人データは保持していないが、重複防止・レート制限の一時行は GitHub の数値ユーザー ID を
-  // キーに持つため、退会時に確実に消す（残っていないことを保証する）。
-  await deleteUserRecords(c.env.DB, userKeyOf(bundle));
+  // P3 以降、サーバーに残るユーザー由来の記録は無い（重複防止の一時行は端末内へ、レート制限は
+  // Cloudflare 管理のカウンタへ移した）。削除対象はトークンそのものだけ。
   await revokeTokenBestEffort(c, bundle);
   clearTokenCookies(c);
   return c.body(null, 204);
@@ -524,19 +442,5 @@ app.delete("/api/account", async (c) => {
 // GET /setup: GitHub App の Setup URL 着地点（インストール/承認完了後の復帰・最小版）。
 app.get("/setup", (c) => c.redirect("/?setup=complete", 302));
 
-export default {
-  fetch: app.fetch,
-  // Cron Trigger（wrangler.jsonc の triggers.crons）: issue_log の保持期間ポリシー（#71）を実行する。
-  async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
-    // 一時行（いずれも user_key = GitHub の数値ユーザー ID を含む）を保持期間で掃除する。
-    // 1 つでも掃除漏れがあると「サーバーに個人データを残さない」方針が崩れるため、
-    // 片方が失敗しても他方は実行されるよう allSettled でまとめる。
-    ctx.waitUntil(
-      Promise.allSettled([
-        cleanupStaleIssueLog(env.DB, TEMP_RECORD_RETENTION_SECONDS),
-        cleanupStaleRequestIds(env.DB, TEMP_RECORD_RETENTION_SECONDS),
-        cleanupStaleRateLimits(env.DB, TEMP_RECORD_RETENTION_SECONDS),
-      ]),
-    );
-  },
-};
+// Cron Trigger（保持期間クリーンアップ・#71）は P3 で不要になった（掃除すべき行が無くなったため）。
+export default app;

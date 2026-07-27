@@ -9,6 +9,7 @@ import {
   type QueuedIssue,
 } from "./offlineQueue";
 import { apiFetch } from "../auth/apiFetch";
+import { claimRequestId, releaseRequestId } from "./sentRequestIds";
 import { submitErrorCode } from "./submitError";
 import { loadDraft, clearDraft } from "./draft";
 
@@ -40,35 +41,32 @@ type PostOutcome =
 
 /** キュー1件分の送信を試みる（自動再送・手動再送の両方から呼ぶ共通経路）。*/
 async function postQueuedEntry(entry: QueuedIssue): Promise<PostOutcome> {
+  // 同じ client_request_id の再送が別経路（他タブ・Service Worker）で走っていないかを端末内で
+  // 確認してから送る（B4-4・OQ-8・P3 でサーバーの request_ids から移設）。予約できなければ
+  // その送信は既に担当済みなので、実質的に成功（duplicate）として扱いキューから外す。
+  if (!(await claimRequestId(entry.id))) return { outcome: "duplicate" };
   let res: Response;
   try {
     res = await apiFetch("/api/issues", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        repo: entry.repo,
-        title: entry.title,
-        body: entry.body,
-        labels: entry.labels,
-        clientRequestId: entry.id,
-      }),
+      body: JSON.stringify({ repo: entry.repo, title: entry.title, body: entry.body, labels: entry.labels }),
     });
   } catch {
-    // ネットワーク到達不能（まだオフライン）。
+    // ネットワーク到達不能（まだオフライン）。次の再送を通すため予約を解放する。
+    await releaseRequestId(entry.id);
     return { outcome: "network-error" };
   }
   if (res.ok) return { outcome: "success" };
-  const code = await submitErrorCode(res);
-  // duplicate_submission（409）は直前の同一内容が既に成功済みであることを意味する
-  // （B4-3・issue_log 照合）ため、実質的に成功とみなす。
-  if (code === "duplicate_submission") return { outcome: "duplicate" };
-  return { outcome: "failed", code };
+  // 4xx/5xx は GitHub 側で作成されていないため、手動再送（D2-1）を通すために解放する。
+  await releaseRequestId(entry.id);
+  return { outcome: "failed", code: await submitErrorCode(res) };
 }
 
 /** オフライン時にキューされた起票（B4-2・FR-22・FR-23）を、オンライン復帰後に直列・間隔を空けて
  * 再送する。Service Worker 側の Workbox Background Sync（ページを閉じていても再送・vite.config.ts）
  * と並行して動作する経路で、ページがフォアグラウンドにある間の確実なキュー表示・UI 更新を担う
- * （重複送信は issue_log 照合・B4-3・#70 がサーバー側で吸収するため安全）。 */
+ * （経路をまたぐ重複送信は `sentRequestIds.ts` の端末内予約が吸収する・P3）。 */
 export function useOfflineQueueSync() {
   const [queue, setQueue] = useState<QueuedIssue[]>(() => loadOfflineQueue());
   const [optimisticQueue, applyAction] = useOptimistic(queue, applyOptimistic);
