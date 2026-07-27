@@ -69,15 +69,22 @@ D1: 廃止
 
 ```
 __Host-gh = base64url( keyVersion || iv(12B) || AES-256-GCM( JSON ) )
-JSON = { "a": "<access token>", "ae": <unix秒>, "r": "<refresh token>", "re": <unix秒> }
+JSON = { "a": "<access token>", "ae": <unix秒>, "r": "<refresh token>", "re": <unix秒>,
+         "x": <ログインの絶対期限・unix秒>, "u": <GitHub の数値ユーザー ID> }
 ```
 
-- **鍵バージョンを先頭に持たせる**（現状 `crypto.ts` に無い）。これにより **暗号鍵のローテーションが可能** になる
+- **鍵バージョンを先頭に持たせる**（P2 で実装済み・`crypto.ts` の `sealVersioned`/`openVersioned`）。これにより **暗号鍵のローテーションが可能** になる
   （旧鍵で復号できなければ再ログインさせるだけで、失われるデータは無い＝リサーチの R1 が解消する）
 - サイズ試算: `ghu_` / `ghr_` は各 40 文字前後 → JSON 約 150 バイト → 暗号化 + base64url で **約 250 バイト**。
   Cookie の 4KB 上限に対して十分な余裕がある
-- 属性: `HttpOnly; Secure; Path=/; SameSite=Lax`（現行セッション Cookie と同じ・`Strict` は OAuth コールバックを壊す）
-- `Max-Age`: refresh token の有効期限（6 か月）に合わせる
+- 属性: `HttpOnly; Secure; Path=/; SameSite=Lax`（`Strict` は OAuth コールバックを壊す）
+- `Max-Age`: **ログインの絶対期限 `x`（30 日）** に合わせる。refresh token の有効期限（約 6 か月）ではない:
+  Cookie 自体が自己完結型のクレデンシャルで失効レコードを持たないため、盗まれた Cookie がリフレッシュを
+  繰り返して半年生き延びないよう上限を設ける（`x` はリフレッシュで延長しない）
+- `u`（GitHub の数値ユーザー ID）は、P3 まで D1 に残る重複防止・レート制限のキーに使う。AEAD で認証済みの
+  ため、クライアントが他人の ID を騙ることはできない
+- **ログアウト・アカウント削除では GitHub の失効 API（`DELETE /applications/{client_id}/token`）を呼ぶ**。
+  Cookie を消すだけでは、値をコピーされていた相手を止められない
 
 ### 有効期限の露出（`__Host-gh-exp`）
 
@@ -87,8 +94,8 @@ JSON = { "a": "<access token>", "ae": <unix秒>, "r": "<refresh token>", "re": <
 
 ## 5. リフレッシュ競合への対処（本移行の最大の技術リスク）
 
-GitHub のリフレッシュトークンは **単回使用ローテーション** で、現状は D1 の行ロックで直列化している。
-Cookie 化すると同じ競合が戻ってくるため、以下の三段構えで対処する。
+GitHub のリフレッシュトークンは **単回使用ローテーション** で、P1 までは D1 の行ロックで直列化していた。
+Cookie 化すると同じ競合が戻ってくるため、以下の三段構えで対処する（P2 で実装済み）。
 
 1. **Web Locks API（`navigator.locks`）でリフレッシュを 1 本化する（主対策）**
    同一オリジンのタブ・Service Worker で共有されるロックのため、多タブ・Background Sync からの
@@ -139,10 +146,10 @@ Cookie 化すると同じ競合が戻ってくるため、以下の三段構え�
 
 | Phase | 内容 | 主な変更 |
 |-------|------|---------|
-| **P1** | ショートカットのクライアント移行 | `/api/shortcuts` 廃止・localStorage を正本化・manifest を静的に戻す（§7） |
-| **P2** | 認証のステートレス化 | 暗号化トークン Cookie（鍵バージョン付き）・`/auth/refresh`・Web Locks 直列化・`/api/me` を GitHub 直取得へ |
+| **P1** ✅ | ショートカットのクライアント移行（完了・#163） | `/api/shortcuts` 廃止・localStorage を正本化・manifest を静的に戻す（§7） |
+| **P2** ✅ | 認証のステートレス化（完了・2026-07-27・#164） | 暗号化トークン Cookie（鍵バージョン付き）・`/auth/refresh`・Web Locks 直列化・`/api/me` を GitHub 直取得へ。`users` / `sessions` / `tokens` / `shortcuts` は D1 から削除済み |
 | **P3** | 重複防止とレート制限の移行 | 30 秒窓 / client_request_id をクライアントへ・Rate Limiting binding 導入 |
-| **P4** | D1 撤去と対外文書の更新 | バインディング / migrations / `store.ts` 削除・`observability` 設定・PP / 利用規約 / 要件定義の改訂 |
+| **P4** | D1 撤去と対外文書の更新 | バインディング / migrations / `store.ts` 削除・`observability` 設定・利用規約の改訂（PP / 要件定義は P2 で先行改訂済み。D1 撤去に伴う差分のみ追随する） |
 
 ### 移行時のデータ
 

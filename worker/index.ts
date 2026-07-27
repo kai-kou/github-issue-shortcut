@@ -4,11 +4,10 @@ import type { Env } from "./types";
 import {
   codeChallengeS256,
   createCodeVerifier,
-  decryptString,
-  encryptString,
-  hashSessionId,
   isValidEncryptionKey,
+  openVersioned,
   randomToken,
+  sealVersioned,
   sha256Base64url,
 } from "./crypto";
 import {
@@ -23,29 +22,33 @@ import {
   fetchInstallationCount,
   fetchRepoLabels,
   GitHubApiError,
+  revokeAccessToken,
 } from "./github";
 import {
   checkRateLimit,
   cleanupStaleIssueLog,
-  createSession,
-  deleteAccount,
-  deleteSession,
-  getUserBySessionHash,
+  cleanupStaleRateLimits,
+  cleanupStaleRequestIds,
+  deleteUserRecords,
   nowSeconds,
   releaseIssueLogReservation,
   releaseRequestIdReservation,
   reserveIssueLog,
   reserveRequestId,
-  saveTokens,
-  upsertUser,
-  type UserRow,
 } from "./store";
-import { getValidAccessToken } from "./tokens";
+import {
+  clearTokenCookies,
+  currentKeyVersion,
+  hasValidKeyVersionSetting,
+  readTokenBundle,
+  SESSION_MAX_AGE,
+  setTokenCookies,
+  type TokenBundle,
+} from "./tokenCookie";
+import { isAccessTokenFresh, ReauthRequiredError, refreshTokenBundle } from "./tokens";
 
 /** pre-auth Cookie の TTL（10 分・§4.2-1）。 */
 const PREAUTH_TTL = 10 * 60;
-/** セッションの TTL（30 日）。refresh token（6 ヶ月）より短く、透過リフレッシュで延命する。 */
-const SESSION_TTL = 30 * 24 * 60 * 60;
 /** 二重送信防止（FR-24）の照合ウィンドウ（秒）。再タップ・タイムアウト再送を吸収する短時間ウィンドウ。 */
 const DUPLICATE_SUBMISSION_WINDOW = 30;
 /**
@@ -56,10 +59,12 @@ const DUPLICATE_SUBMISSION_WINDOW = 30;
  */
 const OFFLINE_QUEUE_DEDUPE_WINDOW = 26 * 60 * 60;
 /**
- * `issue_log` の保持期間（#71）: 二重送信防止の照合ウィンドウ（`DUPLICATE_SUBMISSION_WINDOW` = 30 秒）
- * に対して十分な安全マージンを取った上で、Cron Trigger（`scheduled` ハンドラ）が古い行を削除する。
+ * 一時行（`issue_log` / `request_ids` / `rate_limits`）の保持期間（#71・#164）。
+ * 最長の照合ウィンドウ（`OFFLINE_QUEUE_DEDUPE_WINDOW` = 26 時間）に十分な安全マージンを取った上で、
+ * Cron Trigger（`scheduled` ハンドラ）が古い行を削除する。プライバシーポリシーの「最長 7 日で
+ * 自動削除」はこの値が根拠なので、変更するときはポリシー文言も合わせること。
  */
-const ISSUE_LOG_RETENTION_SECONDS = 7 * 24 * 60 * 60;
+const TEMP_RECORD_RETENTION_SECONDS = 7 * 24 * 60 * 60;
 /** client_request_id の長さ上限（crypto.randomUUID() は36文字・将来の形式変更を見込んだ余裕）。 */
 const CLIENT_REQUEST_ID_MAX_LENGTH = 100;
 /**
@@ -83,7 +88,6 @@ function resolveIssueRateLimitPerWindow(override: string | undefined): number {
 }
 
 const PREAUTH_COOKIE = "__Host-preauth";
-const SESSION_COOKIE = "__Host-session";
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -143,16 +147,39 @@ function requireSameOrigin(c: Context<{ Bindings: Env }>): Response | null {
 }
 
 /**
- * セッション Cookie からログインユーザーを解決する。
- * Cookie 欠落・セッション失効時は、対応する 401 レスポンスをそのまま返す（呼び出し側は user が
- * null かどうかで分岐する）。
+ * トークン Cookie から「いま使える access token」を解決する（ステートレス認証・§4）。
+ *
+ * Cookie 欠落・開封不能（改ざん・鍵ローテーション）は `unauthenticated`（401）、access token の
+ * 期限切れは `token_expired`（401）を返す。**ここでは暗黙のリフレッシュを行わない**（§5-2）:
+ * クライアントが Web Locks で 1 本化した `/auth/refresh` を呼び直し、同じリクエストを再送する。
+ * 並行 API レスポンスの Set-Cookie が互いを上書きする事故を構造的に避けるための分離。
  */
-async function resolveSessionUser(c: Context<{ Bindings: Env }>): Promise<UserRow | Response> {
-  const sessionId = getCookie(c, SESSION_COOKIE);
-  if (!sessionId) return c.json(jsonError("unauthenticated", "not logged in"), 401);
-  const user = await getUserBySessionHash(c.env.DB, await hashSessionId(sessionId));
-  if (!user) return c.json(jsonError("unauthenticated", "session invalid or expired"), 401);
-  return user;
+async function resolveTokens(c: Context<{ Bindings: Env }>): Promise<TokenBundle | Response> {
+  const now = nowSeconds();
+  const bundle = await readTokenBundle(c, now);
+  if (!bundle) return c.json(jsonError("unauthenticated", "not logged in"), 401);
+  if (!isAccessTokenFresh(bundle, now)) {
+    return c.json(jsonError("token_expired", "access token expired; refresh required"), 401);
+  }
+  return bundle;
+}
+
+/**
+ * GitHub 側でトークンを失効させる（ベストエフォート）。
+ * 失敗しても Cookie 破棄は続行する（ログアウト操作自体をネットワーク障害で失敗させない）。
+ */
+async function revokeTokenBestEffort(c: Context<{ Bindings: Env }>, bundle: TokenBundle): Promise<void> {
+  await revokeAccessToken({
+    apiBase: c.env.GITHUB_API_BASE ?? DEFAULT_API_BASE,
+    clientId: c.env.GITHUB_CLIENT_ID,
+    clientSecret: c.env.GITHUB_CLIENT_SECRET,
+    accessToken: bundle.a,
+  });
+}
+
+/** 重複防止・レート制限のキー（P3 でクライアント側へ移すまでの暫定・GitHub の数値ユーザー ID）。 */
+function userKeyOf(bundle: TokenBundle): string {
+  return String(bundle.u);
 }
 
 app.get("/api/health", (c) => c.json({ status: "ok" }));
@@ -163,16 +190,22 @@ app.get("/api/health", (c) => c.json({ status: "ok" }));
 app.get("/api/ready", async (c) => {
   const checks = {
     encryptionKey: isValidEncryptionKey(c.env.TOKEN_ENCRYPTION_KEY),
+    // TOKEN_KEY_VERSION の不正値はサイレントに 1 へフォールバックするため、設定ミスをここで可視化する
+    // （鍵を交換したのにバージョンが上がらないと、旧鍵の Cookie を安価に弾けない）。
+    keyVersion: hasValidKeyVersionSetting(c.env),
     clientId: Boolean(c.env.GITHUB_CLIENT_ID),
     database: false,
   };
   try {
-    await c.env.DB.prepare("SELECT 1 FROM users LIMIT 1").all();
+    // 個人データは持たないが、重複防止・レート制限用のテーブル（P3 まで暫定）は必要。
+    // 列まで指定するのは「Worker だけ先にデプロイされ migration が未適用」を検知するため
+    // （テーブルの存在だけを見ると、旧スキーマ（user_id 列）でも ready を返してしまう）。
+    await c.env.DB.prepare("SELECT user_key FROM issue_log LIMIT 1").all();
     checks.database = true;
   } catch {
     checks.database = false;
   }
-  const ready = checks.encryptionKey && checks.clientId && checks.database;
+  const ready = checks.encryptionKey && checks.keyVersion && checks.clientId && checks.database;
   return c.json({ ready, checks }, ready ? 200 : 503);
 });
 
@@ -181,7 +214,11 @@ app.get("/auth/login", async (c) => {
   const state = randomToken(16);
   const verifier = createCodeVerifier();
   const challenge = await codeChallengeS256(verifier);
-  const preauth = await encryptString(c.env.TOKEN_ENCRYPTION_KEY, JSON.stringify({ state, verifier }));
+  const preauth = await sealVersioned(
+    c.env.TOKEN_ENCRYPTION_KEY,
+    currentKeyVersion(c.env),
+    JSON.stringify({ state, verifier }),
+  );
 
   setCookie(c, PREAUTH_COOKIE, preauth, {
     httpOnly: true,
@@ -201,7 +238,8 @@ app.get("/auth/login", async (c) => {
   return c.redirect(authorizeUrl, 302);
 });
 
-// GET /auth/callback: state 検証 → トークン交換 → ユーザー取得 → 暗号化保存 → セッション発行。
+// GET /auth/callback: state 検証 → トークン交換 → ユーザー取得 → 暗号化トークン Cookie を発行。
+// サーバー側には何も保存しない（ステートレス・§4）。
 app.get("/auth/callback", async (c) => {
   const code = c.req.query("code");
   const stateParam = c.req.query("state");
@@ -221,7 +259,7 @@ app.get("/auth/callback", async (c) => {
 
   let pre: { state: string; verifier: string };
   try {
-    pre = JSON.parse(await decryptString(c.env.TOKEN_ENCRYPTION_KEY, preauth));
+    pre = JSON.parse(await openVersioned(c.env.TOKEN_ENCRYPTION_KEY, currentKeyVersion(c.env), preauth));
   } catch {
     return c.json(jsonError("invalid_preauth", "pre-auth cookie could not be read"), 400);
   }
@@ -246,46 +284,78 @@ app.get("/auth/callback", async (c) => {
   }
 
   const now = nowSeconds();
-  const userId = await upsertUser(c.env.DB, ghUser);
-  const accessEnc = await encryptString(c.env.TOKEN_ENCRYPTION_KEY, token.access_token!);
-  const refreshEnc = token.refresh_token
-    ? await encryptString(c.env.TOKEN_ENCRYPTION_KEY, token.refresh_token)
-    : null;
-  await saveTokens(c.env.DB, userId, {
-    accessEnc,
-    accessExpiresAt: now + (token.expires_in ?? DEFAULT_ACCESS_TOKEN_TTL),
-    refreshEnc,
-    refreshExpiresAt: token.refresh_token_expires_in ? now + token.refresh_token_expires_in : null,
-  });
-
-  const sessionId = randomToken(32);
-  await createSession(c.env.DB, await hashSessionId(sessionId), userId, SESSION_TTL);
-  setCookie(c, SESSION_COOKIE, sessionId, {
-    httpOnly: true,
-    secure: true,
-    path: "/",
-    sameSite: "Lax",
-    maxAge: SESSION_TTL,
-  });
+  await setTokenCookies(
+    c,
+    {
+      a: token.access_token!,
+      ae: now + (token.expires_in ?? DEFAULT_ACCESS_TOKEN_TTL),
+      r: token.refresh_token ?? null,
+      re: token.refresh_token_expires_in ? now + token.refresh_token_expires_in : null,
+      x: now + SESSION_MAX_AGE,
+      u: ghUser.id,
+    },
+    now,
+  );
   return c.redirect("/", 302);
 });
 
-// GET /api/me: 現在のログインユーザー情報。
+// POST /auth/refresh: refresh token をローテーションして Cookie を書き戻す（§5・CSRF: 同一 Origin を要求）。
+// クライアントは Web Locks API でこの呼び出しを 1 本化する（多タブ・SW をまたいだ同時リフレッシュは
+// 単回使用の refresh token を失効させ、再ログインを招くため）。
+app.post("/auth/refresh", async (c) => {
+  const csrfRejection = requireSameOrigin(c);
+  if (csrfRejection) return csrfRejection;
+
+  const now = nowSeconds();
+  const bundle = await readTokenBundle(c, now);
+  if (!bundle) {
+    // 開けない Cookie（改ざん・鍵ローテーション・絶対期限切れ）は残しておくと、クライアントが
+    // 「まだ期限内」と誤認して 401 を繰り返す。ここで確実に掃除して再ログイン導線へ倒す。
+    clearTokenCookies(c);
+    return c.json(jsonError("unauthenticated", "not logged in"), 401);
+  }
+
+  // ロック取得までの間に他タブが更新済みなら GitHub を呼ばない（二重ローテーション＝失効の回避）。
+  if (isAccessTokenFresh(bundle, now)) {
+    return c.json({ expiresAt: bundle.ae });
+  }
+
+  try {
+    const refreshed = await refreshTokenBundle(c.env, bundle, now);
+    await setTokenCookies(c, refreshed, now);
+    return c.json({ expiresAt: refreshed.ae });
+  } catch (err) {
+    if (err instanceof ReauthRequiredError) {
+      // 単回使用トークンの失効は自動リトライせず、Cookie を破棄して再ログイン導線へ倒す（§5-3）。
+      clearTokenCookies(c);
+      return c.json(jsonError("reauth_required", "GitHub authorization expired; please log in again"), 401);
+    }
+    return c.json(jsonError("upstream_failed", "could not refresh GitHub token"), 502);
+  }
+});
+
+// GET /api/me: 現在のログインユーザー情報。サーバーに保存しないため GitHub /user を都度取得する
+// （クライアント側は localStorage にキャッシュ済みで、起動時の表示はネットワークを待たない・#119）。
 app.get("/api/me", async (c) => {
-  const user = await resolveSessionUser(c);
-  if (user instanceof Response) return user;
-  return c.json({ login: user.login, avatarUrl: user.avatar_url, githubUserId: user.github_user_id });
+  const bundle = await resolveTokens(c);
+  if (bundle instanceof Response) return bundle;
+
+  try {
+    const ghUser = await fetchGitHubUser(c.env.GITHUB_API_BASE ?? DEFAULT_API_BASE, bundle.a);
+    return c.json({ login: ghUser.login, avatarUrl: ghUser.avatar_url, githubUserId: ghUser.id });
+  } catch {
+    return c.json(jsonError("upstream_failed", "could not fetch GitHub user"), 502);
+  }
 });
 
 // GET /api/installations: ログインユーザーの GitHub App インストール数（A2-1・FR-4）。
 // 0 件なら「App 未インストール」としてフロントがオンボーディング誘導を表示する。
 app.get("/api/installations", async (c) => {
-  const user = await resolveSessionUser(c);
-  if (user instanceof Response) return user;
+  const bundle = await resolveTokens(c);
+  if (bundle instanceof Response) return bundle;
 
   try {
-    const accessToken = await getValidAccessToken(c.env, user.id);
-    const count = await fetchInstallationCount(c.env.GITHUB_API_BASE ?? DEFAULT_API_BASE, accessToken);
+    const count = await fetchInstallationCount(c.env.GITHUB_API_BASE ?? DEFAULT_API_BASE, bundle.a);
     return c.json({ installed: count > 0 });
   } catch {
     return c.json(jsonError("upstream_failed", "could not check GitHub App installations"), 502);
@@ -294,12 +364,11 @@ app.get("/api/installations", async (c) => {
 
 // GET /api/repos: ログインユーザーが起票できるリポジトリ一覧（App インストール済み ∩ アクセス可能・B2-1/B2-2）。
 app.get("/api/repos", async (c) => {
-  const user = await resolveSessionUser(c);
-  if (user instanceof Response) return user;
+  const bundle = await resolveTokens(c);
+  if (bundle instanceof Response) return bundle;
 
   try {
-    const accessToken = await getValidAccessToken(c.env, user.id);
-    const repos = await fetchAccessibleRepos(c.env.GITHUB_API_BASE ?? DEFAULT_API_BASE, accessToken);
+    const repos = await fetchAccessibleRepos(c.env.GITHUB_API_BASE ?? DEFAULT_API_BASE, bundle.a);
     return c.json({ repos });
   } catch {
     return c.json(jsonError("upstream_failed", "could not fetch repositories"), 502);
@@ -309,8 +378,8 @@ app.get("/api/repos", async (c) => {
 // GET /api/labels: 選択リポジトリのラベル一覧（B3-2・FR-14）。UI が開かれたときのみ呼ばれ、
 // 起票フローの初期表示（タイトルのみ起票）を遅くしない。
 app.get("/api/labels", async (c) => {
-  const user = await resolveSessionUser(c);
-  if (user instanceof Response) return user;
+  const bundle = await resolveTokens(c);
+  if (bundle instanceof Response) return bundle;
 
   const repo = c.req.query("repo")?.trim() ?? "";
   if (!repo) {
@@ -318,8 +387,7 @@ app.get("/api/labels", async (c) => {
   }
 
   try {
-    const accessToken = await getValidAccessToken(c.env, user.id);
-    const labels = await fetchRepoLabels(c.env.GITHUB_API_BASE ?? DEFAULT_API_BASE, accessToken, repo);
+    const labels = await fetchRepoLabels(c.env.GITHUB_API_BASE ?? DEFAULT_API_BASE, bundle.a, repo);
     return c.json({ labels });
   } catch (err) {
     if (err instanceof GitHubApiError && err.status === 404) {
@@ -333,11 +401,15 @@ app.get("/api/labels", async (c) => {
 app.post("/api/issues", async (c) => {
   const csrfRejection = requireSameOrigin(c);
   if (csrfRejection) return csrfRejection;
-  const user = await resolveSessionUser(c);
-  if (user instanceof Response) return user;
+  // 認証・トークンの鮮度はレート制限や重複予約より前に確定させる。期限切れ（401 token_expired）で
+  // 引き返す場合に予約・カウンタを消費してしまうと、クライアントがリフレッシュ後に同じ内容を
+  // 再送したとき duplicate_submission で弾かれてしまうため。
+  const bundle = await resolveTokens(c);
+  if (bundle instanceof Response) return bundle;
+  const userKey = userKeyOf(bundle);
 
   const rateLimitPerWindow = resolveIssueRateLimitPerWindow(c.env.ISSUE_RATE_LIMIT_PER_WINDOW_OVERRIDE);
-  const rateLimit = await checkRateLimit(c.env.DB, user.id, ISSUE_RATE_LIMIT_WINDOW_SECONDS, rateLimitPerWindow);
+  const rateLimit = await checkRateLimit(c.env.DB, userKey, ISSUE_RATE_LIMIT_WINDOW_SECONDS, rateLimitPerWindow);
   if (!rateLimit.allowed) {
     c.header("Retry-After", String(rateLimit.retryAfterSeconds));
     return c.json(jsonError("rate_limited", "too many issues submitted; please wait before retrying"), 429);
@@ -380,7 +452,7 @@ app.post("/api/issues", async (c) => {
   // 冪等性キーがないため自前で担保する。JSON 配列でハッシュ化し、フィールド境界の曖昧さ
   // （例: repo="a", title="b\nc" と repo="a\nb", title="c" が同一ハッシュになる）を避ける。
   const contentHash = await sha256Base64url(JSON.stringify([repo, title, body, labels]));
-  const reserved = await reserveIssueLog(c.env.DB, user.id, repo, contentHash, DUPLICATE_SUBMISSION_WINDOW);
+  const reserved = await reserveIssueLog(c.env.DB, userKey, repo, contentHash, DUPLICATE_SUBMISSION_WINDOW);
   if (!reserved) {
     return c.json(
       jsonError("duplicate_submission", "this issue was already submitted moments ago"),
@@ -392,12 +464,12 @@ app.post("/api/issues", async (c) => {
   // 独立に再送しうるため、上記の短時間窓（30秒）だけでは日をまたぐ再送の重複を防げない（B4-4・OQ-8）。
   // client_request_id が同じ再送は、経過時間に関わらず長時間窓で重複と判定する。
   if (clientRequestId !== null) {
-    const requestIdReserved = await reserveRequestId(c.env.DB, user.id, clientRequestId, OFFLINE_QUEUE_DEDUPE_WINDOW);
+    const requestIdReserved = await reserveRequestId(c.env.DB, userKey, clientRequestId, OFFLINE_QUEUE_DEDUPE_WINDOW);
     if (!requestIdReserved) {
       // この呼び出しでは GitHub を呼んでいない（=実質的に何も送信していない）ため、直前に
       // reserveIssueLog が新規予約・更新した content_hash 予約を残したままにしない。残すと、
       // 以降 30 秒はこの内容の正当な別送信まで duplicate_submission としてブロックしてしまう。
-      await releaseIssueLogReservation(c.env.DB, user.id, repo, contentHash);
+      await releaseIssueLogReservation(c.env.DB, userKey, repo, contentHash);
       return c.json(
         jsonError("duplicate_submission", "this issue was already submitted moments ago"),
         409,
@@ -406,40 +478,46 @@ app.post("/api/issues", async (c) => {
   }
 
   try {
-    const accessToken = await getValidAccessToken(c.env, user.id);
-    const issue = await createIssue(c.env.GITHUB_API_BASE ?? DEFAULT_API_BASE, accessToken, repo, { title, body, labels });
+    const issue = await createIssue(c.env.GITHUB_API_BASE ?? DEFAULT_API_BASE, bundle.a, repo, { title, body, labels });
     return c.json({ number: issue.number, htmlUrl: issue.htmlUrl }, 201);
   } catch (err) {
     // 予約したまま失敗すると、正当な再試行まで duplicate_submission でブロックし続けてしまうため解放する。
     // 一方の解放が例外を投げても他方は解放を試みる（片方だけ最大 26h 取り残される事故を避ける）。
     await Promise.allSettled([
-      releaseIssueLogReservation(c.env.DB, user.id, repo, contentHash),
-      ...(clientRequestId !== null ? [releaseRequestIdReservation(c.env.DB, user.id, clientRequestId)] : []),
+      releaseIssueLogReservation(c.env.DB, userKey, repo, contentHash),
+      ...(clientRequestId !== null ? [releaseRequestIdReservation(c.env.DB, userKey, clientRequestId)] : []),
     ]);
     return issueCreationErrorResponse(c, err);
   }
 });
 
-// POST /auth/logout: サーバー側セッションを無効化（CSRF: 同一 Origin を要求）。
+// POST /auth/logout: トークン Cookie を破棄する（CSRF: 同一 Origin を要求）。
+// サーバー側にセッションを持たないため、Cookie を消せばそれでログアウトが完了する。
 app.post("/auth/logout", async (c) => {
   const csrfRejection = requireSameOrigin(c);
   if (csrfRejection) return csrfRejection;
-  const sessionId = getCookie(c, SESSION_COOKIE);
-  if (sessionId) await deleteSession(c.env.DB, await hashSessionId(sessionId));
-  deleteCookie(c, SESSION_COOKIE, { path: "/", secure: true });
+  const bundle = await readTokenBundle(c, nowSeconds());
+  // Cookie を消すだけでは、値をコピーされていた場合にアクセスを止められない（自己完結型の
+  // クレデンシャルのため）。GitHub 側でトークン自体を失効させてログアウトを実効化する。
+  if (bundle) await revokeTokenBestEffort(c, bundle);
+  clearTokenCookies(c);
   return c.body(null, 204);
 });
 
-// DELETE /api/account: アカウント削除（FR-12・PR-3）。全テーブルの該当ユーザー行を削除し
-// セッション Cookie を破棄する（CSRF: 同一 Origin を要求）。
+// DELETE /api/account: アカウント削除（FR-12・PR-3）。サーバーは個人データを保持しないため、
+// 消すのはトークン Cookie だけ（端末内データの削除はクライアント側、GitHub 連携解除は利用者操作）。
+// 未認証でも 204 を返さず 401 にするのは、UI の削除導線がログイン済み前提のため（挙動は従来どおり）。
 app.delete("/api/account", async (c) => {
   const csrfRejection = requireSameOrigin(c);
   if (csrfRejection) return csrfRejection;
-  const user = await resolveSessionUser(c);
-  if (user instanceof Response) return user;
+  const bundle = await readTokenBundle(c, nowSeconds());
+  if (!bundle) return c.json(jsonError("unauthenticated", "not logged in"), 401);
 
-  await deleteAccount(c.env.DB, user.id);
-  deleteCookie(c, SESSION_COOKIE, { path: "/", secure: true });
+  // 個人データは保持していないが、重複防止・レート制限の一時行は GitHub の数値ユーザー ID を
+  // キーに持つため、退会時に確実に消す（残っていないことを保証する）。
+  await deleteUserRecords(c.env.DB, userKeyOf(bundle));
+  await revokeTokenBestEffort(c, bundle);
+  clearTokenCookies(c);
   return c.body(null, 204);
 });
 
@@ -450,6 +528,15 @@ export default {
   fetch: app.fetch,
   // Cron Trigger（wrangler.jsonc の triggers.crons）: issue_log の保持期間ポリシー（#71）を実行する。
   async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
-    ctx.waitUntil(cleanupStaleIssueLog(env.DB, ISSUE_LOG_RETENTION_SECONDS));
+    // 一時行（いずれも user_key = GitHub の数値ユーザー ID を含む）を保持期間で掃除する。
+    // 1 つでも掃除漏れがあると「サーバーに個人データを残さない」方針が崩れるため、
+    // 片方が失敗しても他方は実行されるよう allSettled でまとめる。
+    ctx.waitUntil(
+      Promise.allSettled([
+        cleanupStaleIssueLog(env.DB, TEMP_RECORD_RETENTION_SECONDS),
+        cleanupStaleRequestIds(env.DB, TEMP_RECORD_RETENTION_SECONDS),
+        cleanupStaleRateLimits(env.DB, TEMP_RECORD_RETENTION_SECONDS),
+      ]),
+    );
   },
 };

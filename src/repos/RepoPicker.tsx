@@ -9,6 +9,7 @@ import {
   type Ref,
 } from "react";
 import { flushSync } from "react-dom";
+import { apiFetch } from "../auth/apiFetch";
 import { useLanguage } from "../i18n/LanguageContext";
 import { loadRecentRepos, recordRecentRepo } from "./recentRepos";
 import { loadReposCache, saveReposCache, type Repo } from "./reposCache";
@@ -175,7 +176,7 @@ export function RepoPicker({ prefill = null, userId, ref }: RepoPickerProps) {
 
   useEffect(() => {
     let active = true;
-    fetch("/api/repos", { credentials: "same-origin" })
+    apiFetch("/api/repos")
       .then(async (res) => {
         if (!res.ok) throw new Error(`unexpected status: ${res.status}`);
         const data = (await res.json()) as { repos: Repo[] };
@@ -294,9 +295,8 @@ export function RepoPicker({ prefill = null, userId, ref }: RepoPickerProps) {
     // 揃わなくなる・B4-4）。
     const clientRequestId = crypto.randomUUID();
     try {
-      const res = await fetch("/api/issues", {
+      const res = await apiFetch("/api/issues", {
         method: "POST",
-        credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ repo: selected, title: input.title, body: input.body, labels: input.labels, clientRequestId }),
       });

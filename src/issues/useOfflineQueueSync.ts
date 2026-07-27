@@ -8,6 +8,7 @@ import {
   removeFromOfflineQueue,
   type QueuedIssue,
 } from "./offlineQueue";
+import { apiFetch } from "../auth/apiFetch";
 import { submitErrorCode } from "./submitError";
 import { loadDraft, clearDraft } from "./draft";
 
@@ -41,9 +42,8 @@ type PostOutcome =
 async function postQueuedEntry(entry: QueuedIssue): Promise<PostOutcome> {
   let res: Response;
   try {
-    res = await fetch("/api/issues", {
+    res = await apiFetch("/api/issues", {
       method: "POST",
-      credentials: "same-origin",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         repo: entry.repo,
