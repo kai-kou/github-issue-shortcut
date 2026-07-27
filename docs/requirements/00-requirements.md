@@ -242,7 +242,7 @@ CI/CD: GitHub Actions（test / lint）+ Workers Builds（git 連携・push で�
 | GET /api/repos | 起票可能リポジトリ一覧（App インストール済み ∩ アクセス可・push 権限有無を含む） | 必要 |
 | GET /api/repos/:owner/:repo/labels | ラベル一覧（M2） | 必要 |
 | POST /api/issues | Issue 作成プロキシ（重複防止・エラー正規化を含む） | 必要 |
-| GET/POST/PUT/DELETE /api/shortcuts | ショートカット設定 CRUD（M2） | 必要 |
+| ~~GET/POST/PUT/DELETE /api/shortcuts~~ | ショートカット設定 CRUD（M2）。**廃止**: 正本を端末内 localStorage へ移した（`docs/design/stateless-architecture.md` P1） | — |
 | DELETE /api/account | アカウント削除（FR-12） | 必要 |
 
 - トークンリフレッシュは専用エンドポイントを設けず、API 呼び出し時にサーバー側で透過的に行うこと（SHOULD）。

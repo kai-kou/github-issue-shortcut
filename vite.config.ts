@@ -59,11 +59,8 @@ export default defineConfig({
     cloudflare(),
     VitePWA({
       registerType: "autoUpdate",
-      // manifest 取得リクエストにセッション Cookie を載せる（#98 の動的 manifest が効かない根本原因 RC-B）。
-      // <link rel="manifest"> は既定で Cookie を送らないため、crossorigin="use-credentials" を付けないと
-      // Worker の resolveSessionUser がユーザーを識別できず、常に静的 manifest（汎用プリセット3件）を返す。
-      // 同一オリジンでも use-credentials は必須（Web App Manifest 仕様）。
-      useCredentials: true,
+      // manifest は静的アセットのまま返す方針へ戻したため（P1・stateless-architecture.md §7）、
+      // 取得リクエストに Cookie を載せる必要はない（#98 の動的 manifest 用の設定を撤去した）。
       includeAssets: ["icons/icon-192.png", "icons/icon-512.png", "icons/icon-512-maskable.png"],
       manifest: {
         name: "GitHub Issue Shortcut",

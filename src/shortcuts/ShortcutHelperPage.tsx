@@ -4,14 +4,25 @@ import { savePendingRedirect } from "../issues/prefillParams";
 import { LabelPicker } from "../issues/LabelPicker";
 import { useRepoLabels } from "../issues/useRepoLabels";
 import { hasPushAccess } from "../repos/pushAccess";
-import { buildLaunchUrl, type ShortcutPreset } from "./launchUrl";
+import { buildLaunchUrl } from "./launchUrl";
+import {
+  createShortcut,
+  deleteShortcut,
+  listShortcuts,
+  normalizeShortcutInput,
+  updateShortcut,
+  SHORTCUT_NAME_MAX_LENGTH,
+  type Shortcut,
+} from "./shortcutsStore";
 
 type Repo = { id: number; fullName: string; pushAccess: boolean };
-type Shortcut = ShortcutPreset & { id: string };
 
-type AuthState = "checking" | "anonymous" | "authenticated" | "error";
+type AuthState =
+  | { status: "checking" }
+  | { status: "anonymous" }
+  | { status: "authenticated"; userId: number }
+  | { status: "error" };
 type ReposState = { status: "loading" } | { status: "error" } | { status: "ready"; repos: Repo[] };
-type ShortcutsState = { status: "loading" } | { status: "error" } | { status: "ready"; shortcuts: Shortcut[] };
 
 async function fetchJson<T>(url: string): Promise<T> {
   const res = await fetch(url, { credentials: "same-origin" });
@@ -24,12 +35,11 @@ interface ShortcutFormProps {
   onSaved: (shortcut: Shortcut) => void;
   onCancel: () => void;
   repos: Repo[];
+  /** 保存先を所有ユーザーに紐付けるための GitHub ユーザー ID（別アカウント混入防止・#101）。 */
+  userId: number;
 }
 
-/** 表示名の上限（worker/index.ts の SHORTCUT_NAME_MAX_LENGTH と同値・#98）。 */
-const SHORTCUT_NAME_MAX_LENGTH = 12;
-
-function ShortcutForm({ editing, onSaved, onCancel, repos }: ShortcutFormProps) {
+function ShortcutForm({ editing, onSaved, onCancel, repos, userId }: ShortcutFormProps) {
   const { t } = useLanguage();
   const [repo, setRepo] = useState(editing?.repo ?? "");
   const [labels, setLabels] = useState<string[]>(editing?.labels ?? []);
@@ -44,30 +54,24 @@ function ShortcutForm({ editing, onSaved, onCancel, repos }: ShortcutFormProps) 
   // Issue フォームと同じ取得フック・SWR キャッシュ・push 権限判定を共有する（B3-2・#102）。
   const labelsState = useRepoLabels(repo, selectedPushAccess);
 
-  async function handleSubmit(e: React.FormEvent) {
+  function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const trimmedTitle = title.trim();
-    if (!repo && labels.length === 0 && !trimmedTitle) {
+    const input = normalizeShortcutInput({ repo, labels, title, name });
+    if (!input) {
       setError("validation");
       return;
     }
     setError(null);
     setSaving(true);
-    try {
-      const url = editing ? `/api/shortcuts/${editing.id}` : "/api/shortcuts";
-      const res = await fetch(url, {
-        method: editing ? "PUT" : "POST",
-        credentials: "same-origin",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ repo, labels, title: trimmedTitle, name: name.trim() }),
-      });
-      if (!res.ok) throw new Error(`unexpected status: ${res.status}`);
-      onSaved((await res.json()) as Shortcut);
-    } catch {
+    // 保存先は端末内 localStorage（P1）。同期処理だが、保存失敗（プライベートブラウジング等で
+    // localStorage が使えない場合）は握り潰さずエラー表示に倒す。
+    const saved = editing ? updateShortcut(userId, editing.id, input) : createShortcut(userId, input);
+    setSaving(false);
+    if (!saved) {
       setError("save");
-    } finally {
-      setSaving(false);
+      return;
     }
+    onSaved(saved);
   }
 
   return (
@@ -146,10 +150,12 @@ function ShortcutRow({
   shortcut,
   onEdit,
   onDeleted,
+  userId,
 }: {
   shortcut: Shortcut;
   onEdit: () => void;
   onDeleted: () => void;
+  userId: number;
 }) {
   const { t } = useLanguage();
   const [copied, setCopied] = useState(false);
@@ -172,12 +178,10 @@ function ShortcutRow({
     }
   }
 
-  async function handleDelete() {
-    try {
-      const res = await fetch(`/api/shortcuts/${shortcut.id}`, { method: "DELETE", credentials: "same-origin" });
-      if (!res.ok) throw new Error(`unexpected status: ${res.status}`);
+  function handleDelete() {
+    if (deleteShortcut(userId, shortcut.id)) {
       onDeleted();
-    } catch {
+    } else {
       setDeleteError(true);
     }
   }
@@ -231,10 +235,11 @@ function ShortcutRow({
   );
 }
 
-function ShortcutHelper() {
+function ShortcutHelper({ userId }: { userId: number }) {
   const { t } = useLanguage();
   const [reposState, setReposState] = useState<ReposState>({ status: "loading" });
-  const [shortcutsState, setShortcutsState] = useState<ShortcutsState>({ status: "loading" });
+  // 正本は端末内 localStorage（P1）。初期表示は同期的に読めるため loading / error 状態を持たない。
+  const [shortcuts, setShortcuts] = useState<Shortcut[]>(() => listShortcuts(userId));
   const [editingId, setEditingId] = useState<string | null>(null);
   // 保存成功のたびに ShortcutForm の key を変えて再マウントし、入力内容をクリアする
   // （key が editingId のみだと「新規作成」直後は null→null のままで再マウントされず、
@@ -246,9 +251,6 @@ function ShortcutHelper() {
     fetchJson<{ repos: Repo[] }>("/api/repos")
       .then((data) => active && setReposState({ status: "ready", repos: data.repos }))
       .catch(() => active && setReposState({ status: "error" }));
-    fetchJson<{ shortcuts: Shortcut[] }>("/api/shortcuts")
-      .then((data) => active && setShortcutsState({ status: "ready", shortcuts: data.shortcuts }))
-      .catch(() => active && setShortcutsState({ status: "error" }));
     return () => {
       active = false;
     };
@@ -259,38 +261,34 @@ function ShortcutHelper() {
   // （editingId ベース）が変わらず古い入力値が残ったまま、editing prop だけ null になり、
   // 次の保存が「更新のつもり」で意図しない新規作成（POST）になってしまう。
   useEffect(() => {
-    if (!editingId || shortcutsState.status !== "ready") return;
-    if (!shortcutsState.shortcuts.some((s) => s.id === editingId)) {
+    if (!editingId) return;
+    if (!shortcuts.some((s) => s.id === editingId)) {
       setEditingId(null);
       setFormVersion((v) => v + 1);
     }
-  }, [editingId, shortcutsState]);
+  }, [editingId, shortcuts]);
 
   function upsertShortcut(shortcut: Shortcut) {
-    setShortcutsState((state) => {
-      if (state.status !== "ready") return state;
-      const exists = state.shortcuts.some((s) => s.id === shortcut.id);
-      const shortcuts = exists
-        ? state.shortcuts.map((s) => (s.id === shortcut.id ? shortcut : s))
-        : [...state.shortcuts, shortcut];
-      return { status: "ready", shortcuts };
+    setShortcuts((current) => {
+      const exists = current.some((s) => s.id === shortcut.id);
+      return exists ? current.map((s) => (s.id === shortcut.id ? shortcut : s)) : [...current, shortcut];
     });
     setEditingId(null);
     setFormVersion((v) => v + 1);
   }
 
   function removeShortcut(id: string) {
-    setShortcutsState((state) => (state.status === "ready" ? { status: "ready", shortcuts: state.shortcuts.filter((s) => s.id !== id) } : state));
+    setShortcuts((current) => current.filter((s) => s.id !== id));
   }
 
-  if (reposState.status === "loading" || shortcutsState.status === "loading") {
+  if (reposState.status === "loading") {
     return <p className="status-note">{t.repoPicker.loading}</p>;
   }
-  if (reposState.status === "error" || shortcutsState.status === "error") {
+  if (reposState.status === "error") {
     return <p className="status-note">{t.shortcuts.loadError}</p>;
   }
 
-  const editing = editingId ? shortcutsState.shortcuts.find((s) => s.id === editingId) ?? null : null;
+  const editing = editingId ? shortcuts.find((s) => s.id === editingId) ?? null : null;
 
   return (
     <>
@@ -299,6 +297,7 @@ function ShortcutHelper() {
           key={`${editingId ?? "new"}-${formVersion}`}
           editing={editing}
           repos={reposState.repos}
+          userId={userId}
           onSaved={upsertShortcut}
           onCancel={() => setEditingId(null)}
         />
@@ -307,12 +306,18 @@ function ShortcutHelper() {
         <p>
           <strong>{t.shortcuts.listTitle}</strong>
         </p>
-        {shortcutsState.shortcuts.length === 0 ? (
+        {shortcuts.length === 0 ? (
           <p className="status-note">{t.shortcuts.empty}</p>
         ) : (
           <ul className="shortcut-list">
-            {shortcutsState.shortcuts.map((s) => (
-              <ShortcutRow key={s.id} shortcut={s} onEdit={() => setEditingId(s.id)} onDeleted={() => removeShortcut(s.id)} />
+            {shortcuts.map((s) => (
+              <ShortcutRow
+                key={s.id}
+                shortcut={s}
+                userId={userId}
+                onEdit={() => setEditingId(s.id)}
+                onDeleted={() => removeShortcut(s.id)}
+              />
             ))}
           </ul>
         )}
@@ -332,18 +337,22 @@ function ShortcutHelper() {
  * ログインが前提のため、未ログイン時はログイン導線のみ表示する。 */
 export function ShortcutHelperPage() {
   const { t } = useLanguage();
-  const [auth, setAuth] = useState<AuthState>("checking");
+  const [auth, setAuth] = useState<AuthState>({ status: "checking" });
 
   useEffect(() => {
     let active = true;
+    // ショートカットの保存先（localStorage）は GitHub ユーザー ID で所有者を紐付けるため、
+    // ログイン判定だけでなく githubUserId も受け取る（#101・別アカウント混入防止）。
     fetch("/api/me", { credentials: "same-origin" })
-      .then((res) => {
-        if (res.status === 401) return "anonymous" as const;
+      .then(async (res): Promise<AuthState> => {
+        if (res.status === 401) return { status: "anonymous" };
         if (!res.ok) throw new Error(`unexpected status: ${res.status}`);
-        return "authenticated" as const;
+        const me = (await res.json()) as { githubUserId?: number };
+        if (typeof me.githubUserId !== "number") throw new Error("githubUserId missing");
+        return { status: "authenticated", userId: me.githubUserId };
       })
       .then((next) => active && setAuth(next))
-      .catch(() => active && setAuth("error"));
+      .catch(() => active && setAuth({ status: "error" }));
     return () => {
       active = false;
     };
@@ -353,16 +362,16 @@ export function ShortcutHelperPage() {
     <article>
       <h1>{t.shortcuts.pageTitle}</h1>
       <p>{t.shortcuts.intro}</p>
-      {auth === "checking" ? <p className="status-note">{t.auth.checking}</p> : null}
-      {auth === "error" ? <p className="status-note">{t.auth.loginError}</p> : null}
-      {auth === "anonymous" ? (
+      {auth.status === "checking" ? <p className="status-note">{t.auth.checking}</p> : null}
+      {auth.status === "error" ? <p className="status-note">{t.auth.loginError}</p> : null}
+      {auth.status === "anonymous" ? (
         <p className="hero-cta">
           <a className="btn-primary" href="/auth/login" onClick={() => savePendingRedirect("/shortcuts")}>
             {t.auth.loginButton}
           </a>
         </p>
       ) : null}
-      {auth === "authenticated" ? <ShortcutHelper /> : null}
+      {auth.status === "authenticated" ? <ShortcutHelper userId={auth.userId} /> : null}
       <p>
         <a href="/">{t.shortcuts.backHome}</a>
       </p>
