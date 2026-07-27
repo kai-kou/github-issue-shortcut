@@ -146,7 +146,7 @@ LP にアクセス →「GitHub でログイン」→ GitHub の認可画面（�
 3. `GET /auth/callback`: manifest `scope` 内の URL であること（MUST・in-app browser からの自動復帰のため）。Worker は pre-auth Cookie の `state` を検証し、`code` + `code_verifier` をサーバー側でトークンに交換する（`github.com/login/oauth/access_token` は CORS 非対応のためフロントエンドでの交換は不可）。
 4. セッション確立: access / refresh トークンと有効期限を **鍵バージョン付きの AES-256-GCM**（WebCrypto・マスターキーは Worker Secret・IV は毎回ランダム 96bit）で暗号化し、`__Host-gh` Cookie に格納する（MUST）。**サーバー側には何も保存しない**（P2・保持ゼロ）。access token の有効期限のみ `__Host-gh-exp`（JS から読める・個人データではない）に併置する。鍵バージョンを先頭に持たせることで暗号鍵をローテーションでき、旧鍵の Cookie は復号せず再ログインへ倒す（`docs/design/stateless-architecture.md` §4）。
 5. トークンリフレッシュ: クライアントが `__Host-gh-exp` を見て期限が近ければ `POST /auth/refresh` を呼び、Worker が refresh token（単回使用ローテーション）を更新して `Set-Cookie` で書き戻す。並行リフレッシュによる失効を防ぐため、**クライアントが Web Locks API（`navigator.locks`）でリフレッシュを 1 本化** すること（MUST・多タブと Service Worker をまたいで直列化できる）。API プロキシ（`/api/*`）は暗黙のリフレッシュをせず、失効時は `token_expired`（401）を返す（並行レスポンスの `Set-Cookie` 上書きを構造的に避けるため・設計 §5）。
-6. App インストール誘導: 起票先リポジトリが「App インストール済み ∩ ユーザーがアクセス可」に含まれない場合、GitHub App のインストールページへ誘導する UX を提供すること（MUST）。GitHub App の Setup URL を本アプリに設定し、インストール / 承認完了後にアプリへ復帰させ、リポジトリ一覧を再取得すること（MUST・M1）。
+6. App インストール誘導: 起票先リポジトリが「App インストール済み ∩ ユーザーがアクセス可」に含まれない場合、GitHub App のインストールページへ誘導する UX を提供すること（MUST）。インストール / 承認完了後はアプリへ復帰させ、リポジトリ一覧を再取得すること（MUST・M1）。復帰は **ユーザー認可のコールバック URL** が担う（`installation_id` / `setup_action` クエリを受けて `/?setup=complete` へ戻す・`worker/index.ts`）。**Setup URL はインストール時の OAuth 要求が有効なとき GitHub 側の仕様で設定できない** ため使用しない（実測 2026-07-28・#173）。
 7. Service Worker のナビゲーションフォールバックから `/auth/*` を除外すること（MUST。SW がコールバックをキャッシュ応答して認証が壊れる既知問題の回避）。
 
 ### 4.3 起票フロー（FR-5〜FR-9・FR-24 詳細）
@@ -315,7 +315,7 @@ GitHub 連携解除の案内** で完了する（MUST）。サーバーに削除
 | manifest 更新（shortcuts / share_target）が既存インストールに反映されない・遅延 | 中 | manifest 変更を伴うリリースは検証項目化し、再インストール案内を用意（§7.2） |
 | Cloudflare / GitHub の仕様変更（API バージョン・トークン仕様） | 中 | API バージョン pin + 変更検知（deprecation ヘッダの監視）。リサーチ文書の日付を根拠に定期見直し |
 | 一人開発 + 自律エージェント開発での品質劣化 | 中 | NFR-15（E2E ゲート）とドメイン品質ゲート（project-mission.md）を CI で強制 |
-| Organization リポジトリで非管理者のインストールが承認待ちとなり、初回セットアップが中断する | 中 | FR-4 の案内表示で承認待ちである旨を明示し、承認完了後は Setup URL（§4.2-6）でアプリへ復帰・リポジトリ一覧を再取得させる |
+| Organization リポジトリで非管理者のインストールが承認待ちとなり、初回セットアップが中断する | 中 | FR-4 の案内表示で承認待ちである旨を明示し、承認完了後はコールバック URL 経由の復帰（§4.2-6）でアプリへ戻し・リポジトリ一覧を再取得させる |
 
 ## 10. 未決事項（オープンクエスチョン）
 
