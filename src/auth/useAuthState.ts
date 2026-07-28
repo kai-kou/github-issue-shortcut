@@ -7,6 +7,7 @@ import { clearSubmissions } from "../issues/submitGuard";
 import { clearSentRequestIds } from "../issues/sentRequestIds";
 import { clearDraft } from "../issues/draft";
 import { clearOfflineQueue } from "../issues/offlineQueue";
+import { clearPendingRedirect } from "../issues/prefillParams";
 import { clearAuthCache, loadAuthCache, saveAuthCache } from "./authCache";
 import { apiFetch } from "./apiFetch";
 
@@ -46,9 +47,13 @@ export type InstallState = boolean | null;
  * client_request_id）。いずれも共有端末で次の利用者に見えてはいけない、または
  * プライバシーポリシーが「削除する」と述べている対象。
  *
- * **含めないもの**: 下書き（`draft`）と未送信のオフラインキュー（`offline-queue`）。これらは
- * 未送信の入力そのもので、誤ってログアウトしただけで失わせてはいけない（ミッションの
- * 「送信失敗時に入力内容を失わない」が優先）。全消しは `clearAllLocalUserData()` が担う。
+ * **含めないもの**: 下書き（`draft`）・未送信のオフラインキュー（`offline-queue`）と、その再送の
+ * 重複を防ぐ端末内予約（IndexedDB `sent-request-ids`）。前 2 つは未送信の入力そのもので、誤って
+ * ログアウトしただけで失わせてはいけない（ミッションの「送信失敗時に入力内容を失わない」が優先）。
+ * 予約を消さないのはキューを残す判断とセットで、**キューだけ残して予約を消すと二重起票する**ため
+ * （送信成功の直後にタブが閉じてキューから消えなかった項目が、再ログイン後に再送されて 2 件目を作る）。
+ * 予約の中身はローカル生成の UUID と時刻だけで、リポジトリ名も本文も含まない。全消しは
+ * `clearAllLocalUserData()` が担う。
  */
 export function clearAllUserCaches() {
   clearAuthCache();
@@ -57,8 +62,7 @@ export function clearAllUserCaches() {
   clearAllCachedLabels();
   clearRecentRepos();
   clearSubmissions();
-  // IndexedDB は非同期だが、呼び出し側（プライバシーガード）は完了を待つ必要がない。
-  void clearSentRequestIds();
+  clearPendingRedirect();
 }
 
 /**
@@ -70,6 +74,11 @@ export function clearAllLocalUserData() {
   clearAllUserCaches();
   clearDraft();
   clearOfflineQueue();
+  // キューと予約はセットで消す（キューが無くなれば再送も起きないため、予約を残す理由も無くなる）。
+  // IndexedDB の削除は非同期だが、呼び出し側は完了を待たない: 他タブが DB を開いていると
+  // `blocked` になり、そのタブが閉じるまで完了しないため。残るのは UUID と時刻だけで、
+  // Issue の内容・リポジトリ名は含まない。
+  void clearSentRequestIds();
 }
 
 export interface AuthStateResult {
@@ -161,12 +170,12 @@ export function useAuthState(): AuthStateResult {
   }, [auth, installed]);
 
   async function logout() {
-    // 別ユーザーの認証状態・リポジトリ/ショートカット一覧が次回起動時の SWR キャッシュに残らないようにする（#101/#119）。
-    clearAuthCache();
-    clearReposCache();
-    clearShortcuts();
+    // 前の利用者に紐づくデータを **ログアウト操作そのもので** 消す（#101/#119/#181）。
+    // 個別列挙ではなく clearAllUserCaches に集約する: 列挙のままだと後から追加した削除対象
+    // （最近使ったリポジトリ・送信履歴）が漏れ、再読込後の /api/me 401 経路が偶然消してくれることに
+    // 依存してしまう。その経路は /api/me が 500 やオフラインで失敗すると走らない。
+    clearAllUserCaches();
     await fetch("/auth/logout", { method: "POST", credentials: "same-origin" });
-    clearAllCachedLabels();
     window.location.assign("/");
   }
 

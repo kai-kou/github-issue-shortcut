@@ -65,6 +65,17 @@ export function savePendingRedirect(pathWithSearch: string): void {
   }
 }
 
+/** 保存済みの遷移先を消す。`target` は `/new?title=...&body=...` の形でプレフィル内容（共有シート由来の
+ * 本文を含む）をそのまま持つため、ログアウト・別ユーザー検知・アカウント削除で必ず消す（#181）。
+ * 同一タブを別の利用者が使い続けた場合、TTL（10 分）内なら復元されてしまうのを防ぐ。 */
+export function clearPendingRedirect(): void {
+  try {
+    sessionStorage.removeItem(POST_LOGIN_REDIRECT_KEY);
+  } catch {
+    // sessionStorage 不可でも他の削除は続行する。
+  }
+}
+
 /** ログイン完了後の初回描画で、保存済みの遷移先があれば取り出す（1 度読んだら消費する）。
  * ログインを中断・キャンセルした後日に "/" を訪れた場合など、TTL 超過分は復元しない。 */
 export function consumePendingRedirect(): string | null {

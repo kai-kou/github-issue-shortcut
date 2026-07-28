@@ -101,8 +101,33 @@ test.describe("OAuth ログインフロー（モック GitHub・モバイルエ�
           { id: "q1", repo: "e2e-user/repo", title: "未送信の起票", body: "本文", labels: [], queuedAt: Date.now(), status: "pending" },
         ]),
       );
-      localStorage.setItem("issue-shortcut:locale", "ja");
+      // 「消してはいけないもの」は既定値と異なる値を入れる（Provider が mount 時に書き戻すため、
+      // 既定値のままだと消えても復活してアサーションが自己成就する）。
+      localStorage.setItem("issue-shortcut:locale", "en");
+      sessionStorage.setItem(
+        "issue-shortcut:post-login-redirect",
+        JSON.stringify({ target: "/new?title=社外秘", savedAt: Date.now() }),
+      );
     });
+    // 送信済み client_request_id（IndexedDB）も仕込む。存在しない DB の消去は自己成就するため、
+    // 実際に作ってから消えることを確かめる。
+    await page.evaluate(
+      () =>
+        new Promise<void>((resolve) => {
+          const req = indexedDB.open("issue-shortcut", 1);
+          req.onupgradeneeded = () => {
+            const db = req.result;
+            if (!db.objectStoreNames.contains("sent-request-ids")) {
+              db.createObjectStore("sent-request-ids", { keyPath: "id" }).createIndex("sentAt", "sentAt");
+            }
+          };
+          req.onsuccess = () => {
+            req.result.close();
+            resolve();
+          };
+          req.onerror = () => resolve();
+        }),
+    );
 
     // アカウント削除はサイドパネルのアカウントセクションに集約された。
     await page.getByRole("button", { name: /メニューを開く|Open menu/ }).first().click();
@@ -128,6 +153,7 @@ test.describe("OAuth ログインフロー（モック GitHub・モバイルエ�
       draft: localStorage.getItem("issue-shortcut:draft"),
       offlineQueue: localStorage.getItem("issue-shortcut:offline-queue"),
       locale: localStorage.getItem("issue-shortcut:locale"),
+      pendingRedirect: sessionStorage.getItem("issue-shortcut:post-login-redirect"),
     }));
     expect(stored.repos).toBeNull();
     expect(stored.shortcuts).toBeNull();
@@ -136,8 +162,15 @@ test.describe("OAuth ログインフロー（モック GitHub・モバイルエ�
     // 未送信の下書き・キューは「アカウント削除」でのみ消える（ログアウトでは残す・#181）。
     expect(stored.draft).toBeNull();
     expect(stored.offlineQueue).toBeNull();
-    // UI 言語は個人データではないため残す。
-    expect(stored.locale).toBe("ja");
+    // 共有シート由来の本文を含みうるログイン後遷移先（sessionStorage）も消える。
+    expect(stored.pendingRedirect).toBeNull();
+    // 送信済み client_request_id の IndexedDB も消える（プライバシーポリシーの「送信履歴」）。
+    // 他タブが開いていると deleteDatabase は blocked になりうるが、E2E は単一タブのため完了する。
+    await expect
+      .poll(() => page.evaluate(async () => (await indexedDB.databases()).some((d) => d.name === "issue-shortcut")))
+      .toBe(false);
+    // UI 言語は個人データではないため残す（既定値と異なる "en" を仕込んでいるので、消えたら検出できる）。
+    expect(stored.locale).toBe("en");
 
     // 削除後にハンバーガーを再度押しても、stale な認証情報（ログアウト・再削除・ユーザー名）が再表示されず、
     // 匿名扱い（ログイン導線）になる（correctness#2 の回帰防止）。

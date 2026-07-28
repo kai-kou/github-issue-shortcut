@@ -7,7 +7,7 @@ import { ShortcutList } from "./shortcuts/ShortcutList";
 import { LanguageProvider, useLanguage } from "./i18n/LanguageContext";
 import { LanguageSwitcher } from "./i18n/LanguageSwitcher";
 import { RepoPicker, type RepoPickerHandle } from "./repos/RepoPicker";
-import { useAuthState, clearAllLocalUserData, type AuthState } from "./auth/useAuthState";
+import { useAuthState, type AuthState } from "./auth/useAuthState";
 import { NavDrawer } from "./nav/NavDrawer";
 import {
   consumePendingRedirect,
@@ -177,10 +177,8 @@ function HomeView({ prefill, pendingRedirectTarget }: HomeViewProps) {
         auth={effectiveAuth}
         onLogout={logout}
         onAccountDeleted={() => {
-          // アカウント削除では端末内データを **未送信の下書き・オフラインキューまで含めて** 全消去する
-          // （#181・プライバシーポリシーの「端末内に保存されたデータを即時に削除」と一致させる。
-          // 削除される範囲は確認 UI で明示済み）。SWR キャッシュの消去（#101）も内包する。
-          clearAllLocalUserData();
+          // 端末内データの消去は AccountDeletion 自身が行う（#181・削除範囲を明示している UI と
+          // 実際に消す処理を同じ場所に置く）。ここでは画面遷移だけを担う。
           setAccountDeleted(true);
           setMenuOpen(false);
         }}
