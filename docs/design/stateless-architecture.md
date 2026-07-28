@@ -59,7 +59,7 @@ D1: 廃止
 | `tokens` | **暗号化 Cookie** | §4 |
 | `shortcuts` | localStorage | 端末間同期を失う（§6） |
 | `issue_log`（30 秒窓の重複防止） | localStorage（`src/issues/submitGuard.ts`・P3 完了） | 同一端末の二重タップ・再送が本質的なケース |
-| `request_ids`（26 時間窓の重複防止） | IndexedDB（`src/issues/sentRequestIds.ts`・P3 完了） | Service Worker の Background Sync と共有する必要があるため localStorage ではなく IndexedDB |
+| `request_ids`（26 時間窓の重複防止） | IndexedDB（`src/issues/sentRequestIds.ts`・P3 完了） | 複数タブが同時に再送しても予約が直列化される（readwrite トランザクション内で get → put）ため localStorage ではなく IndexedDB。当初は Service Worker との共有も理由に挙げていたが、SW の再送経路は #177 で撤去した |
 | `rate_limits` / `shortcut_rate_limits` | Workers Rate Limiting binding（P3 完了） | クライアントには置けない（改変可能なので防御にならない）。キーは GitHub 数値ユーザー ID のハッシュ |
 | Cron（`issue_log` 削除） | 廃止 | 消すべきデータが無くなる |
 
@@ -98,8 +98,8 @@ GitHub のリフレッシュトークンは **単回使用ローテーション*
 Cookie 化すると同じ競合が戻ってくるため、以下の三段構えで対処する（P2 で実装済み）。
 
 1. **Web Locks API（`navigator.locks`）でリフレッシュを 1 本化する（主対策）**
-   同一オリジンのタブ・Service Worker で共有されるロックのため、多タブ・Background Sync からの
-   同時リフレッシュを含めてクライアント側で直列化できる。ロック内で `__Host-gh-exp` を再確認し、
+   同一オリジンのタブ・Service Worker で共有されるロックのため、多タブからの同時リフレッシュを
+   クライアント側で直列化できる（SW からのリフレッシュ経路は現在存在しない・#177）。ロック内で `__Host-gh-exp` を再確認し、
    他者が更新済みならリフレッシュをスキップする。
 2. **サーバーは「復号 → 使用 → 必要なら Set-Cookie」の単純な流れに保つ**
    リフレッシュ結果は必ず同一レスポンスの `Set-Cookie` で書き戻す。API プロキシ内で暗黙にリフレッシュ

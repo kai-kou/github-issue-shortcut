@@ -2,9 +2,13 @@
  * オフラインキュー再送の重複防止（B4-4・OQ-8）を端末内で行うガード。
  *
  * P3（stateless-architecture.md §3）でサーバー（D1 の `request_ids`）から移設した。保存先が
- * localStorage ではなく **IndexedDB** なのは、Service Worker（Workbox Background Sync）と
- * ページの両方から同じ記録を参照できるようにするため（localStorage は SW から読めない）。
- * 同じ理由で、ここでは DOM API を一切使わない（SW でもそのまま動く）。
+ * localStorage ではなく **IndexedDB** なのは、複数のタブが同時に再送しても予約が直列化されること
+ * （readwrite トランザクション）と、Service Worker からも同じ記録を参照できること（localStorage は
+ * SW から読めない）を満たすため。同じ理由で、ここでは DOM API を一切使わない。
+ *
+ * 現在 SW からの再送経路は存在しない（Workbox Background Sync は #177 で撤去し、再送はページ側の
+ * `useOfflineQueueSync.ts` に一本化した）。それでも DOM 非依存は維持する — SW 側の再送を将来入れる
+ * なら、その再送がこの予約を通ることが二重起票を防ぐ唯一の条件になるため。
  *
  * ## 「送信中」と「送信済み」を区別する理由
  *

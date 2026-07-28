@@ -10,7 +10,7 @@ interface OfflineQueueListProps {
 }
 
 /** 4xx/5xx で自動再送の対象外になった起票の手動救済導線（D2-1・#22）。
- * Background Sync / クライアント側自動再送は pending のみを対象にするため、
+ * 自動再送（`useOfflineQueueSync`）は pending のみを対象にするため、
  * failed はここでの手動操作でのみ再送・破棄できる。 */
 export function OfflineQueueList({ items, onResend, onDiscard }: OfflineQueueListProps) {
   const { t } = useLanguage();
