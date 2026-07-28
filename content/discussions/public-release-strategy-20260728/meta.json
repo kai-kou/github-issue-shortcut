@@ -1,0 +1,13 @@
+{
+  "id": "public-release-strategy-20260728",
+  "topic": "GitHub Issue Shortcut の一般公開手段とドメイン方針",
+  "brief": "現在の本番（Cloudflare Workers・workers.dev）をそのまま公開するか / ドメインをどうするか / リポジトリのみ公開して各自フォーク方式にするか。詳細は tools/discussion_specs/public_release_strategy.json の brief 参照",
+  "participants": [
+    "security-legal",
+    "ops-cost",
+    "product-adoption",
+    "oss-selfhost"
+  ],
+  "created_at": "2026-07-28T09:23:50+09:00",
+  "updated_at": "2026-07-28T09:23:50+09:00"
+}
