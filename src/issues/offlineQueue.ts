@@ -4,22 +4,21 @@ const STORAGE_KEY = "issue-shortcut:offline-queue";
  * 返り自動再送の対象外になったもので、手動での再送・破棄（D2-1・#22）を待つ状態を表す。 */
 export type QueueStatus = "pending" | "failed";
 
-/** キュー滞留の上限（24 時間）。Service Worker 側の Background Sync 保持期間
- * （`vite.config.ts` の `maxRetentionTime: 24 * 60` 分）と揃え、client_request_id の重複防止窓
- * （`sentRequestIds.ts` の `SENT_REQUEST_ID_WINDOW_MS` = 26 時間・P3 で端末内へ移設）より短く取る。
+/** キュー滞留の上限（24 時間）。client_request_id の重複防止窓（`sentRequestIds.ts` の
+ * `SENT_REQUEST_ID_WINDOW_MS` = 26 時間・P3 で端末内へ移設）より短く取る。
  *
- * 重複防止窓より長いと、「別経路（他タブ・SW）が既に送信して Issue が作られたが、その結果が
- * このキューに反映されないまま滞留し、26 時間の予約が stale になった後に同じ client_request_id で
- * 自動再送されて重複起票される」経路が開く（#91）。この値は必ず 26 時間より短く保つこと。 */
+ * 重複防止窓より長いと、「別のタブが既に送信して Issue が作られたが、その結果がこのキューに
+ * 反映されないまま滞留し、26 時間の予約が stale になった後に同じ client_request_id で
+ * 自動再送されて重複起票される」経路が開く（#91）。この値は必ず 26 時間より短く保つこと。
+ * （旧: Workbox Background Sync の `maxRetentionTime` と揃えていたが、SW 経路は #177 で撤去した） */
 export const OFFLINE_QUEUE_TTL_MS = 24 * 60 * 60 * 1000;
 
 /** TTL 超過で自動再送を打ち切ったエントリのエラーコード（`submitErrorMessage` が専用文言へ振り分ける）。 */
 export const QUEUE_EXPIRED_ERROR_CODE = "queue_expired";
 
 export type QueuedIssue = {
-  /** キュー管理用 ID。最初の送信試行時に発行し、SW 側 Background Sync・クライアント側再送の
-   * 双方で同じ値を送り続けることで、端末内の長時間窓の重複防止（B4-4・OQ-8・sentRequestIds.ts）に使う
-   * client_request_id を兼ねる。 */
+  /** キュー管理用 ID。最初の送信試行時に発行し、以降の再送でも同じ値を使い続けることで、
+   * 端末内の長時間窓の重複防止（B4-4・OQ-8・sentRequestIds.ts）に使う client_request_id を兼ねる。 */
   id: string;
   repo: string;
   title: string;

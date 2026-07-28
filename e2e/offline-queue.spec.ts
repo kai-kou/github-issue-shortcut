@@ -6,8 +6,8 @@ const MOCK_GITHUB_URL = "http://localhost:8788";
 // カバー範囲: ネットワーク到達不能時に起票がキューへ積まれてキュー件数が表示され、
 // オンライン復帰後に自動でクライアント主導の再送が行われ GitHub へ反映されること。
 // 4xx（サーバーエラー）はキュー自動再送の対象外として扱われる（failed のまま残り、成功表示にならない）。
-// Service Worker 側の Workbox Background Sync（ページを閉じていても再送）自体は物理デバイス相当の
-// 検証が必要なためここでは対象外とし、フォアグラウンドでのクライアント主導再送経路を検証する。
+// 再送経路はこのクライアント主導の 1 本のみ（Service Worker 側の Workbox Background Sync は
+// 1 度も発火しておらず、有効化するとこの経路と二重起票しうるため #177 で撤去した）。
 test.describe("オフラインキュー（モック GitHub・モバイルエミュレーション）", () => {
   test.beforeEach(async ({ request }) => {
     await request.post(`${MOCK_GITHUB_URL}/mock/config`, {
@@ -128,8 +128,8 @@ test.describe("オフラインキュー（モック GitHub・モバイルエミ�
     });
     expect(await (await request.get(`${MOCK_GITHUB_URL}/mock/issue-count`)).json()).toEqual({ count: 1 });
 
-    // 送信済みの id を持つエントリをキューへ戻す（SW の Background Sync が同じリクエストを
-    // 再送した状況の再現）。タイトルだけ変えるのは、内容ベースの 30 秒窓ではなく **id 側の
+    // 送信済みの id を持つエントリをキューへ戻す（別タブが既に送信した id がこのタブのキューに
+    // 残っている状況の再現）。タイトルだけ変えるのは、内容ベースの 30 秒窓ではなく **id 側の
     // ガード**（IndexedDB・26 時間窓）が効いていることを分離して確かめるため。
 
     let issuePostCount = 0;

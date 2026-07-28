@@ -138,6 +138,10 @@ GitHub（起票された Issue 本体・OAuth 認可の状態はここが正本�
 
 ### 6.2 `workbox-background-sync`（Workbox が自動生成）/ キュー `issue-post-queue`
 
+> ⚠️ **本節は調査時点（2026-07-28 午前）の観測記録であり、現在の実装には当てはまらない**。この直後に
+> #177 で当該ルートごと撤去し、再送はページ側経路に一本化した。現在の正は `vite.config.ts` の
+> コメントと `docs/requirements/00-requirements.md`（FR-22 のリスク行）を参照すること。
+
 - `POST /api/issues` の失敗リクエストを保持し、オンライン復帰時に再送する想定（`maxRetentionTime: 24 * 60` 分）。
 - 🔴 **現状このルートは 1 度も発火していない**: `urlPattern: /^\/api\/issues$/` を Workbox が **URL 全体（`url.href`）** に対して評価するため一致しない（既知の不具合 **#177**・`vite.config.ts` にコメント済み）。つまり実際にキューを保持しているのは localStorage 側（`issue-shortcut:offline-queue`）だけで、「ページを閉じていても再送」は効いていない。
 
@@ -155,7 +159,7 @@ submitGuard（localStorage・30 秒）  <  offlineQueue TTL（24 時間）  <  s
 
 - `vite-plugin-pwa` の `generateSW` により、アプリの静的アセット（JS / CSS / HTML / アイコン）を precache する。`registerType: "autoUpdate"`。
 - `manifest.webmanifest` は precache から **除外**（`stripManifestFromSwPrecache` プラグイン）。
-- `runtimeCaching` は `POST /api/issues` の Background Sync 定義のみで、**GET の API 応答をキャッシュする設定は無い**（＝ Issue・リポジトリ・ラベルのレスポンスが Cache Storage に残ることはない。SWR キャッシュは前述の localStorage 側が担う）。
+- `runtimeCaching` は `POST /api/issues` の Background Sync 定義のみで、**GET の API 応答をキャッシュする設定は無い**（＝ Issue・リポジトリ・ラベルのレスポンスが Cache Storage に残ることはない。SWR キャッシュは前述の localStorage 側が担う）。※ 調査後、この唯一の定義も #177 で撤去したため、現在 `runtimeCaching` 自体が存在しない（GET をキャッシュしない結論は変わらない）。
 - `navigateFallbackDenylist` により `/auth/*`・`/setup`・`/api/*` は SW のナビゲーションフォールバック対象外（OAuth コールバックがキャッシュ応答で壊れるのを防ぐ）。
 
 ---
