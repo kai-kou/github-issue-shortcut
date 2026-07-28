@@ -15,6 +15,20 @@ export interface Env {
   ISSUE_RATE_LIMIT_RELAXED: RateLimit;
   /** "1" のとき `ISSUE_RATE_LIMIT_RELAXED` を使う（E2E の wrangler dev 起動時のみ設定・playwright.config.ts）。 */
   ISSUE_RATE_LIMIT_RELAXED_ENABLED?: string;
+  /**
+   * 同一内容の連投抑止（不正利用対策・PR-4 拡張・#179）。キーは `HMAC(userId + contentHash)` で、
+   * サーバーには内容そのものも生ハッシュも渡さず、逆引き不能な鍵だけを Cloudflare 側に渡す
+   * （`worker/index.ts` の `duplicateSubmissionKey`）。永続層を持たない P3 方針のまま、
+   * 「同一ユーザー・同一内容の起票は 10 秒に 1 回まで」をサーバー側で強制する。
+   */
+  ISSUE_DUPLICATE_SUBMISSION_LIMIT: RateLimit;
+  /**
+   * E2E 専用の緩い上限（本番では使わない）。単一のモックユーザーが複数 spec で同一内容
+   * （例: マジック文字列 `__mock_422__`）を短時間に繰り返し送るため、本番の 10 秒窓のままだと
+   * 無関係なテストが 429（duplicate_submission）で落ちる。`ISSUE_RATE_LIMIT_RELAXED_ENABLED`
+   * が "1" のときだけこちらを使う。
+   */
+  ISSUE_DUPLICATE_SUBMISSION_LIMIT_RELAXED: RateLimit;
   /** GitHub App の Client ID（公開値）。 */
   GITHUB_CLIENT_ID: string;
   /** GitHub App の Client Secret（Workers Secret）。 */

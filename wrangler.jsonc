@@ -41,6 +41,22 @@
       "name": "ISSUE_RATE_LIMIT_RELAXED",
       "namespace_id": "1002",
       "simple": { "limit": 1000, "period": 60 }
+    },
+    {
+      // 同一内容の連投抑止（不正利用対策・PR-4 拡張・#179）。HMAC(userId + contentHash) をキーにし、
+      // サーバーに内容を一切保存せず「同一ユーザー・同一内容の起票は 10 秒に 1 回まで」を強制する。
+      // period は 10/60 しか選べない（旧サーバー実装の 30 秒窓とは粒度が変わる・stateless-architecture.md §6）。
+      "name": "ISSUE_DUPLICATE_SUBMISSION_LIMIT",
+      "namespace_id": "1003",
+      "simple": { "limit": 1, "period": 10 }
+    },
+    {
+      // E2E 専用の緩い上限（`ISSUE_RATE_LIMIT_RELAXED_ENABLED=1` のときだけ使う）。単一モックユーザーが
+      // 複数 spec で同一内容（例: マジック文字列 `__mock_422__`）を短時間に繰り返し送るため、本番の
+      // 10 秒窓のままだと無関係なテストが 429 で落ちる。本番では参照されない。
+      "name": "ISSUE_DUPLICATE_SUBMISSION_LIMIT_RELAXED",
+      "namespace_id": "1004",
+      "simple": { "limit": 1000, "period": 10 }
     }
   ],
   // Workers Logs（既定は有効・サンプリング 100%・invocation log 有効）。未設定のままだと
