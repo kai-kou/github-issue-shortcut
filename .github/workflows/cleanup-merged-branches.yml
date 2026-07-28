@@ -1,0 +1,115 @@
+name: Cleanup merged branches
+
+# マージ済み PR の作業ブランチを削除する手動ワークフロー。
+#
+# なぜ Actions でやるか: Claude Code のクラウドセッションからは ref 削除ができない
+# （git プロキシ・GitHub MCP・REST API 直叩きの 3 経路すべてが塞がっている。
+#  実測と根拠は docs/rules/github-mcp-fallback-patterns.md §3.1）。
+# GitHub Actions は GitHub 側で実行されるためこの制約を受けず、`GITHUB_TOKEN` で削除できる。
+#
+# 既定は dry-run。実際に削除するときだけ dry_run を false にして起動する。
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "true なら削除せず対象一覧のみ出力する（既定 true）"
+        type: boolean
+        default: true
+      extra_branches:
+        description: "PR に紐づかないが削除したいブランチ（カンマ区切り・任意）"
+        type: string
+        default: ""
+
+permissions:
+  contents: write
+  pull-requests: read
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            // workflow_dispatch の inputs は boolean 型でも文字列 'true'/'false' で渡る。
+            // 未指定・想定外の値はすべて dry-run に倒す（誤削除より空振りを選ぶ）。
+            const dryRun = String(context.payload.inputs?.dry_run ?? 'true') !== 'false';
+            const extra = String(context.payload.inputs?.extra_branches ?? '')
+              .split(',').map((s) => s.trim()).filter(Boolean);
+
+            const { owner, repo } = context.repo;
+
+            // 既定ブランチは API から取得する（ハードコードしない）
+            const { data: repoInfo } = await github.rest.repos.get({ owner, repo });
+            const defaultBranch = repoInfo.default_branch;
+
+            // 明示的に守るブランチ。既定ブランチに加えて、履歴上の意味があるものを列挙する。
+            const NEVER_DELETE = new Set([defaultBranch, 'bootstrap-main']);
+
+            const pulls = await github.paginate(github.rest.pulls.list, {
+              owner, repo, state: 'all', per_page: 100,
+            });
+
+            // マージ済み PR の head ブランチ（削除候補）と、オープン PR の head（保護対象）
+            const mergedHeads = new Map(); // branch -> PR number
+            const openHeads = new Set();
+            for (const pr of pulls) {
+              if (pr.head?.repo?.full_name !== `${owner}/${repo}`) continue; // fork からの PR は対象外
+              const ref = pr.head.ref;
+              if (pr.state === 'open') openHeads.add(ref);
+              else if (pr.merged_at && !mergedHeads.has(ref)) mergedHeads.set(ref, pr.number);
+            }
+
+            const branches = await github.paginate(github.rest.repos.listBranches, {
+              owner, repo, per_page: 100,
+            });
+
+            const targets = [];
+            const skipped = [];
+            for (const b of branches) {
+              const reason =
+                NEVER_DELETE.has(b.name) ? '保護対象'
+                : b.protected ? 'protected branch'
+                : openHeads.has(b.name) ? 'オープン PR の head'
+                : mergedHeads.has(b.name) ? null
+                : extra.includes(b.name) ? null
+                : 'マージ済み PR に紐づかない';
+              if (reason) skipped.push({ name: b.name, reason });
+              else targets.push({ name: b.name, sha: b.commit.sha, pr: mergedHeads.get(b.name) ?? null });
+            }
+
+            core.info(`既定ブランチ: ${defaultBranch}`);
+            core.info(`削除対象: ${targets.length} 本 / 残す: ${skipped.length} 本 / dry_run: ${dryRun}`);
+            for (const t of targets) {
+              core.info(`  - ${t.name} (${t.sha.slice(0, 7)}${t.pr ? `, PR #${t.pr}` : ', 追加指定'})`);
+            }
+
+            const failed = [];
+            if (!dryRun) {
+              for (const t of targets) {
+                try {
+                  await github.rest.git.deleteRef({ owner, repo, ref: `heads/${t.name}` });
+                } catch (e) {
+                  failed.push({ name: t.name, error: e.message });
+                  core.warning(`削除失敗: ${t.name} — ${e.message}`);
+                }
+              }
+            }
+
+            // 実行結果をサマリーに残す（復元できるよう SHA を必ず記録する）
+            const lines = [
+              `## Cleanup merged branches`,
+              ``,
+              `- モード: **${dryRun ? 'dry-run（削除していない）' : '実削除'}**`,
+              `- 削除${dryRun ? '対象' : '済み'}: **${targets.length - failed.length} 本**`,
+              failed.length ? `- 失敗: **${failed.length} 本**` : null,
+              `- 残した: ${skipped.length} 本`,
+              ``,
+              `| ブランチ | SHA（復元用） | 紐づく PR |`,
+              `|---|---|---|`,
+              ...targets.map((t) => `| \`${t.name}\` | \`${t.sha}\` | ${t.pr ? `#${t.pr}` : '—'} |`),
+            ].filter((l) => l !== null);
+            await core.summary.addRaw(lines.join('\n')).write();
+
+            if (failed.length) core.setFailed(`${failed.length} 本の削除に失敗した`);
