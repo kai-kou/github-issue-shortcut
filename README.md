@@ -12,9 +12,9 @@ PAT（個人アクセストークン）の発行も管理も不要 — GitHub �
 
 👉 **[アプリを開く](https://github-issue-shortcut.kinamocchi-tech.workers.dev)**
 
-| 起票フォーム | スマート入力（`@` でラベル候補） |
-|---|---|
-| <img src="docs/assets/screenshots/issue-form.png" alt="リポジトリとラベルを選んで Issue を起票する画面" width="280"> | <img src="docs/assets/screenshots/smart-input.png" alt="タイトル欄に @ を打つとラベル候補がインライン表示される画面" width="280"> |
+| 起票フォーム | スマート入力（`@` でラベル候補） | ログイン |
+|---|---|---|
+| <img src="docs/assets/screenshots/issue-form.png" alt="リポジトリとラベルを選んで Issue を起票する画面" width="240"> | <img src="docs/assets/screenshots/smart-input.png" alt="タイトル欄に @ を打つとラベル候補がインライン表示される画面" width="240"> | <img src="docs/assets/screenshots/login.png" alt="GitHub でログインするだけで使い始められるトップ画面" width="240"> |
 
 ## なぜ作ったか
 

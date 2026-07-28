@@ -10,7 +10,7 @@
     "test": "vitest run",
     "e2e": "npm run build && playwright test",
     "test:measure": "npm run e2e -- e2e/kpi.spec.ts",
-    "screenshots": "npm run build && playwright test e2e/screenshots.spec.ts",
+    "screenshots": "npm run build && PW_SCREENSHOTS=1 playwright test e2e/screenshots.spec.ts",
     "cf-typegen": "wrangler types",
     "deploy": "npm run build && wrangler deploy",
     "size": "size-limit"

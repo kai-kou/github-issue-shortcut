@@ -23,7 +23,7 @@ function jsonResponse(status: number, body: unknown, headers: Record<string, str
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json", ...headers } });
 }
 
-function postIssue(cookie: string, input: { repo?: string; title?: string; body?: string } = {}) {
+function postIssue(cookie: string, input: { repo?: string; title?: string; body?: string; labels?: string[] } = {}) {
   return SELF.fetch("https://example.com/api/issues", {
     method: "POST",
     headers: { "Content-Type": "application/json", Cookie: cookie },
@@ -201,6 +201,38 @@ describe("POST /api/issues の同一内容連投抑止 (不正利用対策・PR-
 
     expect((await postIssue(cookieA, { title: "shared content" })).status).toBe(201);
     expect((await postIssue(cookieB, { title: "shared content" })).status).toBe(201);
+  });
+
+  it("blocks a resubmission whose labels are only reordered (labels are a set, not a sequence)", async () => {
+    const cookie = await loginSession();
+    const fetchSpy = vi.fn(async () => jsonResponse(201, { number: 1, html_url: "https://github.com/kai-kou/alpha/issues/1" }));
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const first = await postIssue(cookie, { title: "same content", labels: ["bug", "urgent"] });
+    expect(first.status).toBe(201);
+
+    const second = await postIssue(cookie, { title: "same content", labels: ["urgent", "bug"] });
+    expect(second.status).toBe(429);
+    const body = (await second.json()) as { error: { code: string } };
+    expect(body.error.code).toBe("duplicate_submission");
+    // ラベルの並び替えだけでは連投抑止を回避できない（GitHub の labels は集合）。
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("blocks a resubmission whose labels merely repeat an already-included label", async () => {
+    const cookie = await loginSession();
+    const fetchSpy = vi.fn(async () => jsonResponse(201, { number: 1, html_url: "https://github.com/kai-kou/alpha/issues/1" }));
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const first = await postIssue(cookie, { title: "same content", labels: ["bug"] });
+    expect(first.status).toBe(201);
+
+    const second = await postIssue(cookie, { title: "same content", labels: ["bug", "bug"] });
+    expect(second.status).toBe(429);
+    const body = (await second.json()) as { error: { code: string } };
+    expect(body.error.code).toBe("duplicate_submission");
+    // 重複ラベルの追加だけでは連投抑止を回避できない。
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
 });
 

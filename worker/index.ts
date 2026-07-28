@@ -195,7 +195,14 @@ async function duplicateSubmissionKey(
   bundle: TokenBundle,
   content: { repo: string; title: string; body: string; labels: string[] },
 ): Promise<string> {
-  const contentHash = await sha256Base64url(JSON.stringify([content.repo, content.title, content.body, content.labels]));
+  // GitHub の labels は集合であり順序・重複に意味を持たない。正規化せずにハッシュ化すると
+  // 同じラベルの並び替えや重複追加だけで別ハッシュになり、連投抑止をラベルの選び直しで
+  // 回避できてしまう（#193 レビュー指摘）。title / body は空白差分も別内容として扱ってよいため
+  // 正規化しない。
+  const normalizedLabels = Array.from(new Set(content.labels)).sort();
+  const contentHash = await sha256Base64url(
+    JSON.stringify([content.repo, content.title, content.body, normalizedLabels]),
+  );
   return hmacSha256Base64url(env.TOKEN_ENCRYPTION_KEY, `issue-duplicate:${bundle.u}:${contentHash}`);
 }
 

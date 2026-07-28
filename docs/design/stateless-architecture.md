@@ -128,6 +128,7 @@ Issue #179 で検討した 3 案のうち、**1（同一内容の連投抑止）
 - **1（採用）**: `HMAC(userId + contentHash)` をキーにした、起票のボリューム制限（`ISSUE_RATE_LIMIT`）とは別目的の Rate Limiting binding（`ISSUE_DUPLICATE_SUBMISSION_LIMIT`・`simple: { limit: 1, period: 10 }`）を追加した（`wrangler.jsonc`）。サーバーに内容は一切保存せず、カウンタだけで「同一ユーザー・同一内容の起票は 10 秒に 1 回まで」を強制する。429 のエラーコードは、既存のクライアント側ガード（`src/issues/submitGuard.ts`）が検出したときと **同じ `duplicate_submission` を再利用する**（新規コードを起こさない）。利用者から見れば「同一内容を連続で送った」という事象は判定の場所（端末 or サーバー）に関わらず同一であり、表示を分ける理由がないため。既存のボリュームレート制限（`rate_limited`）とは意味が異なるので流用しない。i18n の追加は不要（`src/issues/submitError.ts` が既存の `duplicate_submission` 分岐で処理する）。
 - **2（採用）**: `title` / `body` / `labels` の長さ・件数を Worker 側で検証し、GitHub へ転送する前に 400（`invalid_request`。既存の「repo/title 必須」チェックと同じコードを再利用）で弾く（`worker/index.ts`）。上限値は GitHub の実測上限（[dead-claudia/github-limits](https://github.com/dead-claudia/github-limits) を一次情報として 2026-07-28 に確認）に合わせた: title 256 文字・body 65536 文字・labels 100 件・label 名 1 件あたり 50 文字（`src/shortcuts/shortcutsStore.ts` の `SHORTCUT_LABEL_MAX_LENGTH` と同値）。
 - **3（不採用）**: レート制限の実効値（10 件/分）は変更しない。Rate Limiting binding のカウンタがデータセンター単位で実効上限が緩みうる点は既知のトレードオフ（OQ-6）だが、1・2 の対策で「同一内容の連投」という主要な悪用パターンは抑止できるため、実効値の引き下げや GitHub 403 二次制限の検出・停止機構は費用対効果が低いと判断した。必要になれば別 Issue で再検討する。
+- **既知の制約（#193 レビュー指摘）**: Rate Limiting binding にカウンタを解放する API がないため、GitHub 呼び出しが失敗（5xx 等）してもカウンタは消費されたまま戻せない。直後に利用者が正規の再送をすると `duplicate_submission` 429 になるが、この時点で Issue は作成されていない。この構造的制約は実装では解決できないため、UI 文言は「送信済みです」と断定せず「見送りました（再試行を促す）」表現に変更して対応した（`src/i18n/translations.ts` の `duplicateSubmission`）。
 
 ## 7. 動的 manifest（#98）の扱い
 
