@@ -69,8 +69,19 @@ function persist(queue: QueuedIssue[]): void {
   }
 }
 
+/** キューを丸ごと消す。**未送信の起票本文が消える**ため、呼んでよいのはユーザーが明示的に
+ * すべての端末内データの削除を選んだとき（アカウント削除）だけ。ログアウトや別ユーザー検知では
+ * 呼ばない（誤ってログアウトしただけで未送信の入力を失わせないため・#181）。 */
+export function clearOfflineQueue(): void {
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+  } catch {
+    // localStorage 不可でも他の削除は続行する。
+  }
+}
+
 /** オフライン（ネットワーク到達不能）による送信失敗をキューへ積む。`id` は最初の送信試行時に
- * 発行済みの client_request_id を呼び出し側から渡す（SW キューとの重複防止キーを合わせるため・B4-4）。 */
+ * 発行済みの client_request_id を呼び出し側から渡す（再送時に重複防止キーを合わせるため・B4-4）。 */
 export function enqueueOfflineIssue(entry: Omit<QueuedIssue, "queuedAt" | "status">): QueuedIssue[] {
   const queued: QueuedIssue = { ...entry, queuedAt: Date.now(), status: "pending" };
   const next = [...loadOfflineQueue(), queued];

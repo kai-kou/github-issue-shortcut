@@ -107,3 +107,14 @@ export async function claimSubmission(input: SubmissionInput, now: number = Date
 export async function releaseSubmission(input: SubmissionInput): Promise<void> {
   persist(releaseSubmissionRecord(load(), await submissionKey(input)));
 }
+
+/** 送信履歴（内容のハッシュ）を消す。プライバシーポリシーが「送信履歴を削除する」と述べている
+ * 対象のひとつで、ログアウト・別ユーザー検知・アカウント削除で消す（#181）。消しても失われるのは
+ * 30 秒窓の重複判定材料だけで、起票内容そのものではない。 */
+export function clearSubmissions(): void {
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+  } catch {
+    // localStorage 不可でも他の削除は続行する。
+  }
+}
