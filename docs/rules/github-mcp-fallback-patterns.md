@@ -241,6 +241,22 @@ git push -u origin <branch>                                           # ✅（pu
 `gh repo clone` は内部で API を叩くため **クラウドでは失敗する**。リポジトリ取得は
 `git clone https://github.com/...`（認証はプロキシが付与）を使う。
 
+### 3.1 🔴 ブランチ（remote ref）の削除はクラウドから不可能（2026-07-28 実測・#189）
+
+**3 経路すべてが塞がっている。代替手段は存在しないため、探し続けずオーナー作業として上げる。**
+
+| 経路 | 結果 | 根拠 |
+|---|---|---|
+| `git push origin --delete <branch>` | ❌ `RPC failed; HTTP 403` | 公式ドキュメントが git プロキシの許可操作を「clone / fetch / PR 操作 / **現在の作業ブランチへの push**」と明記しており、ref 削除は含まれない（[claude-code-on-the-web](https://code.claude.com/docs/en/claude-code-on-the-web)「GitHub proxy」節） |
+| `mcp__github__*` | ❌ ツールが存在しない | `github/github-mcp-server` のソース（`pkg/github/repositories.go` / `git.go`）に `delete_branch` / `delete_ref` 相当は未実装。全 toolset のドキュメントに "delete" の語が出現しない（`delete_file` は「ファイルを削除するコミットを作る」別物） |
+| REST API 直叩き（`curl -X DELETE .../git/refs/heads/<branch>`） | ❌ 403 | プロキシが `{"message":"Write access to this GitHub API path is not permitted through this proxy."}` を返す。**GET は 200 で通る**（プロキシが資格情報を代理注入している）ため、認証の問題ではなく **API パス単位の書き込み制限** |
+
+**切り分けの決め手**: 新規ブランチの push は成功し、削除だけが失敗する。GET は通り、書き込み系 API パスだけが弾かれる。したがって GitHub 側の権限不足ではなく、**セッション環境の意図的なポリシー**。
+
+**やってはいけないこと**: 403 を回避しようとして認証ヘッダ・トークン環境変数を探る、`add_repo` で権限を取り直す等の迂回（実際に発生し、ハーネスのセキュリティ警告が出た）。`/root/.ccr/README.md` も「403/407 はポリシー拒否なので retry / route around せず報告せよ」と明記している。
+
+**正しい動線**: 削除対象の一覧（ブランチ名・tip SHA・紐づく PR 番号）を Issue に記録し、オーナーがローカル（`gh` がフル機能で動く）または GitHub の Branches 画面から削除する。マージ済み判定（対象が失われる作業を含まないこと）まではクラウドから機械的に検証できるので、そこまでは自律実行してよい。
+
 ## 4. Python スクリプト・フックからの GitHub アクセス
 
 フック・`tools/*.py`・シェルスクリプトの内部からは MCP を呼べない（§2.5）。したがって
