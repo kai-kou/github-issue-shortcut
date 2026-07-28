@@ -2,6 +2,11 @@ import { useEffect, useState } from "react";
 import { clearReposCache } from "../repos/reposCache";
 import { clearShortcuts } from "../shortcuts/shortcutsStore";
 import { clearAllCachedLabels } from "../issues/repoLabelsCache";
+import { clearRecentRepos } from "../repos/recentRepos";
+import { clearSubmissions } from "../issues/submitGuard";
+import { clearSentRequestIds } from "../issues/sentRequestIds";
+import { clearDraft } from "../issues/draft";
+import { clearOfflineQueue } from "../issues/offlineQueue";
 import { clearAuthCache, loadAuthCache, saveAuthCache } from "./authCache";
 import { apiFetch } from "./apiFetch";
 
@@ -32,12 +37,39 @@ async function isSessionExpiry(res: Response): Promise<boolean> {
 /** ログイン済みユーザーが GitHub App を 1 件以上インストール済みか（A2-1・FR-4）。未確定は null。 */
 export type InstallState = boolean | null;
 
-/** ローカルに残る他ユーザー由来の SWR キャッシュ（認証状態/リポジトリ/ショートカット/ラベル）を一括消去する（#101/#102/#119）。 */
+/**
+ * 前の利用者に紐づく端末内データのうち、**失っても起票内容が消えないもの** を一括消去する
+ * （#101/#102/#119/#181）。ログアウト・確定した未ログイン・別ユーザー検知の 3 経路から呼ぶ。
+ *
+ * 対象: 認証状態 / リポジトリ一覧 / ショートカット設定 / ラベルの各 SWR キャッシュに加えて、
+ * 最近使用したリポジトリ（**private リポジトリ名を含む**）と送信履歴（内容ハッシュ・
+ * client_request_id）。いずれも共有端末で次の利用者に見えてはいけない、または
+ * プライバシーポリシーが「削除する」と述べている対象。
+ *
+ * **含めないもの**: 下書き（`draft`）と未送信のオフラインキュー（`offline-queue`）。これらは
+ * 未送信の入力そのもので、誤ってログアウトしただけで失わせてはいけない（ミッションの
+ * 「送信失敗時に入力内容を失わない」が優先）。全消しは `clearAllLocalUserData()` が担う。
+ */
 export function clearAllUserCaches() {
   clearAuthCache();
   clearReposCache();
   clearShortcuts();
   clearAllCachedLabels();
+  clearRecentRepos();
+  clearSubmissions();
+  // IndexedDB は非同期だが、呼び出し側（プライバシーガード）は完了を待つ必要がない。
+  void clearSentRequestIds();
+}
+
+/**
+ * 端末内に残る利用者データを **未送信の下書き・オフラインキューまで含めて** 全消去する（#181）。
+ * ユーザーが明示的に「アカウント削除」を選んだときだけ呼ぶ（削除される内容は確認 UI で明示する）。
+ * UI 言語（`issue-shortcut:locale`）は個人データではないため残す。
+ */
+export function clearAllLocalUserData() {
+  clearAllUserCaches();
+  clearDraft();
+  clearOfflineQueue();
 }
 
 export interface AuthStateResult {

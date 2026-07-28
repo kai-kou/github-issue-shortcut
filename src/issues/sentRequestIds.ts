@@ -131,6 +131,24 @@ export async function markRequestIdSent(id: string, now: number = Date.now()): P
   }
 }
 
+/** 端末内の送信済み記録（client_request_id とその時刻）をデータベースごと消す。
+ * プライバシーポリシーが「送信履歴を削除する」と述べている対象のひとつ（#181）。
+ * 消えるのは重複判定の材料だけで、起票内容そのものは含まれない。 */
+export function clearSentRequestIds(): Promise<void> {
+  return new Promise((resolve) => {
+    try {
+      const request = indexedDB.deleteDatabase(DB_NAME);
+      // 他タブが DB を開いたままだと blocked になる。削除を待ち続けても仕方がないので、
+      // どの結末でも resolve する（削除できなくても残るのは 26 時間窓の重複判定材料だけ）。
+      request.onsuccess = () => resolve();
+      request.onerror = () => resolve();
+      request.onblocked = () => resolve();
+    } catch {
+      resolve();
+    }
+  });
+}
+
 /** 送信が失敗したときに呼ぶ（予約を残すと、正当な再送が待たされてしまう）。 */
 export async function releaseRequestId(id: string): Promise<void> {
   let db: IDBDatabase | undefined;

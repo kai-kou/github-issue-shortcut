@@ -7,7 +7,7 @@ import { ShortcutList } from "./shortcuts/ShortcutList";
 import { LanguageProvider, useLanguage } from "./i18n/LanguageContext";
 import { LanguageSwitcher } from "./i18n/LanguageSwitcher";
 import { RepoPicker, type RepoPickerHandle } from "./repos/RepoPicker";
-import { useAuthState, clearAllUserCaches, type AuthState } from "./auth/useAuthState";
+import { useAuthState, clearAllLocalUserData, type AuthState } from "./auth/useAuthState";
 import { NavDrawer } from "./nav/NavDrawer";
 import {
   consumePendingRedirect,
@@ -177,9 +177,10 @@ function HomeView({ prefill, pendingRedirectTarget }: HomeViewProps) {
         auth={effectiveAuth}
         onLogout={logout}
         onAccountDeleted={() => {
-          // 別ユーザーが同一端末で再ログインした際に古い一覧が残らないよう SWR キャッシュを全消去する
-          // （#101・リポジトリ/ショートカット/ラベル。旧 AuthPanel からの回帰防止）。
-          clearAllUserCaches();
+          // アカウント削除では端末内データを **未送信の下書き・オフラインキューまで含めて** 全消去する
+          // （#181・プライバシーポリシーの「端末内に保存されたデータを即時に削除」と一致させる。
+          // 削除される範囲は確認 UI で明示済み）。SWR キャッシュの消去（#101）も内包する。
+          clearAllLocalUserData();
           setAccountDeleted(true);
           setMenuOpen(false);
         }}

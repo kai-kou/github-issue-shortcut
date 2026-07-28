@@ -195,7 +195,7 @@ export const translations = {
     },
     account: {
       deleteButton: "アカウント削除",
-      confirmMessage: "この端末に保存されたデータ（ログイン情報・ショートカット設定・キャッシュ）を完全に削除します。よろしいですか？",
+      confirmMessage: "この端末に保存されたデータを完全に削除します。ログイン情報・ショートカット設定・最近使ったリポジトリ・送信履歴・各種キャッシュに加えて、未送信の下書きとオフラインキュー（まだ GitHub に届いていない起票）も削除されます。よろしいですか？",
       confirmButton: "削除する",
       cancelButton: "キャンセル",
       error: "アカウント削除に失敗しました。もう一度お試しください。",
@@ -400,7 +400,7 @@ export const translations = {
           heading: "6. 削除方法",
           blocks: [
             {
-              p: "アプリ内のアカウント削除機能により、端末内に保存されたデータ（トークン Cookie・ショートカット設定・送信履歴・各種キャッシュ）を即時に削除し、GitHub 側のアクセストークンも失効させます。本アプリのサーバーには削除すべきお客様のデータがそもそも保存されていません。あわせて GitHub 側の連携解除（本アプリの GitHub App 認可の取り消し）の手順を案内します。",
+              p: "アプリ内のアカウント削除機能により、端末内に保存されたデータ（トークン Cookie・ショートカット設定・最近使ったリポジトリ・送信履歴・各種キャッシュ・未送信の下書き・オフラインキュー）を即時に削除し、GitHub 側のアクセストークンも失効させます。本アプリのサーバーには削除すべきお客様のデータがそもそも保存されていません。あわせて GitHub 側の連携解除（本アプリの GitHub App 認可の取り消し）の手順を案内します。なお **ログアウト** では、まだ送信できていない下書き・オフラインキューを失わないよう、これらは端末内に残します（ログイン情報・最近使ったリポジトリ・送信履歴・各種キャッシュは削除されます）。UI の表示言語の設定も残ります。",
             },
           ],
         },
@@ -451,7 +451,7 @@ export const translations = {
     },
     account: {
       deleteButton: "Delete account",
-      confirmMessage: "This permanently deletes the data stored on this device (login info, shortcut settings, caches). Are you sure?",
+      confirmMessage: "This permanently deletes the data stored on this device: login info, shortcut settings, recently used repositories, submission history, and caches — plus any unsent drafts and queued issues that have not reached GitHub yet. Are you sure?",
       confirmButton: "Delete",
       cancelButton: "Cancel",
       error: "Failed to delete account. Please try again.",
@@ -656,7 +656,7 @@ export const translations = {
           heading: "6. How to Delete Your Data",
           blocks: [
             {
-              p: "The in-app account deletion feature immediately deletes the data stored on your device (the token cookie, shortcut settings, submission history, and caches) and revokes your access token at GitHub. There is no data of yours on the App's server to delete in the first place. It also guides you through revoking the App's GitHub authorization.",
+              p: "The in-app account deletion feature immediately deletes the data stored on your device (the token cookie, shortcut settings, recently used repositories, submission history, caches, unsent drafts, and the offline queue) and revokes your access token at GitHub. There is no data of yours on the App's server to delete in the first place. It also guides you through revoking the App's GitHub authorization. Note that **logging out** keeps unsent drafts and queued issues on your device so that you do not lose work that has not been submitted yet; login info, recently used repositories, submission history, and caches are removed. Your UI language preference is also kept.",
             },
           ],
         },
