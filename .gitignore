@@ -14,6 +14,9 @@ playwright-report/
 .DS_Store
 
 # コスト telemetry（ローカル計測は継続・公開しない）
+# 本リポジトリは public。運営者個人の Claude API 利用実額を公開しないため、以下は追跡しない。
+# 過去分は 2026-07-28 に git 履歴から除去済み（#189・経緯は docs/rules/token-optimization-rules.md）。
+# 同種の実額ログを再びコミットしないこと（集計が必要なら丸めた指標を別ファイルに置く）。
 content/pipeline-state/cost_log.jsonl
 content/pipeline-state/daily_cost_stats.json
 content/pipeline-state/.cost_telemetry_pr_date
