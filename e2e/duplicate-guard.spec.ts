@@ -50,7 +50,7 @@ test.describe("二重送信防止（モック GitHub・モバイルエミュレ�
     await page.reload();
     await submitIssue(page, "同じ内容の起票");
 
-    await expect(page.getByText(/直前に送信済み|already submitted/)).toBeVisible();
+    await expect(page.getByText(/二重作成を防ぐために見送り|to prevent a duplicate/)).toBeVisible();
     const created = await (await request.get(`${MOCK_GITHUB_URL}/mock/issue-count`)).json();
     expect(created, "二重送信は GitHub まで到達しない").toEqual({ count: 1 });
   });
