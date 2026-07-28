@@ -14,6 +14,17 @@ import { mkdirSync } from "node:fs";
 const MOCK_GITHUB_URL = "http://localhost:8788";
 const OUT_DIR = "docs/assets/screenshots";
 
+// モックユーザーの avatar_url（http://localhost:8788/avatar.png・e2e/mock-github.mjs 冒頭コメント）は
+// egress 制限のある CI で接続待ちが起きないよう意図的に 404 を返す設計になっている。E2E の他 spec は
+// <img> の読み込み失敗を気にしないため無害だが、撮影用スクリーンショットではヘッダーのアバターが
+// 「壊れた画像」アイコンで写り込んでしまう。mock-github.mjs 自体は変更せず（他 spec への影響ゼロ）、
+// 本ファイル内だけ page.route() でこのリクエストを小さな SVG アバターに差し替える。
+const AVATAR_SVG =
+  '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64">' +
+  '<rect width="64" height="64" rx="32" fill="#2ea44f"/>' +
+  '<text x="32" y="43" font-size="28" text-anchor="middle" fill="#ffffff" ' +
+  'font-family="Helvetica, Arial, sans-serif">e</text></svg>';
+
 // README 訪問者向けの見せ方を意識し、モバイル実機に近い解像度で撮る。
 // devices["Pixel 7"] は deviceScaleFactor:2.625・viewport 412x915 だが、PNG 容量を抑えるため
 // このスペックでは軽量な 390x844 @2x（iPhone 12/13 相当の論理サイズ）に上書きする。
@@ -34,6 +45,12 @@ async function login(page: Page) {
 }
 
 test.describe("README 掲載用スクリーンショット（モック GitHub・モバイル解像度）", () => {
+  test.beforeEach(async ({ page }) => {
+    await page.route("**/avatar.png", (route) =>
+      route.fulfill({ contentType: "image/svg+xml", body: AVATAR_SVG }),
+    );
+  });
+
   test.afterEach(async ({ request }) => {
     await request.post(`${MOCK_GITHUB_URL}/mock/config`, { data: { installations: [], labels: [] } });
   });
@@ -43,7 +60,17 @@ test.describe("README 掲載用スクリーンショット（モック GitHub・
     await expect(page.getByRole("link", { name: /GitHub でログイン|Sign in with GitHub/ })).toBeVisible();
     // フォント読み込み・初回描画の揺れを避けるため一呼吸置く。
     await page.waitForTimeout(200);
-    await page.screenshot({ path: `${OUT_DIR}/login.png` });
+    // このページは可視コンテンツが上部だけで、下は余白（README のファーストスクリーン向けに
+    // フルページ撮影すると間延びする）。コンテンツ最下部（API ステータス行）に合わせてクリップする。
+    const apiStatus = page.locator(".api-status");
+    await expect(apiStatus).toBeVisible();
+    const box = await apiStatus.boundingBox();
+    const viewport = page.viewportSize();
+    const height = box ? Math.ceil(box.y + box.height) + 24 : (viewport?.height ?? 844);
+    await page.screenshot({
+      path: `${OUT_DIR}/login.png`,
+      clip: { x: 0, y: 0, width: viewport?.width ?? 390, height: Math.min(height, viewport?.height ?? 844) },
+    });
   });
 
   test("issue-form: リポジトリ選択済み・タイトル入力済み・ラベル選択済みの起票フォーム", async ({ page, request }) => {
