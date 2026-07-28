@@ -8,6 +8,12 @@ name: Cleanup merged branches
 # GitHub Actions は GitHub 側で実行されるためこの制約を受けず、`GITHUB_TOKEN` で削除できる。
 #
 # 既定は dry-run。実際に削除するときだけ dry_run を false にして起動する。
+#
+# 起動方法は 2 つ:
+#   1. Actions タブから手動起動（workflow_dispatch・人間向け）
+#   2. `.github/cleanup-request.json` を書き換えて main へ push（Claude セッション向け）
+#      Claude Code のクラウドセッションは workflow_dispatch API も 403 で叩けない
+#      （MCP の GitHub App に actions: write がない）ため、push で起動する経路を用意している。
 
 on:
   workflow_dispatch:
@@ -20,6 +26,9 @@ on:
         description: "既定の条件から外れるが削除したいブランチ（カンマ区切り・任意）"
         type: string
         default: ""
+  push:
+    branches: [main]
+    paths: [".github/cleanup-request.json"]
 
 permissions:
   contents: write
@@ -29,14 +38,35 @@ jobs:
   cleanup:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v5
       - uses: actions/github-script@v8
         with:
           script: |
-            // workflow_dispatch の inputs は boolean 型でも文字列 'true'/'false' で渡る。
-            // 未指定・想定外の値はすべて dry-run に倒す（誤削除より空振りを選ぶ）。
-            const dryRun = String(context.payload.inputs?.dry_run ?? 'true') !== 'false';
+            const fs = require('fs');
+
+            // 起動経路ごとにパラメータの取り方が変わる。
+            // - workflow_dispatch: inputs（boolean 型でも文字列 'true'/'false' で渡る）
+            // - push: .github/cleanup-request.json の中身
+            // どちらでも、未指定・想定外の値はすべて dry-run に倒す（誤削除より空振りを選ぶ）。
+            let rawDryRun = context.payload.inputs?.dry_run;
+            let rawExtra = context.payload.inputs?.extra_branches;
+            if (context.eventName === 'push') {
+              try {
+                const req = JSON.parse(fs.readFileSync('.github/cleanup-request.json', 'utf8'));
+                rawDryRun = req.dry_run;
+                rawExtra = Array.isArray(req.extra_branches)
+                  ? req.extra_branches.join(',')
+                  : req.extra_branches;
+                core.info(`リクエストファイルを読み込んだ: ${JSON.stringify(req)}`);
+              } catch (e) {
+                core.warning(`リクエストファイルを読めなかったため dry-run で続行する: ${e.message}`);
+                rawDryRun = true;
+                rawExtra = '';
+              }
+            }
+            const dryRun = String(rawDryRun ?? 'true') !== 'false';
             const extra = new Set(
-              String(context.payload.inputs?.extra_branches ?? '')
+              String(rawExtra ?? '')
                 .split(',').map((s) => s.trim()).filter(Boolean),
             );
 

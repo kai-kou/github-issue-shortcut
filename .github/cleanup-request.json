@@ -1,0 +1,5 @@
+{
+  "_comment": "このファイルを main へ push すると Cleanup merged branches ワークフローが走る。dry_run: true なら削除せず対象一覧だけを Job Summary に出す。実際に削除するときだけ false にする。extra_branches はマージ済み PR に紐づかないが削除したいブランチ（配列またはカンマ区切り文字列）。",
+  "dry_run": true,
+  "extra_branches": []
+}
