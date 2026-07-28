@@ -378,6 +378,9 @@ export const translations = {
             {
               p: "本アプリのサーバー（Cloudflare Workers）は、お客様の個人データを保存しません。GitHub のトークンは AES-256-GCM で暗号化した Cookie としてお使いの端末に保存され（JavaScript からは読み取れない HttpOnly Cookie）、サーバーはリクエストのたびに復号して使うだけです。ショートカット設定・下書き・各種キャッシュも、お使いの端末内（ブラウザのローカルストレージ）にのみ保存されます。二重起票の防止に使う送信履歴もお使いの端末内にのみ保存されます。レート制限には Cloudflare のカウンタを使用し、GitHub のユーザー ID をハッシュ化した値だけを鍵として渡します（ユーザー ID そのものや送信内容は渡しません）。",
             },
+            {
+              p: "本アプリは Cloudflare, Inc.（米国に本社を置く事業者）のインフラを利用しており、リクエストの処理は日本国外のデータセンターでも行われることがあります。前述のとおりサーバー側に個人データを保存しないため、国外に保管されるお客様のデータはありませんが、処理の過程では通信内容が国外の設備を経由します。米国における個人情報の保護に関する制度については、個人情報保護委員会が公表している外国制度の調査資料（https://www.ppc.go.jp/personalinfo/legal/kaiseihogohou/#gaikoku ）をご参照ください。",
+            },
           ],
         },
         {
@@ -633,6 +636,9 @@ export const translations = {
           blocks: [
             {
               p: "The App's server (Cloudflare Workers) does not store your personal data. GitHub tokens live on your device inside a cookie encrypted with AES-256-GCM (an HttpOnly cookie that JavaScript cannot read); the server merely decrypts it for the duration of each request. Shortcut settings, drafts, and caches are likewise stored only on your device (browser local storage). The submission history used to prevent duplicate submissions is likewise kept only on your device. Rate limiting relies on a Cloudflare-managed counter, to which we pass only a hashed form of your GitHub user ID (never the ID itself or the submitted content).",
+            },
+            {
+              p: "The App runs on infrastructure operated by Cloudflare, Inc., a company headquartered in the United States, and your requests may be processed in data centres outside Japan. Because the server stores no personal data, as described above, none of your data is held abroad; however, the content of your requests does pass through equipment located outside Japan while it is being processed. For information about the personal data protection regime in the United States, please refer to the survey materials published by Japan's Personal Information Protection Commission (https://www.ppc.go.jp/personalinfo/legal/kaiseihogohou/#gaikoku ).",
             },
           ],
         },
