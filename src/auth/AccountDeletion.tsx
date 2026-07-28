@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useLanguage } from "../i18n/LanguageContext";
-import { clearAllUserCaches } from "./useAuthState";
+import { clearAllLocalUserData } from "./useAuthState";
 import { apiFetch } from "./apiFetch";
 
 type DeleteState = "idle" | "confirming" | "deleting" | "error";
@@ -19,10 +19,12 @@ export function AccountDeletion({ onDeleted }: { onDeleted: () => void }) {
     try {
       const res = await apiFetch("/api/account", { method: "DELETE" });
       if (!res.ok) throw new Error(`unexpected status: ${res.status}`);
-      // 端末内に残るデータ（ショートカット設定・認証/リポジトリ/ラベルのキャッシュ）を消す。
+      // 端末内に残るデータを **未送信の下書き・オフラインキューまで含めて** 全消去する（#181）。
       // ショートカット設定は P1 で正本が localStorage へ移っており、削除の主役はこちら側にある
       // （サーバー側は GitHub トークンの失効と Cookie 破棄を /api/account が行う。P3 以降サーバーに削除対象は無い）。
-      clearAllUserCaches();
+      // 呼び出し側のハンドラではなくここで消す: この UI が「未送信分も削除されます」と表示している以上、
+      // 実際に消す責任も同じ場所に置かないと、別画面へ再利用したときに表示だけが残る。
+      clearAllLocalUserData();
       onDeleted();
     } catch {
       setState("error");

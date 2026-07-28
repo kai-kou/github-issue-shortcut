@@ -13,6 +13,16 @@ export function loadRecentRepos(): string[] {
   }
 }
 
+/** 最近使用の履歴を消す。private リポジトリ名を含むため、ログアウト・別ユーザー検知・
+ * アカウント削除で必ず消す（共有端末で次の利用者に前の利用者のリポジトリ名が見えないように・#181）。 */
+export function clearRecentRepos(): void {
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+  } catch {
+    // localStorage 不可でも他の削除は続行する（呼び出し側は例外を期待しない）。
+  }
+}
+
 /** リポジトリの選択を最近使用の先頭に記録する。既存の同名エントリは重複排除する。 */
 export function recordRecentRepo(fullName: string): string[] {
   const next = [fullName, ...loadRecentRepos().filter((n) => n !== fullName)].slice(0, MAX_RECENT);
