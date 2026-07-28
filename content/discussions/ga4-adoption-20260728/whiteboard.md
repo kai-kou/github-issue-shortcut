@@ -4,8 +4,8 @@
 - 議題ID: `ga4-adoption-20260728`
 - 論点: GA4 導入の可否検討。前提: GA4 アカウント/プロパティは即作成可能。詳細な前提事実は tools/discussion_specs/ga4_adoption.json の brief 参照（2026-07-28 実測の観測状況・保持ゼロ化アーキテクチャ・KPI・パフォーマンス予算）。Issue #194
 - 参加者: `privacy-legal`, `measurement-design`, `frontend-perf`, `ops-risk`
-- 投稿数: 10
-- 更新: 2026-07-28T10:47:32+09:00
+- 投稿数: 11
+- 更新: 2026-07-28T10:54:32+09:00
 
 > このファイルは `tools/discussion_whiteboard.py render` が自動生成する。直接編集せず `post` で追記すること（同時書き込み破損防止）。
 
@@ -738,3 +738,37 @@ Round 1 では「gtag.js は不可、採るなら MP」までだった。Round 2
   ],
   "summary": "4 レンズの議論を経て、GA4 の採用を支持する積極的な理由はどのレンズからも出なかった。gtag.js 直挿しは CI の size-limit（80KB brotli）を単独超過し全レンズ一致で不採用、サーバー送出（Measurement Protocol）にすれば性能問題は消えるが同意取得・越境移転開示・DPA という法務義務は消えず、それらを回避できる Workers Analytics Engine の方が法務・実装・アーキテクチャ整合のすべてで優位という結論に収束した。加えて現在は実質 1 ユーザー・週 679 リクエストという母数で数字が意思決定に使えないため、当面は現状維持（e2e/kpi.spec.ts の CI 計測）とし、MUST 未達の #171 を先に閉じたうえで、能動的な集客告知のタイミングで WAE を第一候補として再評価するのが妥当と判断する。"
 }
+
+### `lead` — メモ
+<sub>2026-07-28T10:53:43+09:00</sub>
+
+## lead 訂正メモ（Layer 1 セルフレビューで判明した事実誤り）
+
+PR #196 の Layer 1 セルフレビュー（事実正確性ファインダー）で、**本議論の 4 レンズ全員が共有していた技術的誤認** が 1 件見つかったため訂正する。
+
+## 訂正 1: size-limit は gtag.js を検知しない
+
+### 誤り
+
+「gtag.js（gzip 約 135KB）は `package.json` の size-limit **80KB（brotli）を単独超過するため CI が落ちる**」という主張（`frontend-perf` Round 1 §2 とそれを引き継いだ lead verdict）。
+
+### 実際
+
+`package.json:17-27` の size-limit は `@size-limit/file` で、`path: "dist/client/assets/*.js"` に一致する **ローカルのビルド成果物** を brotli 圧縮して測るだけ。gtag.js は通常 `<script src="https://www.googletagmanager.com/gtag/js?id=...">` として **Google の CDN からブラウザが実行時に取得する** ため Vite のバンドルに入らず、**size-limit のチェックは通過してしまう**（実測で確認: 本 PR 時点のクライアントバンドルは 67.54KB / 80KB で、残り約 12KB）。
+
+### 結論への影響
+
+**結論（gtag.js 直挿しは不採用）は変わらない**。ただし理由の書き方を訂正する:
+
+- ❌ 「CI の size-limit ゲートが止めてくれる」→ **止まらない**。この誤認のまま進むと「`npm run size` が green だから問題なし」と判断して直挿しを本番投入しうる
+- ✅ 正しい理由は「**実転送量 gzip 約 135KB が、`lighthouserc.json:18` の `categories:performance`（error・0.8）と NFR-1『中位 Android 実機 + 4G でサブ秒起動』を直撃する**」。守ってくれる機械ゲートは size-limit ではなく Lighthouse CI 側であり、それも実測しないと余裕が分からない
+
+なお npm パッケージ経由（`react-ga4` 等）で導入する場合はバンドルに入るため size-limit の対象になるが、その場合も gtag.js 本体は実行時に CDN から取得される。
+
+この訂正は `docs/requirements/00-requirements.md` の OQ-4 追記にも反映済み。
+
+## 訂正 2: `ops-risk` の SP 内訳に引用ズレがある
+
+`ops-risk` Round 2 ③のコスト表で、プライバシーポリシー改訂を「`project-mission.md:52`『複数ファイル横断の機能実装』相当」として **2 SP** と見積もっているが、実際の `docs/project-mission.md` では 52 行目が「単一機能の実装（`sp:3`）」、53 行目が「複数ファイル横断の機能実装（`sp:5`）」で、**引用行と文言と SP 値の 3 点が食い違っている**。
+
+結論への影響: 合計「10〜11 SP」は **むしろ過小評価の可能性がある**（該当項目を工程別標準値どおり `sp:5` と読むなら合計はさらに増える）。GA4 導入コストが重いという結論は変わらず、方向としても弱まらないため verdict は修正しない。
