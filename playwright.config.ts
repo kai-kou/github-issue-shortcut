@@ -10,6 +10,11 @@ const TOKEN_KEY = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
 export default defineConfig({
   testDir: "./e2e",
   testMatch: "**/*.spec.ts",
+  // README 掲載用スクリーンショットの撮影シーケンス（e2e/screenshots.spec.ts）は通常の E2E
+  // （`npm run e2e` / CI の e2e ジョブ）から除外する。含めると実行のたびに
+  // docs/assets/screenshots/*.png が上書きされ、無関係な PR に画像差分が混入する（#193 レビュー指摘）。
+  // `npm run screenshots` は PW_SCREENSHOTS=1 を立てて明示的に対象へ戻す。
+  testIgnore: process.env.PW_SCREENSHOTS === "1" ? [] : ["**/screenshots.spec.ts"],
   fullyParallel: false,
   workers: 1,
   timeout: 30_000,

@@ -9,6 +9,7 @@ import {
   openVersioned,
   randomToken,
   sealVersioned,
+  sha256Base64url,
 } from "./crypto";
 import {
   buildAuthorizeUrl,
@@ -47,12 +48,39 @@ const PREAUTH_TTL = 10 * 60;
 const ISSUE_RATE_LIMIT_WINDOW_SECONDS = 60;
 
 /**
+ * 同一内容の連投抑止（不正利用対策・PR-4 拡張・#179）の Retry-After に使うウィンドウ長（秒）。
+ * Rate Limiting binding の period（10/60 のみ選択可）と揃える。
+ */
+const DUPLICATE_SUBMISSION_WINDOW_SECONDS = 10;
+
+/**
+ * 入力長・件数の上限（不正利用対策・#179）。GitHub の実測上限（dead-claudia/github-limits、
+ * 2026-07-28 に一次情報を確認）に合わせ、超過分は GitHub へ転送する前にここで 400 にして弾く
+ * （従来は巨大ペイロードがそのまま GitHub へ転送され、GitHub 側 422 になるまで Worker CPU と
+ * レート制限枠を消費していた）。label の 1 件あたり上限（50 文字）は GitHub の実測上限であり、
+ * `src/shortcuts/shortcutsStore.ts` の `SHORTCUT_LABEL_MAX_LENGTH` と同じ値に揃えている。
+ */
+const ISSUE_TITLE_MAX_LENGTH = 256;
+const ISSUE_BODY_MAX_LENGTH = 65536;
+const ISSUE_LABEL_MAX_LENGTH = 50;
+const ISSUE_LABELS_MAX_COUNT = 100;
+
+/**
  * 使用するレート制限バインディングを選ぶ。既定は本番の上限（10 件/分）で、E2E の
  * wrangler dev 起動時（`ISSUE_RATE_LIMIT_RELAXED_ENABLED=1`）だけ緩い上限へ切り替える
  * （単一モックユーザーを全 spec が使い回すため・playwright.config.ts）。
  */
 function resolveIssueRateLimiter(env: Env): RateLimit {
   return env.ISSUE_RATE_LIMIT_RELAXED_ENABLED === "1" ? env.ISSUE_RATE_LIMIT_RELAXED : env.ISSUE_RATE_LIMIT;
+}
+
+/**
+ * 同一内容の連投抑止バインディングを選ぶ（`resolveIssueRateLimiter` と同じ切り替え方針）。
+ */
+function resolveIssueDuplicateLimiter(env: Env): RateLimit {
+  return env.ISSUE_RATE_LIMIT_RELAXED_ENABLED === "1"
+    ? env.ISSUE_DUPLICATE_SUBMISSION_LIMIT_RELAXED
+    : env.ISSUE_DUPLICATE_SUBMISSION_LIMIT;
 }
 
 const PREAUTH_COOKIE = "__Host-preauth";
@@ -156,6 +184,28 @@ function rateLimitKey(env: Env, bundle: TokenBundle): Promise<string> {
   return hmacSha256Base64url(env.TOKEN_ENCRYPTION_KEY, `issue-rate-limit:${bundle.u}`);
 }
 
+/**
+ * 同一内容の連投抑止（不正利用対策・PR-4 拡張・#179）のキー。`HMAC(userId + contentHash)` にすることで、
+ * サーバーには内容そのものはおろか無塩ハッシュも渡さず、逆引き不能な鍵だけを Cloudflare 側に渡す
+ * （`rateLimitKey` と同じ仮名化方針）。フィールド境界の曖昧さを避けるため JSON 配列にしてからハッシュ化する
+ * （クライアント側の `src/issues/submitGuard.ts` の `submissionKey` と同じ組み立て方）。
+ */
+async function duplicateSubmissionKey(
+  env: Env,
+  bundle: TokenBundle,
+  content: { repo: string; title: string; body: string; labels: string[] },
+): Promise<string> {
+  // GitHub の labels は集合であり順序・重複に意味を持たない。正規化せずにハッシュ化すると
+  // 同じラベルの並び替えや重複追加だけで別ハッシュになり、連投抑止をラベルの選び直しで
+  // 回避できてしまう（#193 レビュー指摘）。title / body は空白差分も別内容として扱ってよいため
+  // 正規化しない。
+  const normalizedLabels = Array.from(new Set(content.labels)).sort();
+  const contentHash = await sha256Base64url(
+    JSON.stringify([content.repo, content.title, content.body, normalizedLabels]),
+  );
+  return hmacSha256Base64url(env.TOKEN_ENCRYPTION_KEY, `issue-duplicate:${bundle.u}:${contentHash}`);
+}
+
 app.get("/api/health", (c) => c.json({ status: "ok" }));
 
 // GET /api/ready: 本番の設定・プロビジョニングを自己診断する（デプロイ後スモークテスト用）。
@@ -171,13 +221,20 @@ app.get("/api/ready", (c) => {
     // レート制限バインディング（PR-4）の設定漏れは、起票が全て素通りする＝不正利用対策が
     // 効いていない状態になる。500 になるまで気づけないので ready で先に可視化する。
     rateLimiter: typeof c.env.ISSUE_RATE_LIMIT?.limit === "function",
+    // 同一内容の連投抑止バインディング（#179）の設定漏れも同様に、429 になるまで気づけない。
+    duplicateLimiter: typeof c.env.ISSUE_DUPLICATE_SUBMISSION_LIMIT?.limit === "function",
     // E2E 用の緩和フラグ（上限 1000 件/分）が本番 vars に紛れ込むと、上限が実質無効のまま
     // 200 を返してしまう。「効いていない状態」を検知するのがこのチェックの目的なので、
     // 緩和モードで動いていること自体を not-ready として扱う。
     rateLimiterStrict: c.env.ISSUE_RATE_LIMIT_RELAXED_ENABLED !== "1",
   };
   const ready =
-    checks.encryptionKey && checks.keyVersion && checks.clientId && checks.rateLimiter && checks.rateLimiterStrict;
+    checks.encryptionKey &&
+    checks.keyVersion &&
+    checks.clientId &&
+    checks.rateLimiter &&
+    checks.duplicateLimiter &&
+    checks.rateLimiterStrict;
   return c.json({ ready, checks }, ready ? 200 : 503);
 });
 
@@ -405,10 +462,33 @@ app.post("/api/issues", async (c) => {
     return c.json(jsonError("invalid_request", "repo and title are required"), 400);
   }
 
-  // 二重送信防止（FR-24）はサーバーに記録を持たず、端末内（localStorage / IndexedDB）で判定する
-  // （P3・stateless-architecture.md §3）。同一内容の短時間窓・オフラインキュー再送の
-  // client_request_id 窓はどちらも同一端末で完結する事象のため、クライアント側の予約
-  // （src/issues/submitGuard.ts・src/issues/sentRequestIds.ts）で担保する。
+  // 入力長・件数の上限（不正利用対策・#179）。GitHub へ転送する前にここで弾き、GitHub 側 422 に
+  // なるまで Worker CPU とレート制限枠を浪費させない。
+  if (
+    title.length > ISSUE_TITLE_MAX_LENGTH ||
+    body.length > ISSUE_BODY_MAX_LENGTH ||
+    labels.length > ISSUE_LABELS_MAX_COUNT ||
+    labels.some((l) => l.length > ISSUE_LABEL_MAX_LENGTH)
+  ) {
+    return c.json(jsonError("invalid_request", "title, body, or labels exceed the allowed length"), 400);
+  }
+
+  // 二重送信防止（FR-24）の主判定は端末内（localStorage / IndexedDB）で行う（P3・stateless-architecture.md §3）。
+  // クライアント側ガード（src/issues/submitGuard.ts）は仕様として fail-open のため、正規の Cookie を
+  // 持つスクリプトから直接同一内容を反復送信されると、旧実装ではボリュームレート制限の範囲内で
+  // 素通りしていた（#179）。ここでは内容そのものを一切保存せず、Rate Limiting binding のカウンタ
+  // だけで「同一ユーザー・同一内容は 10 秒に 1 回まで」というフロアを敷く。
+  const duplicateLimit = await resolveIssueDuplicateLimiter(c.env).limit({
+    key: await duplicateSubmissionKey(c.env, bundle, { repo, title, body, labels }),
+  });
+  if (!duplicateLimit.success) {
+    c.header("Retry-After", String(DUPLICATE_SUBMISSION_WINDOW_SECONDS));
+    // クライアント側ガードが検出した二重送信と同じ表示コードを使う（#179 決定）。利用者から見れば
+    // 「同一内容を連続で送った」という事象は判定の場所（端末 or サーバー）に関わらず同一であり、
+    // 表示を分ける理由がない。i18n の新規追加は不要（src/issues/submitError.ts が既に処理する）。
+    return c.json(jsonError("duplicate_submission", "this content was already submitted moments ago"), 429);
+  }
+
   try {
     const issue = await createIssue(c.env.GITHUB_API_BASE ?? DEFAULT_API_BASE, bundle.a, repo, { title, body, labels });
     return c.json({ number: issue.number, htmlUrl: issue.htmlUrl }, 201);

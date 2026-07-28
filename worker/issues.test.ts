@@ -23,7 +23,7 @@ function jsonResponse(status: number, body: unknown, headers: Record<string, str
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json", ...headers } });
 }
 
-function postIssue(cookie: string, input: { repo?: string; title?: string; body?: string } = {}) {
+function postIssue(cookie: string, input: { repo?: string; title?: string; body?: string; labels?: string[] } = {}) {
   return SELF.fetch("https://example.com/api/issues", {
     method: "POST",
     headers: { "Content-Type": "application/json", Cookie: cookie },
@@ -163,5 +163,150 @@ describe("POST /api/issues のアプリ側レート制限 (不正利用対策・
     expect((await postIssue(cookieA, { title: "a10" })).status).toBe(429);
     // 別ユーザーは影響を受けない。
     expect((await postIssue(cookieB, { title: "b0" })).status).toBe(201);
+  });
+});
+
+describe("POST /api/issues の同一内容連投抑止 (不正利用対策・PR-4 拡張・#179)", () => {
+  it("blocks an immediate resubmission of identical content with 429 duplicate_submission", async () => {
+    const cookie = await loginSession();
+    const fetchSpy = vi.fn(async () => jsonResponse(201, { number: 1, html_url: "https://github.com/kai-kou/alpha/issues/1" }));
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const first = await postIssue(cookie, { title: "same content" });
+    expect(first.status).toBe(201);
+
+    const second = await postIssue(cookie, { title: "same content" });
+    expect(second.status).toBe(429);
+    expect(Number(second.headers.get("Retry-After"))).toBeGreaterThan(0);
+    const body = (await second.json()) as { error: { code: string } };
+    expect(body.error.code).toBe("duplicate_submission");
+    // 重複はアプリ側で止まり、GitHub へは 1 回しか呼ばれていない。
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not block different content from the same user", async () => {
+    const cookie = await loginSession();
+    const fetchSpy = vi.fn(async () => jsonResponse(201, { number: 1, html_url: "https://github.com/kai-kou/alpha/issues/1" }));
+    vi.stubGlobal("fetch", fetchSpy);
+
+    expect((await postIssue(cookie, { title: "content A" })).status).toBe(201);
+    expect((await postIssue(cookie, { title: "content B" })).status).toBe(201);
+  });
+
+  it("scopes the duplicate check per user (different users may submit identical content)", async () => {
+    const cookieA = await loginSession();
+    const cookieB = await loginSession();
+    const fetchSpy = vi.fn(async () => jsonResponse(201, { number: 1, html_url: "https://github.com/kai-kou/alpha/issues/1" }));
+    vi.stubGlobal("fetch", fetchSpy);
+
+    expect((await postIssue(cookieA, { title: "shared content" })).status).toBe(201);
+    expect((await postIssue(cookieB, { title: "shared content" })).status).toBe(201);
+  });
+
+  it("blocks a resubmission whose labels are only reordered (labels are a set, not a sequence)", async () => {
+    const cookie = await loginSession();
+    const fetchSpy = vi.fn(async () => jsonResponse(201, { number: 1, html_url: "https://github.com/kai-kou/alpha/issues/1" }));
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const first = await postIssue(cookie, { title: "same content", labels: ["bug", "urgent"] });
+    expect(first.status).toBe(201);
+
+    const second = await postIssue(cookie, { title: "same content", labels: ["urgent", "bug"] });
+    expect(second.status).toBe(429);
+    const body = (await second.json()) as { error: { code: string } };
+    expect(body.error.code).toBe("duplicate_submission");
+    // ラベルの並び替えだけでは連投抑止を回避できない（GitHub の labels は集合）。
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("blocks a resubmission whose labels merely repeat an already-included label", async () => {
+    const cookie = await loginSession();
+    const fetchSpy = vi.fn(async () => jsonResponse(201, { number: 1, html_url: "https://github.com/kai-kou/alpha/issues/1" }));
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const first = await postIssue(cookie, { title: "same content", labels: ["bug"] });
+    expect(first.status).toBe(201);
+
+    const second = await postIssue(cookie, { title: "same content", labels: ["bug", "bug"] });
+    expect(second.status).toBe(429);
+    const body = (await second.json()) as { error: { code: string } };
+    expect(body.error.code).toBe("duplicate_submission");
+    // 重複ラベルの追加だけでは連投抑止を回避できない。
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("POST /api/issues の入力長・件数の上限 (不正利用対策・#179)", () => {
+  it("rejects a title over the GitHub limit (256 chars) before calling GitHub", async () => {
+    const cookie = await loginSession();
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const res = await postIssue(cookie, { title: "x".repeat(257) });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: { code: string } };
+    expect(body.error.code).toBe("invalid_request");
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("rejects a body over the GitHub limit (65536 chars)", async () => {
+    const cookie = await loginSession();
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const res = await postIssue(cookie, { body: "x".repeat(65537) });
+    expect(res.status).toBe(400);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("rejects more than 100 labels", async () => {
+    const cookie = await loginSession();
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const res = await SELF.fetch("https://example.com/api/issues", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify({
+        repo: "kai-kou/alpha",
+        title: "x",
+        body: "",
+        labels: Array.from({ length: 101 }, (_, i) => `l${i}`),
+      }),
+    });
+    expect(res.status).toBe(400);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("rejects a label name over the GitHub limit (50 chars)", async () => {
+    const cookie = await loginSession();
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const res = await SELF.fetch("https://example.com/api/issues", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify({ repo: "kai-kou/alpha", title: "x", body: "", labels: ["x".repeat(51)] }),
+    });
+    expect(res.status).toBe(400);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("accepts content exactly at the boundary (256/65536/100/50)", async () => {
+    const cookie = await loginSession();
+    const fetchSpy = vi.fn(async () => jsonResponse(201, { number: 1, html_url: "https://github.com/kai-kou/alpha/issues/1" }));
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const res = await SELF.fetch("https://example.com/api/issues", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify({
+        repo: "kai-kou/alpha",
+        title: "x".repeat(256),
+        body: "x".repeat(65536),
+        labels: Array.from({ length: 100 }, () => "l".repeat(50)),
+      }),
+    });
+    expect(res.status).toBe(201);
   });
 });

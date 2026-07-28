@@ -38,6 +38,35 @@ python3 tools/check_pending_pr_reviews.py --actionable-only --json          # �
 
 監査での反映（クローズ・ラベル変更）は成果として Issue コメントに記録する。反映があってもなくても Step 2 の Issue 選定へ進む（監査だけで終了しない）。
 
+### Step 1.6: 本番の使用量チェック（毎回・軽量・NFR-14 の検知実装）
+
+Workers 無料枠（**100,000 requests/日**・UTC 00:00 リセット）に対する当日の消費量を実測する。
+
+> **なぜルーティンでやるのか**: Cloudflare の Notifications には「Workers のリクエスト数が無料枠の X% に達したら通知する」というアラート種別が **存在しない**（`alerting/v3/available_alerts` を全件確認済み。Budget Alert / Billing Usage Alert は金額ベースで、課金の発生しない Free プランでは機能しない・#171 の実測）。枠を超えると **Error 1027 で当日いっぱい全停止** するため、本 Step が現状で唯一の検知手段である。
+
+`mcp__Cloudflare_API__execute` で GraphQL Analytics を叩く（アカウント ID は MCP 側が注入するので `accountId` をそのまま使う）:
+
+```js
+async () => {
+  const now = new Date();
+  const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())).toISOString();
+  const query = `query U($a:String!,$s:Time!,$e:Time!){viewer{accounts(filter:{accountTag:$a}){
+    workersInvocationsAdaptive(limit:100,filter:{datetime_geq:$s,datetime_leq:$e,scriptName:"github-issue-shortcut"})
+    { sum { requests errors } } }}}`;
+  return cloudflare.request({ method: "POST", path: "/graphql",
+    body: { query, variables: { a: accountId, s: start, e: now.toISOString() } } });
+}
+```
+
+| 当日の requests | 判定 | 対処 |
+|---|---|---|
+| 70,000 未満（70%） | 正常 | **記録不要**（no-op で Step 2 へ。毎回の正常報告はしない） |
+| 70,000〜89,999（70〜90%） | Warning | #171 にコメントで実測値を記録し、流入源（Bot・スクレイパー・記事バズ）を調査する |
+| 90,000 以上（90%〜） | Critical | レート制限の強化を検討し、有料プラン移行（$5/月）の要否をオーナーへ打診する（**課金設定の変更は A-6**） |
+| `errors` が急増、または Error 1027 を観測 | 全停止中 | 最優先で対応。UTC 00:00 のリセットまで自然復旧しない |
+
+`errors` が 0 でないときは、requests が閾値未満でも原因を確認する（アプリの例外は `observability` のサンプリング 5% でしか残らないため、件数の推移が一次シグナルになる）。
+
 ### Step 2: 対象 Issue の選定（上から順に 1 件）
 
 1. `status:in-progress` で 4 時間以上更新のない Issue（stale 再開・CP-3）

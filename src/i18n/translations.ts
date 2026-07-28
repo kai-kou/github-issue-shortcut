@@ -253,7 +253,7 @@ export const translations = {
         notFound: "リポジトリが見つからないか、アクセスできません。",
         issuesDisabled: "このリポジトリは Issues が無効になっています。",
         validationFailed: "内容を見直してから再度お試しください。",
-        duplicateSubmission: "この内容は直前に送信済みです。連続で作成されないよう自動的にスキップしました。",
+        duplicateSubmission: "直前と同じ内容の送信が続いたため、二重作成を防ぐために見送りました。数秒おいてから再試行してください。",
         queueExpired:
           "24 時間以上送信できなかったため、自動再送を停止しました。GitHub 側に作成済みでないか確認してから、再送または破棄してください。",
       },
@@ -376,7 +376,10 @@ export const translations = {
           heading: "2. 保存先",
           blocks: [
             {
-              p: "本アプリのサーバー（Cloudflare Workers）は、お客様の個人データを保存しません。GitHub のトークンは AES-256-GCM で暗号化した Cookie としてお使いの端末に保存され（JavaScript からは読み取れない HttpOnly Cookie）、サーバーはリクエストのたびに復号して使うだけです。ショートカット設定・下書き・各種キャッシュも、お使いの端末内（ブラウザのローカルストレージ）にのみ保存されます。二重起票の防止に使う送信履歴もお使いの端末内にのみ保存されます。レート制限には Cloudflare のカウンタを使用し、GitHub のユーザー ID をハッシュ化した値だけを鍵として渡します（ユーザー ID そのものや送信内容は渡しません）。",
+              p: "本アプリのサーバー（Cloudflare Workers）は、お客様の個人データを保存しません。GitHub のトークンは AES-256-GCM で暗号化した Cookie としてお使いの端末に保存され（JavaScript からは読み取れない HttpOnly Cookie）、サーバーはリクエストのたびに復号して使うだけです。ショートカット設定・下書き・各種キャッシュも、お使いの端末内（ブラウザのローカルストレージ）にのみ保存されます。二重起票の防止は、端末内の送信履歴に加えて、サーバー側でも連続送信を抑えるためのカウンタを Cloudflare 側に最大 10 秒間だけ保持して行います。このカウンタに渡すのは送信内容そのものではなく、送信内容と GitHub のユーザー ID から作った復元不能な鍵のみです。件数によるレート制限にも別途 Cloudflare のカウンタを使用し、GitHub のユーザー ID をハッシュ化した値だけを鍵として渡します（ユーザー ID そのものや送信内容は渡しません）。",
+            },
+            {
+              p: "本アプリは Cloudflare, Inc.（米国に本社を置く事業者）のインフラを利用しており、リクエストの処理は日本国外のデータセンターでも行われることがあります。前述のとおりサーバー側に個人データを保存しないため、国外に保管されるお客様のデータはありませんが、処理の過程では通信内容が国外の設備を経由します。米国における個人情報の保護に関する制度については、個人情報保護委員会が公表している外国制度の調査資料（https://www.ppc.go.jp/personalinfo/legal/kaiseihogohou/#gaikoku ）をご参照ください。",
             },
           ],
         },
@@ -509,7 +512,7 @@ export const translations = {
         notFound: "The repository could not be found or is not accessible.",
         issuesDisabled: "Issues are disabled for this repository.",
         validationFailed: "Please review the content and try again.",
-        duplicateSubmission: "This was already submitted moments ago, so the duplicate was skipped automatically.",
+        duplicateSubmission: "The same content was submitted again right away, so it was held back to prevent a duplicate. Please wait a few seconds and try again.",
         queueExpired:
           "This couldn't be sent for over 24 hours, so automatic resending stopped. Check whether it was already created on GitHub, then resend or discard it.",
       },
@@ -632,7 +635,10 @@ export const translations = {
           heading: "2. Where Data Is Stored",
           blocks: [
             {
-              p: "The App's server (Cloudflare Workers) does not store your personal data. GitHub tokens live on your device inside a cookie encrypted with AES-256-GCM (an HttpOnly cookie that JavaScript cannot read); the server merely decrypts it for the duration of each request. Shortcut settings, drafts, and caches are likewise stored only on your device (browser local storage). The submission history used to prevent duplicate submissions is likewise kept only on your device. Rate limiting relies on a Cloudflare-managed counter, to which we pass only a hashed form of your GitHub user ID (never the ID itself or the submitted content).",
+              p: "The App's server (Cloudflare Workers) does not store your personal data. GitHub tokens live on your device inside a cookie encrypted with AES-256-GCM (an HttpOnly cookie that JavaScript cannot read); the server merely decrypts it for the duration of each request. Shortcut settings, drafts, and caches are likewise stored only on your device (browser local storage). Duplicate-submission prevention relies on that on-device history plus a short-lived counter the server keeps in Cloudflare for at most 10 seconds to curb rapid repeat submissions; what is passed to that counter is not the submitted content itself but an irreversible key derived from the content and your GitHub user ID. Volume-based rate limiting uses a separate Cloudflare-managed counter, to which we pass only a hashed form of your GitHub user ID (never the ID itself or the submitted content).",
+            },
+            {
+              p: "The App runs on infrastructure operated by Cloudflare, Inc., a company headquartered in the United States, and your requests may be processed in data centres outside Japan. Because the server stores no personal data, as described above, none of your data is held abroad; however, the content of your requests does pass through equipment located outside Japan while it is being processed. For information about the personal data protection regime in the United States, please refer to the survey materials published by Japan's Personal Information Protection Commission (https://www.ppc.go.jp/personalinfo/legal/kaiseihogohou/#gaikoku ).",
             },
           ],
         },
