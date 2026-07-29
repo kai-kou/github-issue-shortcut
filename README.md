@@ -12,7 +12,7 @@ PAT（個人アクセストークン）の発行も管理も不要 — GitHub �
 
 **サーバーはあなたのデータを保存しません。** GitHub のトークンは暗号化した Cookie としてあなたの端末に置かれ、サーバーはリクエストのたびに復号して GitHub へ中継するだけです（データベースを持っていません）。ただし「ログを一切取っていない」わけではなく、Cloudflare 基盤側に例外ログが 5% サンプリングで最長 3 日残ることがあります。
 
-👉 **[アプリを開く](https://github-issue-shortcut.kinamocchi-tech.workers.dev)**
+👉 **[アプリを開く](https://github-issue-shortcut.kinamocchi-tech.workers.dev)** / 📄 **[紹介ページ（LP）](https://kai-kou.github.io/github-issue-shortcut/)**
 
 要求する権限は **Issues の読み書きのみ**（ほかに GitHub が自動付与する Metadata の読み取りが付きます）。コードには一切アクセスしません — 実際に要求される権限は GitHub のインストール画面でご自身で確認できます。個人開発の OSS を Cloudflare Workers 上で運用しているため、可用性は保証していません。利用前に [プライバシーポリシー](https://github-issue-shortcut.kinamocchi-tech.workers.dev/privacy) と [利用規約](https://github-issue-shortcut.kinamocchi-tech.workers.dev/terms) を、データの扱いは「[安全性・データの扱い](#安全性データの扱い)」をご確認ください。
 
@@ -105,6 +105,7 @@ npm run e2e        # E2E テスト（Playwright・GitHub API はモック）
 
 ## ドキュメント
 
+- [紹介ページ（LP）](https://kai-kou.github.io/github-issue-shortcut/) — 何ができるツールかの紹介（実体は [`site/`](site/)・GitHub Pages で公開）
 - [プライバシーポリシー](https://github-issue-shortcut.kinamocchi-tech.workers.dev/privacy) / [利用規約](https://github-issue-shortcut.kinamocchi-tech.workers.dev/terms) — 利用者向け
 - [セキュリティポリシー](SECURITY.md) — 脆弱性の報告方法
 - [要件定義](docs/requirements/) — FR / NFR・アーキテクチャ・マイルストーン計画（開発者向け）
