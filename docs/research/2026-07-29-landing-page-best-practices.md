@@ -155,6 +155,14 @@ LP 系の一般論は「社会的証明を盛る」「数値を大きく見せ�
 - `main.js` が取得できない場合でも本文が透明のまま残らないよう、`<head>` のインラインスクリプトが保険のタイマーを仕掛ける（E2E で検証）
 - 文中のインラインリンクは WCAG 2.2 SC 2.5.8 の **inline 例外** に該当するため 24px 基準の対象外とする
 
+### 6.1 `robots.txt` を置かない理由（再追加防止）
+
+**GitHub Pages の「プロジェクトサイト」はリポジトリ名のパス配下（`https://kai-kou.github.io/github-issue-shortcut/`）に載るため、`site/robots.txt` は `https://kai-kou.github.io/github-issue-shortcut/robots.txt` にしか配置されない。** RFC 9309 §2.3 によりクローラが読むのは **オリジン直下の `/robots.txt` のみ** で、サブパス配下の robots.txt は解釈されない。したがって `Sitemap:` 行を書いてもクローラには一切届かず、置くだけ無駄になる（robots.txt がないこと自体は「全許可」と等価なのでクロールは妨げられない）。
+
+`sitemap.xml` は残す。自動発見はされないが、Search Console 等へ手動送信できる標準成果物であり、`<loc>` が公開 URL を指していることを `e2e/lp.spec.ts` が検証する。
+
+**カスタムドメインを設定した場合はこの制約が消える**（サイトがオリジン直下になる）ため、そのタイミングで `site/robots.txt` を追加してよい。
+
 ---
 
 ## 7. 出典一覧

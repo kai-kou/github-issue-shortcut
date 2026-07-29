@@ -110,18 +110,15 @@ test.describe("ランディングページ（site/）", () => {
     }
   });
 
-  test("robots.txt と sitemap.xml が配信され、互いに整合している", async ({ page }) => {
-    const robots = await page.request.get(new URL("/robots.txt", LP_URL).href);
-    expect(robots.status()).toBe(200);
-    const sitemapUrl = (await robots.text()).match(/^Sitemap:\s*(\S+)$/m)?.[1];
-    expect(sitemapUrl, "robots.txt に Sitemap 行がない").toBeTruthy();
-
-    const sitemap = await page.request.get(toLocalUrl(sitemapUrl as string));
+  test("sitemap.xml が配信され、公開 URL を指している", async ({ page }) => {
+    const sitemap = await page.request.get(toLocalUrl("/sitemap.xml"));
     expect(sitemap.status()).toBe(200);
+
     const body = await sitemap.text();
     // 名前空間の綴り間違い（sitemap.org / sitemaps.org）は検索エンジン側で無効扱いになる
     expect(body).toContain("http://www.sitemaps.org/schemas/sitemap/0.9");
-    expect(body).toContain("https://kai-kou.github.io/github-issue-shortcut/");
+    // <loc> は本番の公開 URL でなければならない（ローカルのパスを書くと無意味になる）
+    expect(body).toContain("<loc>https://kai-kou.github.io/github-issue-shortcut/</loc>");
   });
 
   test("言語切替で本文・属性・タイトルがまとめて入れ替わる", async ({ page }) => {
