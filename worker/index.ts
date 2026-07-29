@@ -266,8 +266,16 @@ function clientIpBucket(clientIp: string | undefined): string {
   // ヘッダーが無い環境（`wrangler dev` 等）は固定バケットへ落ちる。本番では Cloudflare が必ず付与する。
   if (!clientIp) return "unknown";
   if (!clientIp.includes(":")) return clientIp; // IPv4
-  // IPv4 射影表記（`::ffff:203.0.113.9`）は上位 64 ビットが定数のため、丸めると全アドレスが
-  // 1 バケットに潰れて正規利用者を巻き込む。丸めずそのまま使う。
+  // ドット付き 10 進を含む IPv6 表記は丸めない。代表例は IPv4 射影表記（`::ffff:203.0.113.9`）で、
+  // 上位 64 ビットが定数のため丸めると全アドレスが 1 バケットに潰れ、正規利用者を巻き込む。
+  //
+  // この判定は `.` を含む IPv6 表記全般（非推奨の IPv4 互換 `::a.b.c.d`・ドキュメント慣習の NAT64
+  // 表記 `64:ff9b::a.b.c.d` 等）に効くが、それで丸め漏れは起きない: RFC 5952 の正規表現が
+  // ドット付き 10 進を使うのは IPv4 射影・IPv4 互換の 2 ケースだけで（NAT64 の下位 32 ビットは
+  // 通常のハクテット表記でシリアライズされる）、`CF-Connecting-IP` にはエッジが正規化した表記しか
+  // 載らない。加えて NAT64 は IPv4-only 宛先へ到達するための機構であり、ネイティブ IPv6 を提供する
+  // Cloudflare 宛では発生しない。仮に現れてもアドレスはゲートウェイの変換テーブルに紐づき、
+  // 攻撃者が 1 リクエストごとに振り直せる値ではない（＝この関数が防ぐ攻撃には使えない）。
   if (clientIp.includes(".")) return clientIp;
 
   const [head, tail] = clientIp.split("::");
