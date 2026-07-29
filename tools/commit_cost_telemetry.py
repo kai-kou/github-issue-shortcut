@@ -410,6 +410,10 @@ def read_remote_monthly(month: str) -> dict | None:
     2. origin/main の追跡コピー（apply-base 派生リポが #242 移行前の場合）
     3. origin/main 履歴上の最終追跡版（派生リポが追跡削除だけ先に取り込んだ場合の種データ。
        これが無いと初回 push が「現コンテナの部分ビューのみ」になり過去履歴が失われる）
+
+    フォールバック 2・3 は #189 の main 履歴書き換え前に存在した実額入り JSON を拾いうるが、
+    公開ペイロードに実額が混入することはない: ここで読んだ値は必ず `merge_report()` を通り、
+    その戻り値が `redact_costs()` で実額を落とされる（#202）。
     """
     rel = f"{MONTHLY_REL_DIR}/{month}.json"
     rep = _json_at(f"{TELEMETRY_REF}:{rel}")
