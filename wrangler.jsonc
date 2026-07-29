@@ -71,6 +71,15 @@
     "logs": {
       "invocation_logs": false
     }
+  },
+  // Cron Trigger は使わない。**キーを消すのではなく空配列を明示する**のが仕様上の要件で、
+  // 公式が「To disable a Cron Trigger, set `crons = []`. Commenting out the `crons` key will not
+  // disable a Cron Trigger.」と明記している（wrangler configuration）。
+  // 実際 P3（#178）で D1 `issue_log` クリーンアップ用の `triggers` ブロックごと削除したところ、
+  // Cloudflare 側の登録（`0 3 * * *`）だけが残り、`scheduled` ハンドラ不在のまま毎日発火して
+  // 失敗し続けていた（#216）。この空配列は「Cron を使わない」の意思表示であり、消してはいけない。
+  "triggers": {
+    "crons": []
   }
   // D1 は P1〜P3 で全用途が移設され、バインディングと migrations/ は P4（#166）で撤去した。
   // Worker は永続化 API（D1 / KV / R2 / DO）をひとつも持たない。
