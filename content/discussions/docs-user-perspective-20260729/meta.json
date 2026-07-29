@@ -1,0 +1,13 @@
+{
+  "id": "docs-user-perspective-20260729",
+  "topic": "README・公開ドキュメントのユーザー目線レビュー（初訪問者・ニーズ保有者・信頼性・貢献者）",
+  "brief": "対象は公開ドキュメント一式。外部の読み手として使い始められるか・信頼できるか・貢献できるかを検証し、ラウンド2で相互批判して残った真の問題だけを critical にする。",
+  "participants": [
+    "newcomer",
+    "target-user",
+    "trust-privacy",
+    "oss-contributor"
+  ],
+  "created_at": "2026-07-29T09:37:44+09:00",
+  "updated_at": "2026-07-29T09:37:44+09:00"
+}
