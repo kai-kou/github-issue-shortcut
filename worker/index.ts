@@ -247,7 +247,42 @@ function rateLimitKey(env: Env, bundle: TokenBundle): Promise<string> {
  * カウンタを共有することになるが、本番では Cloudflare が必ず付与するため影響しない。
  */
 function authLoginRateLimitKey(env: Env, clientIp: string | undefined): Promise<string> {
-  return hmacSha256Base64url(env.TOKEN_ENCRYPTION_KEY, `auth-login-rate-limit:${clientIp ?? "unknown"}`);
+  return hmacSha256Base64url(env.TOKEN_ENCRYPTION_KEY, `auth-login-rate-limit:${clientIpBucket(clientIp)}`);
+}
+
+/**
+ * レート制限の集計単位にする接続元識別子。**IPv6 は /64（先頭 4 ハクテット）に丸める**。
+ *
+ * 丸めないと制限が実質無効になる: IPv6 では 1 契約者に /64〜/56 が割り当てられるのが普通で、
+ * 攻撃者は自分のプレフィックス内でアドレスを 1 リクエストごとに変えるだけで、毎回別バケットとして
+ * 数えられる（Rate Limiting binding はキーを不透明な文字列として扱い、サブネット集約をしない。
+ * Cloudflare 自身も「IP は共有されうるのでキーに使うなら注意」としている）。ゾーンの WAF
+ * Rate Limiting Rule が IPv6 を既定で /64 単位に集約するのと同じ粒度へ揃える。
+ *
+ * IPv4 はアドレスをそのまま使う（/24 等へ丸めると共有 NAT の巻き添えが増えるだけで、
+ * IPv6 のような無償の横展開はできないため）。
+ */
+function clientIpBucket(clientIp: string | undefined): string {
+  // ヘッダーが無い環境（`wrangler dev` 等）は固定バケットへ落ちる。本番では Cloudflare が必ず付与する。
+  if (!clientIp) return "unknown";
+  if (!clientIp.includes(":")) return clientIp; // IPv4
+  // IPv4 射影表記（`::ffff:203.0.113.9`）は上位 64 ビットが定数のため、丸めると全アドレスが
+  // 1 バケットに潰れて正規利用者を巻き込む。丸めずそのまま使う。
+  if (clientIp.includes(".")) return clientIp;
+
+  const [head, tail] = clientIp.split("::");
+  const headParts = head ? head.split(":") : [];
+  const tailParts = tail ? tail.split(":") : [];
+  const hextets =
+    tail === undefined
+      ? headParts
+      : [...headParts, ...new Array(Math.max(0, 8 - headParts.length - tailParts.length)).fill("0"), ...tailParts];
+  // `2001:0db8:...` と `2001:db8:...` を同じバケットにするため先頭のゼロを落として正規化する。
+  const network = hextets
+    .slice(0, 4)
+    .map((hextet) => hextet.toLowerCase().replace(/^0+(?=.)/, "") || "0")
+    .join(":");
+  return `${network}::/64`;
 }
 
 /**

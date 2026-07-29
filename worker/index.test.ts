@@ -525,3 +525,57 @@ describe("セキュリティヘッダー（#209）", () => {
     expect(unauthorized.headers.get("Content-Security-Policy")).toBe(CONTENT_SECURITY_POLICY);
   });
 });
+
+describe("レート制限の集計単位（#217 セルフレビュー: IPv6 ローテーション回避）", () => {
+  function keyCapturingLimiter(keys: string[]): RateLimit {
+    return {
+      limit: async ({ key }: { key?: string }) => {
+        keys.push(key ?? "");
+        return { success: true };
+      },
+    } as unknown as RateLimit;
+  }
+
+  async function keysFor(ips: string[]): Promise<string[]> {
+    const keys: string[] = [];
+    const limitEnv = { ...testEnv, AUTH_LOGIN_RATE_LIMIT: keyCapturingLimiter(keys) } as unknown as Env;
+    for (const ip of ips) {
+      const ctx = createExecutionContext();
+      await worker.fetch(
+        new Request("https://example.com/auth/login", { headers: { "CF-Connecting-IP": ip } }),
+        limitEnv,
+        ctx,
+      );
+      await waitOnExecutionContext(ctx);
+    }
+    return keys;
+  }
+
+  it("同一 /64 の IPv6 は同じバケットに集計される（アドレスを振り直しても上限を回避できない）", async () => {
+    // IPv6 は 1 契約者に /64〜/56 が割り当てられる。アドレスごとに別バケットだと、送信元を
+    // 1 リクエストずつ変えるだけで「20 件/分」が実質無制限になり、この防御の目的が消える。
+    const [a, b, c] = await keysFor([
+      "2001:db8:1:2::1",
+      "2001:db8:1:2:dead:beef:1:9",
+      "2001:0db8:0001:0002:0000:0000:0000:00ff", // 省略なし表記でも同じ /64
+    ]);
+    expect(b).toBe(a);
+    expect(c).toBe(a);
+  });
+
+  it("別の /64 は別バケットになる（丸めすぎて無関係の利用者を巻き込まない）", async () => {
+    const [a, b] = await keysFor(["2001:db8:1:2::1", "2001:db8:1:3::1"]);
+    expect(b).not.toBe(a);
+  });
+
+  it("IPv4 はアドレス単位のまま集計される", async () => {
+    const [a, b, c] = await keysFor(["203.0.113.9", "203.0.113.9", "203.0.113.10"]);
+    expect(b).toBe(a);
+    expect(c).not.toBe(a);
+  });
+
+  it("IPv4 射影表記の IPv6 は丸めない（上位 64 ビットが定数のため全 IPv4 が 1 バケットに潰れる）", async () => {
+    const [a, b] = await keysFor(["::ffff:203.0.113.9", "::ffff:203.0.113.10"]);
+    expect(b).not.toBe(a);
+  });
+});
