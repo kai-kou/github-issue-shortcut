@@ -66,6 +66,29 @@ const ISSUE_LABEL_MAX_LENGTH = 50;
 const ISSUE_LABELS_MAX_COUNT = 100;
 
 /**
+ * リポジトリ名（`owner/name`）の形式検証。`worker/github.ts` は受け取った値を
+ * `${apiBase}/repos/${repoFullName}/issues` のように文字列結合して `fetch` に渡すため、形式を
+ * ここで固定しないと URL パーサーの正規化が働き、実際のリクエスト先が別のエンドポイントへ化ける
+ * （例: `../orgs/x/repos#` → `https://api.github.com/orgs/x/repos`）。
+ *
+ * owner は GitHub のアカウント名の規則（英数字とハイフンのみ・先頭末尾はハイフン不可・39 文字以内）に
+ * 従う。repo 名は `.` `_` `-` を先頭に置けるため（`owner/.github` は実在する正規のリポジトリ）
+ * 文字種だけを制限し、パスセグメントとして特別扱いされる `.` と `..` だけを別途弾く。
+ * この 2 つさえ通さなければ、`/` `#` `?` `%` を含まない値は URL 正規化の影響を受けない。
+ */
+const REPO_OWNER_PATTERN = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/;
+const REPO_NAME_PATTERN = /^[A-Za-z0-9._-]{1,100}$/;
+
+function isValidRepoFullName(value: string): boolean {
+  const slash = value.indexOf("/");
+  if (slash < 0 || value.indexOf("/", slash + 1) >= 0) return false;
+  const owner = value.slice(0, slash);
+  const name = value.slice(slash + 1);
+  if (!REPO_OWNER_PATTERN.test(owner) || !REPO_NAME_PATTERN.test(name)) return false;
+  return name !== "." && name !== "..";
+}
+
+/**
  * 使用するレート制限バインディングを選ぶ。既定は本番の上限（10 件/分）で、E2E の
  * wrangler dev 起動時（`ISSUE_RATE_LIMIT_RELAXED_ENABLED=1`）だけ緩い上限へ切り替える
  * （単一モックユーザーを全 spec が使い回すため・playwright.config.ts）。
@@ -414,6 +437,9 @@ app.get("/api/labels", async (c) => {
   if (!repo) {
     return c.json(jsonError("invalid_request", "repo query parameter is required"), 400);
   }
+  if (!isValidRepoFullName(repo)) {
+    return c.json(jsonError("invalid_request", "repo must be in owner/name format"), 400);
+  }
 
   try {
     const labels = await fetchRepoLabels(c.env.GITHUB_API_BASE ?? DEFAULT_API_BASE, bundle.a, repo);
@@ -460,6 +486,9 @@ app.post("/api/issues", async (c) => {
     : [];
   if (!repo || !title) {
     return c.json(jsonError("invalid_request", "repo and title are required"), 400);
+  }
+  if (!isValidRepoFullName(repo)) {
+    return c.json(jsonError("invalid_request", "repo must be in owner/name format"), 400);
   }
 
   // 入力長・件数の上限（不正利用対策・#179）。GitHub へ転送する前にここで弾き、GitHub 側 422 に

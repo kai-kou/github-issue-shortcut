@@ -310,3 +310,100 @@ describe("POST /api/issues の入力長・件数の上限 (不正利用対策・
     expect(res.status).toBe(201);
   });
 });
+
+describe("repo パラメータの形式検証 (GitHub API へのパス注入防止・#204)", () => {
+  // `worker/github.ts` は repo を URL へ文字列結合するため、`..` や `#` を含む値を通すと
+  // URL 正規化で実際のリクエスト先が `/repos/{repo}/issues` 以外へ化ける。GitHub へ届く前に弾く。
+  const invalidRepos = [
+    "../orgs/some-org/repos#",
+    "kai-kou/alpha/../../user",
+    "kai-kou/alpha?x=1",
+    "kai-kou/alpha#frag",
+    "kai-kou",
+    "kai-kou/",
+    "/alpha",
+    "kai-kou/alpha/beta",
+    "kai-kou/..",
+  ];
+
+  for (const repo of invalidRepos) {
+    it(`rejects ${JSON.stringify(repo)} on POST /api/issues without calling GitHub`, async () => {
+      const cookie = await loginSession();
+      const fetchSpy = vi.fn();
+      vi.stubGlobal("fetch", fetchSpy);
+
+      const res = await postIssue(cookie, { repo });
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as { error: { code: string } };
+      expect(body.error.code).toBe("invalid_request");
+      expect(fetchSpy).not.toHaveBeenCalled();
+    });
+
+    it(`rejects ${JSON.stringify(repo)} on GET /api/labels without calling GitHub`, async () => {
+      const cookie = await loginSession();
+      const fetchSpy = vi.fn();
+      vi.stubGlobal("fetch", fetchSpy);
+
+      const res = await SELF.fetch(`https://example.com/api/labels?repo=${encodeURIComponent(repo)}`, {
+        headers: { Cookie: cookie },
+      });
+      expect(res.status).toBe(400);
+      expect(fetchSpy).not.toHaveBeenCalled();
+    });
+  }
+
+  // 正当な repo 名を誤って弾かないこと。特に `.github`（org の community health files 用の特殊
+  // リポジトリ）は `.` 始まりだが実在する正規の名前で、これを拒否すると起票できなくなる。
+  const validRepos = [
+    "kai-kou/a.b_c-d",
+    "kai-kou/.github",
+    "kai-kou/-leading-dash",
+    "kai-kou/trailing_",
+    "a/b",
+    "0/0",
+    `${"a".repeat(39)}/${"b".repeat(100)}`,
+  ];
+
+  for (const repo of validRepos) {
+    it(`accepts ${JSON.stringify(repo)}`, async () => {
+      const cookie = await loginSession();
+      const fetchSpy = vi.fn(async () => jsonResponse(201, { number: 1, html_url: "https://github.com/x/y/issues/1" }));
+      vi.stubGlobal("fetch", fetchSpy);
+
+      const res = await postIssue(cookie, { repo });
+      expect(res.status).toBe(201);
+      expect(fetchSpy).toHaveBeenCalledOnce();
+    });
+  }
+
+  it("rejects an owner over the GitHub limit (39 chars)", async () => {
+    const cookie = await loginSession();
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const res = await postIssue(cookie, { repo: `${"a".repeat(40)}/beta` });
+    expect(res.status).toBe(400);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("rejects a repo name over the GitHub limit (100 chars)", async () => {
+    const cookie = await loginSession();
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const res = await postIssue(cookie, { repo: `kai-kou/${"b".repeat(101)}` });
+    expect(res.status).toBe(400);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  // owner は GitHub のアカウント名規則どおり英数字とハイフンのみ（`.` `_` は使えない）。
+  it("rejects an owner containing a dot", async () => {
+    const cookie = await loginSession();
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const res = await postIssue(cookie, { repo: "kai.kou/alpha" });
+    expect(res.status).toBe(400);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+});

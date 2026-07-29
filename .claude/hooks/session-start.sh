@@ -41,6 +41,10 @@ REPO="${PROJECT_REPO:-kai-kou/github-issue-shortcut}"
 # resume の度に env が重複追記され、数千行に肥大化して全 bash が E2BIG で失敗する。
 if [ -n "${CLAUDE_ENV_FILE:-}" ] && [ -f "${CLAUDE_ENV_FILE:-/dev/null}" ]; then
   : > "$CLAUDE_ENV_FILE" || echo "Warning: failed to truncate CLAUDE_ENV_FILE" >&2
+  # このファイルには GH_TOKEN・GitHub Variables・ブローカー由来の Workers Secrets が追記される。
+  # ハーネスが作成するため umask では制御できず、truncate しても権限は変わらないので chmod を
+  # 明示する（べき等・失敗しても後続を止めない）。
+  chmod 600 "$CLAUDE_ENV_FILE" 2>/dev/null || true
 fi
 
 env_persist() {
@@ -148,6 +152,12 @@ if [ "${CLAUDE_CODE_REMOTE:-}" = "true" ]; then
   echo "[env] GitHub Variables ロードはクラウドではスキップ（プロキシが 403・env は Claude.ai 環境設定 / secrets-broker から供給・L-114）" >&2
 elif [ -n "${GH_TOKEN:-}" ]; then
   _env_file="/tmp/github_variables.env"
+  # 所有者のみ読める権限で先に作っておく（後段の `>` は既存ファイルを truncate するだけで権限を
+  # 変えないため、ここで 600 にしておけば平文の値が 644 で他プロセスに晒されない）。
+  # umask が効くのは新規作成時だけで、同一コンテナの前セッションが 644 で作ったファイルが残って
+  # いると truncate されるだけなので、chmod も明示する（べき等）。
+  ( umask 077; : > "$_env_file" )
+  chmod 600 "$_env_file" 2>/dev/null || true
   _loaded_via=""
   _gh_ok=false
   # ① gh CLI 経路（インストール済みのときだけ試す）

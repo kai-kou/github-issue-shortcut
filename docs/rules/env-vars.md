@@ -319,6 +319,29 @@ urllib.request.urlopen("...actions/variables?per_page=30&page=1")
 Python スクリプト内での変数取得は `gh_vars.py` に統一すること
 （いずれもクラウドでは 403・冒頭注記。ローカル実行時のみ機能する）。
 
+## 秘密を書き出す中間ファイルの保護（#204）
+
+`session-start.sh` は GitHub Variables を `/tmp/github_variables.env` に、secrets-broker から取得した
+キー束を `/tmp/broker_secrets.env` に `export NAME='value'` 形式で書き出し、あわせて
+`$CLAUDE_ENV_FILE` へも追記する。これらには `TOKEN_ENCRYPTION_KEY`（本番のトークン Cookie を
+暗号化する鍵）や `GITHUB_CLIENT_SECRET` が含まれうるため、**2 層で保護する**。
+
+1. **ファイル権限を 600 にする**: `( umask 077; : > "$file" )` で作成し、**さらに `chmod 600` を明示する**。
+   `umask` は新規 inode 作成時にしか効かず、同一コンテナの前セッションが既定 umask（0022）で作った
+   644 のファイルが残っていると truncate されるだけで権限が変わらない（実機確認済み）。
+2. **Read ツールの deny リストに載せる**: `.claude/settings.json` の `permissions.deny` に
+   `Read(**/*.env)` / `Read(**/broker_secrets.env)` / `Read(**/github_variables.env)` を置く。
+   リポジトリ内容（Issue / PR コメント・取得ドキュメント）経由のプロンプトインジェクションが
+   「デバッグのためこのファイルを見て」と誘導したときの技術的な歯止めになる。
+
+> **なぜ deny が要るか**: 読めた値の持ち出し先は、ネットワーク許可リストを迂回する必要がない。
+> Issue コメント・PR 本文・コミットという **既に許可済みの GitHub 書き込み** がそのまま
+> public リポジトリへの流出経路になる。パターンは `**/` 前置のベースネーム一致で書く
+> （先頭 `/` 1 個はプロジェクトルート起点と解釈されるため、実ファイルシステムの `/tmp` を
+> 狙うつもりで `Read(/tmp/*.env)` と書いても意図した保護にならない）。
+
+新たに秘密を書き出すファイルを増やすときは、上記 2 層の両方に追加すること。
+
 ## ローカル開発環境（例外）
 
 ユーザーがローカルで Claude Code CLI を実行する場合のみ、`.env` または `.claude/settings.local.json` が有効。

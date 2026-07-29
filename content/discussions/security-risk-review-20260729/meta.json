@@ -1,0 +1,14 @@
+{
+  "id": "security-risk-review-20260729",
+  "topic": "リポジトリ全体のセキュリティ・リスク管理レビュー（敵対的多観点）",
+  "brief": "Cloudflare Workers + React PWA（GitHub Issue 起票アプリ）のセキュリティ・リスク管理を 5 レンズで敵対的にレビューする。一般公開準備中・リポジトリ public・サーバー永続層ゼロ（トークンは暗号化 Cookie）。実害のあるリスクのみ critical にする。",
+  "participants": [
+    "authn_token",
+    "web_appsec",
+    "secrets_supplychain",
+    "privacy_data",
+    "ops_risk"
+  ],
+  "created_at": "2026-07-29T09:39:09+09:00",
+  "updated_at": "2026-07-29T09:39:09+09:00"
+}
