@@ -335,7 +335,9 @@ export const translations = {
                 "本アプリの脆弱性を悪用する行為",
               ],
             },
-            { p: "禁止行為が確認された場合、予告なく該当アカウントの利用を制限することがあります。" },
+            {
+              p: "本アプリはサーバーに利用者ごとの記録を保持しないため、特定のアカウントを恒久的に締め出す仕組みは持ちません。禁止行為に対しては、自動的なレート制限（一定時間あたりの起票数・ログイン要求数の上限）が予告なく適用されます。また、GitHub 上での対応（GitHub App の連携解除の要請や、GitHub への報告）を行うことがあります。",
+            },
           ],
         },
         {
@@ -376,7 +378,7 @@ export const translations = {
           heading: "2. 保存先",
           blocks: [
             {
-              p: "本アプリのサーバー（Cloudflare Workers）は、お客様の個人データを保存しません。GitHub のトークンは AES-256-GCM で暗号化した Cookie としてお使いの端末に保存され（JavaScript からは読み取れない HttpOnly Cookie）、サーバーはリクエストのたびに復号して使うだけです。ショートカット設定・下書き・各種キャッシュも、お使いの端末内（ブラウザのローカルストレージ）にのみ保存されます。二重起票の防止は、端末内の送信履歴に加えて、サーバー側でも連続送信を抑えるためのカウンタを Cloudflare 側に最大 10 秒間だけ保持して行います。このカウンタに渡すのは送信内容そのものではなく、送信内容と GitHub のユーザー ID から作った復元不能な鍵のみです。件数によるレート制限にも別途 Cloudflare のカウンタを使用し、GitHub のユーザー ID をハッシュ化した値だけを鍵として渡します（ユーザー ID そのものや送信内容は渡しません）。",
+              p: "本アプリのサーバー（Cloudflare Workers）は、お客様の個人データを保存しません。GitHub のトークンは AES-256-GCM で暗号化した Cookie としてお使いの端末に保存され（JavaScript からは読み取れない HttpOnly Cookie）、サーバーはリクエストのたびに復号して使うだけです。ショートカット設定・下書き・各種キャッシュも、お使いの端末内（ブラウザのローカルストレージ）にのみ保存されます。二重起票の防止は、端末内の送信履歴に加えて、サーバー側でも連続送信を抑えるためのカウンタを Cloudflare 側に最大 10 秒間だけ保持して行います。このカウンタに渡すのは送信内容そのものではなく、送信内容と GitHub のユーザー ID から作った復元不能な鍵のみです。件数によるレート制限にも別途 Cloudflare のカウンタを使用し、GitHub のユーザー ID をハッシュ化した値だけを鍵として渡します（ユーザー ID そのものや送信内容は渡しません）。さらに、ログイン要求の急増によるサービス停止を防ぐため、ログイン開始時にも同様のカウンタを使用します。この鍵には接続元 IP アドレスを秘密鍵付きハッシュで復元不能な値に変換したものだけを渡し、IP アドレスそのものを本アプリが保存・記録することはありません。",
             },
             {
               p: "本アプリは Cloudflare, Inc.（米国に本社を置く事業者）のインフラを利用しており、リクエストの処理は日本国外のデータセンターでも行われることがあります。前述のとおりサーバー側に個人データを保存しないため、国外に保管されるお客様のデータはありませんが、処理の過程では通信内容が国外の設備を経由します。米国における個人情報の保護に関する制度については、個人情報保護委員会が公表している外国制度の調査資料（https://www.ppc.go.jp/personalinfo/legal/kaiseihogohou/#gaikoku ）をご参照ください。",
@@ -385,7 +387,11 @@ export const translations = {
         },
         {
           heading: "3. 利用目的",
-          blocks: [{ p: "本アプリへのログイン維持、Issue 起票の実行、ショートカット機能の提供のためにのみデータを利用します。" }],
+          blocks: [
+            {
+              p: "本アプリへのログイン維持、Issue 起票の実行、ショートカット機能の提供、および不正利用の防止（レート制限・連投抑止によるスパムやサービス停止の防止）のためにのみデータを利用します。",
+            },
+          ],
         },
         {
           heading: "4. 保持期間",
@@ -396,6 +402,9 @@ export const translations = {
           blocks: [
             {
               p: "本アプリは Cloudflare Workers 上で動作しており、本アプリ自身が何も保存しなくても、基盤側にリクエストの記録が残る場合があります。本アプリでは、リクエストとその応答（ヘッダー・Cookie を含む）を記録する設定を無効化しており、残るのはエラー発生時の記録（例外の内容）だけです。それも記録対象を全体の約 5% に絞っており、Cloudflare 側で自動的に削除されます（保持期間は Cloudflare の上限に従い、本アプリが利用しているプランでは最長 3 日・上位プランでも最長 7 日）。この記録は障害調査のためだけに参照するもので、Issue の内容・GitHub のトークン・ショートカット設定は含まれません。",
+            },
+            {
+              p: "以上は、本アプリが明示的に設定する記録についての説明です。これとは別に、Cloudflare がネットワーク基盤（CDN・エッジ）として、通信の性質上、接続元 IP アドレスなどを含む標準的な記録を短期間保持する場合があります。この記録は本アプリの設定では無効化できず、その取り扱いは Cloudflare のプライバシーポリシーに従います。",
             },
           ],
         },
@@ -594,7 +603,9 @@ export const translations = {
                 "Exploiting vulnerabilities in the App",
               ],
             },
-            { p: "If prohibited conduct is identified, the affected account's access may be restricted without prior notice." },
+            {
+              p: "The App keeps no per-user records on its server, so it has no mechanism to permanently block a specific account. Prohibited conduct is met with automatic rate limits (caps on issue submissions and login requests per unit of time), applied without prior notice. The developer may also act through GitHub itself, for example by asking that the GitHub App installation be removed or by reporting the conduct to GitHub.",
+            },
           ],
         },
         {
@@ -635,7 +646,7 @@ export const translations = {
           heading: "2. Where Data Is Stored",
           blocks: [
             {
-              p: "The App's server (Cloudflare Workers) does not store your personal data. GitHub tokens live on your device inside a cookie encrypted with AES-256-GCM (an HttpOnly cookie that JavaScript cannot read); the server merely decrypts it for the duration of each request. Shortcut settings, drafts, and caches are likewise stored only on your device (browser local storage). Duplicate-submission prevention relies on that on-device history plus a short-lived counter the server keeps in Cloudflare for at most 10 seconds to curb rapid repeat submissions; what is passed to that counter is not the submitted content itself but an irreversible key derived from the content and your GitHub user ID. Volume-based rate limiting uses a separate Cloudflare-managed counter, to which we pass only a hashed form of your GitHub user ID (never the ID itself or the submitted content).",
+              p: "The App's server (Cloudflare Workers) does not store your personal data. GitHub tokens live on your device inside a cookie encrypted with AES-256-GCM (an HttpOnly cookie that JavaScript cannot read); the server merely decrypts it for the duration of each request. Shortcut settings, drafts, and caches are likewise stored only on your device (browser local storage). Duplicate-submission prevention relies on that on-device history plus a short-lived counter the server keeps in Cloudflare for at most 10 seconds to curb rapid repeat submissions; what is passed to that counter is not the submitted content itself but an irreversible key derived from the content and your GitHub user ID. Volume-based rate limiting uses a separate Cloudflare-managed counter, to which we pass only a hashed form of your GitHub user ID (never the ID itself or the submitted content). A similar counter is also used when a sign-in begins, to keep a surge of login requests from taking the service down; the key passed to it is only your connecting IP address transformed into an irreversible value by a keyed hash, and the App never stores or logs the IP address itself.",
             },
             {
               p: "The App runs on infrastructure operated by Cloudflare, Inc., a company headquartered in the United States, and your requests may be processed in data centres outside Japan. Because the server stores no personal data, as described above, none of your data is held abroad; however, the content of your requests does pass through equipment located outside Japan while it is being processed. For information about the personal data protection regime in the United States, please refer to the survey materials published by Japan's Personal Information Protection Commission (https://www.ppc.go.jp/personalinfo/legal/kaiseihogohou/#gaikoku ).",
@@ -644,7 +655,11 @@ export const translations = {
         },
         {
           heading: "3. Purpose of Use",
-          blocks: [{ p: "Data is used only to maintain your login session, execute issue submissions, and provide shortcut features." }],
+          blocks: [
+            {
+              p: "Data is used only to maintain your login session, execute issue submissions, provide shortcut features, and prevent abuse (rate limiting and repeat-submission throttling that guard against spam and service outages).",
+            },
+          ],
         },
         {
           heading: "4. Retention Period",
@@ -655,6 +670,9 @@ export const translations = {
           blocks: [
             {
               p: "The App runs on Cloudflare Workers, so even though the App itself stores nothing, the platform may keep records of requests. The App disables the setting that records requests and responses (including headers and cookies), so the only records left are errors (uncaught exceptions), and even those are sampled down to roughly 5%. Cloudflare deletes them automatically after its retention limit (at most 3 days on the plan this App uses; at most 7 days on higher plans). These records are consulted only to investigate incidents; they contain no issue content, GitHub tokens, or shortcut settings.",
+            },
+            {
+              p: "The above describes the records the App itself configures. Separately, Cloudflare may retain standard network-layer records for a short period as part of operating its CDN and edge network, including data such as the connecting IP address inherent to carrying the traffic. These records cannot be disabled by the App's settings, and their handling is governed by Cloudflare's privacy policy.",
             },
           ],
         },

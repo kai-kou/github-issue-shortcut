@@ -1,0 +1,15 @@
+# Cloudflare Workers 静的アセットのカスタムヘッダー（#209）。
+# Workers static assets は Pages と同じく `_headers` を native サポートする
+# （https://developers.cloudflare.com/workers/static-assets/headers/）。
+# Vite が public/ 配下をそのまま dist/client へコピーするため、ビルド成果物と一緒に配布される。
+#
+# 🔴 なぜ Worker のミドルウェアだけでは足りないか:
+# 静的アセット（index.html / JS / CSS）は wrangler.jsonc の `run_worker_first` に含まれず、
+# Worker を経由せず asset server が直接返す。つまり **ページ本体の CSP はここでしか付けられない**。
+# 値は worker/securityHeaders.ts と完全に一致させること（worker/securityHeaders.test.ts が機械検証する）。
+
+/*
+  Content-Security-Policy: default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; object-src 'none'; img-src 'self' data: https://avatars.githubusercontent.com
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+  Referrer-Policy: same-origin

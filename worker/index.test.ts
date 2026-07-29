@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import worker from "./index";
 import { nowSeconds } from "./time";
 import { loginCookie, testTokenBundle, tokenCookieHeader } from "./test-support";
+import { CONTENT_SECURITY_POLICY } from "./securityHeaders";
 import { currentKeyVersion } from "./tokenCookie";
 import type { Env } from "./types";
 
@@ -419,5 +420,108 @@ describe("DELETE /api/account", () => {
     // Cookie を消すだけでは、値をコピーされていた相手を止められない（自己完結型のクレデンシャル）。
     // GitHub 側の失効 API が呼ばれることまで確認する（P3 以降、サーバーに消すべき記録は無い）。
     expect(revoke).toHaveBeenCalled();
+  });
+});
+
+describe("GET /auth/login のレート制限（#207）", () => {
+  /**
+   * Rate Limiting binding のスタブ。実バインディング（miniflare）は他テストとカウンタを共有し
+   * 「上限に達した状態」を決定論的に作れないため、成否を固定したスタブを env 差し替えで渡す。
+   * 渡されたキーを記録し、生 IP が Cloudflare 側へ出ていないことの検証にも使う。
+   */
+  function stubLimiter(success: boolean, keys: string[] = []): RateLimit {
+    return {
+      limit: async ({ key }: { key?: string }) => {
+        keys.push(key ?? "");
+        return { success };
+      },
+    } as unknown as RateLimit;
+  }
+
+  function loginRequest(ip = "203.0.113.9"): Request {
+    return new Request("https://example.com/auth/login", { headers: { "CF-Connecting-IP": ip } });
+  }
+
+  it("上限内なら従来どおり GitHub の認可画面へリダイレクトする", async () => {
+    const ctx = createExecutionContext();
+    const res = await worker.fetch(
+      loginRequest(),
+      { ...testEnv, AUTH_LOGIN_RATE_LIMIT: stubLimiter(true) } as unknown as Env,
+      ctx,
+    );
+    await waitOnExecutionContext(ctx);
+    expect(res.status).toBe(302);
+    expect(res.headers.get("Location")).toContain("/login/oauth/authorize");
+    expect(res.headers.get("Set-Cookie")).toContain("__Host-preauth=");
+  });
+
+  it("上限を超えたら 429 を返し、暗号処理も pre-auth Cookie の発行も行わない", async () => {
+    // 本エンドポイントは認証不要で叩けるうえ GitHub API を消費しないため、上流のレート制限に
+    // 当たらないまま Worker のリクエスト数と CPU 時間だけを消耗させられる（無料枠が尽きると
+    // 正規利用者を含む全員が起票できなくなる）。制限は暗号処理より前に効く必要がある。
+    const ctx = createExecutionContext();
+    const res = await worker.fetch(
+      loginRequest(),
+      { ...testEnv, AUTH_LOGIN_RATE_LIMIT: stubLimiter(false) } as unknown as Env,
+      ctx,
+    );
+    await waitOnExecutionContext(ctx);
+    expect(res.status).toBe(429);
+    expect(res.headers.get("Retry-After")).toBe("60");
+    expect(res.headers.get("Location")).toBeNull();
+    expect(res.headers.get("Set-Cookie")).toBeNull();
+  });
+
+  it("カウンタのキーに生の IP アドレスを使わない（同一 IP は同一キー・別 IP は別キー）", async () => {
+    // プライバシーポリシー §2 の「サーバーは個人データを保存しない」を守るため、Cloudflare 側へ
+    // 渡すのは HMAC 済みの逆引き不能な鍵だけにする（rateLimitKey と同じ仮名化方針）。
+    const keys: string[] = [];
+    const limitEnv = { ...testEnv, AUTH_LOGIN_RATE_LIMIT: stubLimiter(true, keys) } as unknown as Env;
+    for (const ip of ["203.0.113.9", "203.0.113.9", "198.51.100.4"]) {
+      const ctx = createExecutionContext();
+      await worker.fetch(loginRequest(ip), limitEnv, ctx);
+      await waitOnExecutionContext(ctx);
+    }
+    expect(keys).toHaveLength(3);
+    for (const key of keys) {
+      expect(key).not.toContain("203.0.113.9");
+      expect(key).not.toContain("198.51.100.4");
+    }
+    expect(keys[0]).toBe(keys[1]);
+    expect(keys[0]).not.toBe(keys[2]);
+  });
+
+  it("バインディングの設定漏れを readiness で検知する（無制限に叩ける状態を可視化する）", async () => {
+    const ctx = createExecutionContext();
+    const res = await worker.fetch(
+      new Request("https://example.com/api/ready"),
+      { ...testEnv, AUTH_LOGIN_RATE_LIMIT: undefined } as unknown as Env,
+      ctx,
+    );
+    await waitOnExecutionContext(ctx);
+    expect(res.status).toBe(503);
+    const body = (await res.json()) as { ready: boolean; checks: Record<string, boolean> };
+    expect(body.ready).toBe(false);
+    expect(body.checks.authLoginRateLimiter).toBe(false);
+  });
+});
+
+describe("セキュリティヘッダー（#209）", () => {
+  it("Worker が返す JSON レスポンスに CSP と nosniff が付く", async () => {
+    const res = await SELF.fetch("https://example.com/api/health");
+    expect(res.headers.get("Content-Security-Policy")).toBe(CONTENT_SECURITY_POLICY);
+    expect(res.headers.get("X-Content-Type-Options")).toBe("nosniff");
+    expect(res.headers.get("X-Frame-Options")).toBe("DENY");
+    expect(res.headers.get("Referrer-Policy")).toBe("same-origin");
+  });
+
+  it("リダイレクト・エラー応答にも付く（成功パスだけ守られる状態にしない）", async () => {
+    const redirect = await SELF.fetch("https://example.com/setup", { redirect: "manual" });
+    expect(redirect.status).toBe(302);
+    expect(redirect.headers.get("Content-Security-Policy")).toBe(CONTENT_SECURITY_POLICY);
+
+    const unauthorized = await SELF.fetch("https://example.com/api/me");
+    expect(unauthorized.status).toBe(401);
+    expect(unauthorized.headers.get("Content-Security-Policy")).toBe(CONTENT_SECURITY_POLICY);
   });
 });

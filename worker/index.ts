@@ -25,6 +25,7 @@ import {
   GitHubApiError,
   revokeAccessToken,
 } from "./github";
+import { SECURITY_HEADERS } from "./securityHeaders";
 import { nowSeconds } from "./time";
 import {
   clearTokenCookies,
@@ -52,6 +53,13 @@ const ISSUE_RATE_LIMIT_WINDOW_SECONDS = 60;
  * Rate Limiting binding の period（10/60 のみ選択可）と揃える。
  */
 const DUPLICATE_SUBMISSION_WINDOW_SECONDS = 10;
+
+/**
+ * `GET /auth/login` のレート制限（#207）のウィンドウ長（秒）。`wrangler.jsonc` の
+ * `AUTH_LOGIN_RATE_LIMIT` の period と揃え、429 の `Retry-After` に使う（binding は残り時間を
+ * 返さないため、他の制限と同じく「最長でも 1 ウィンドウ待てば回復する」上界を返す）。
+ */
+const AUTH_LOGIN_RATE_LIMIT_WINDOW_SECONDS = 60;
 
 /**
  * 入力長・件数の上限（不正利用対策・#179）。GitHub の実測上限（dead-claudia/github-limits、
@@ -106,9 +114,27 @@ function resolveIssueDuplicateLimiter(env: Env): RateLimit {
     : env.ISSUE_DUPLICATE_SUBMISSION_LIMIT;
 }
 
+/**
+ * `GET /auth/login` のレート制限バインディングを選ぶ（#207・上 2 つと同じ切り替え方針）。
+ * E2E は全 spec が同一ホストから何度もログインするため、本番の上限では後半が 429 で落ちる。
+ */
+function resolveAuthLoginRateLimiter(env: Env): RateLimit {
+  return env.ISSUE_RATE_LIMIT_RELAXED_ENABLED === "1" ? env.AUTH_LOGIN_RATE_LIMIT_RELAXED : env.AUTH_LOGIN_RATE_LIMIT;
+}
+
 const PREAUTH_COOKIE = "__Host-preauth";
 
 const app = new Hono<{ Bindings: Env }>();
+
+// 全レスポンスにセキュリティヘッダーを付ける（#209・多層防御）。静的アセットは Worker を
+// 経由しない（`run_worker_first` が /api/* /auth/* /setup だけ）ため、そちらは public/_headers が
+// 同じ値を付ける。詳細と二重管理の理由は worker/securityHeaders.ts のコメント。
+app.use("*", async (c, next) => {
+  await next();
+  for (const [name, value] of Object.entries(SECURITY_HEADERS)) {
+    c.res.headers.set(name, value);
+  }
+});
 
 function originOf(url: string): string {
   const u = new URL(url);
@@ -208,6 +234,23 @@ function rateLimitKey(env: Env, bundle: TokenBundle): Promise<string> {
 }
 
 /**
+ * `GET /auth/login` のレート制限キー（#207）。このエンドポイントは **認証不要** のため、
+ * 他の 2 つのように「ユーザー ID 由来」のキーは作れない。攻撃者と正規利用者を区別できる粒度は
+ * 接続元 IP だけなので、Cloudflare がエッジで付与する `CF-Connecting-IP`（クライアントからは
+ * 詐称できない）を使う。
+ *
+ * ただし **生 IP を Cloudflare のカウンタキーに渡さない**。`rateLimitKey` と同じく秘密鍵付き
+ * ハッシュ（HMAC-SHA256）にして、逆引き不能な鍵とカウンタだけが載るようにする
+ * （プライバシーポリシー §2「サーバーは個人データを保存しない」との整合・保持ゼロ方針 §8）。
+ *
+ * ヘッダーが無い環境（`wrangler dev` 等）は固定バケットへ落ちる。全アクセスが 1 つの
+ * カウンタを共有することになるが、本番では Cloudflare が必ず付与するため影響しない。
+ */
+function authLoginRateLimitKey(env: Env, clientIp: string | undefined): Promise<string> {
+  return hmacSha256Base64url(env.TOKEN_ENCRYPTION_KEY, `auth-login-rate-limit:${clientIp ?? "unknown"}`);
+}
+
+/**
  * 同一内容の連投抑止（不正利用対策・PR-4 拡張・#179）のキー。`HMAC(userId + contentHash)` にすることで、
  * サーバーには内容そのものはおろか無塩ハッシュも渡さず、逆引き不能な鍵だけを Cloudflare 側に渡す
  * （`rateLimitKey` と同じ仮名化方針）。フィールド境界の曖昧さを避けるため JSON 配列にしてからハッシュ化する
@@ -246,6 +289,9 @@ app.get("/api/ready", (c) => {
     rateLimiter: typeof c.env.ISSUE_RATE_LIMIT?.limit === "function",
     // 同一内容の連投抑止バインディング（#179）の設定漏れも同様に、429 になるまで気づけない。
     duplicateLimiter: typeof c.env.ISSUE_DUPLICATE_SUBMISSION_LIMIT?.limit === "function",
+    // 認証不要で叩ける /auth/login の可用性防御（#207）。設定漏れは 500 にならず「無制限に
+    // 叩ける状態」として静かに成立してしまう（気づけるのは請求か障害が起きてから）。
+    authLoginRateLimiter: typeof c.env.AUTH_LOGIN_RATE_LIMIT?.limit === "function",
     // E2E 用の緩和フラグ（上限 1000 件/分）が本番 vars に紛れ込むと、上限が実質無効のまま
     // 200 を返してしまう。「効いていない状態」を検知するのがこのチェックの目的なので、
     // 緩和モードで動いていること自体を not-ready として扱う。
@@ -257,12 +303,32 @@ app.get("/api/ready", (c) => {
     checks.clientId &&
     checks.rateLimiter &&
     checks.duplicateLimiter &&
+    checks.authLoginRateLimiter &&
     checks.rateLimiterStrict;
   return c.json({ ready, checks }, ready ? 200 : 503);
 });
 
 // GET /auth/login: state + PKCE を生成し pre-auth Cookie に保存して GitHub へフルページリダイレクト。
 app.get("/auth/login", async (c) => {
+  // レート制限は暗号処理より前に評価する（#207）。このエンドポイントは認証不要で叩けるうえ、
+  // 1 リクエストごとに PKCE 生成・AES-256-GCM 封入を行う一方 GitHub API を一切消費しないため、
+  // 上流のレート制限に当たらないまま Worker のリクエスト数と CPU 時間だけを消耗させられる。
+  // 無料プランの上限に到達すると、その日は正規利用者を含む全員が起票できなくなる。
+  const rateLimit = await resolveAuthLoginRateLimiter(c.env).limit({
+    key: await authLoginRateLimitKey(c.env, c.req.header("CF-Connecting-IP")),
+  });
+  if (!rateLimit.success) {
+    c.header("Retry-After", String(AUTH_LOGIN_RATE_LIMIT_WINDOW_SECONDS));
+    // ここはブラウザのフルページ遷移で到達する（XHR ではない）ため、他のエンドポイントの
+    // JSON エラー本文ではなく、そのまま読める平文を返す。i18n の実体はクライアント側にあり
+    // このレスポンスでは読み込めないので、日英を併記する。
+    return c.text(
+      "ログイン要求が多すぎます。しばらく待ってから、もう一度お試しください。\n" +
+        "Too many login requests. Please wait a moment and try again.\n",
+      429,
+    );
+  }
+
   const state = randomToken(16);
   const verifier = createCodeVerifier();
   const challenge = await codeChallengeS256(verifier);

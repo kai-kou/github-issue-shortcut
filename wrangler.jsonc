@@ -57,6 +57,26 @@
       "name": "ISSUE_DUPLICATE_SUBMISSION_LIMIT_RELAXED",
       "namespace_id": "1004",
       "simple": { "limit": 1000, "period": 10 }
+    },
+    {
+      // 認証不要で叩ける GET /auth/login の可用性防御（#207）。1 リクエストごとに PKCE 生成と
+      // AES-256-GCM 封入を行う一方 GitHub API を消費しないため、上流のレート制限に当たらないまま
+      // Worker のリクエスト数と CPU 時間だけを消耗させられる（無料枠が尽きると全員が起票不能になる）。
+      // キーは接続元 IP の HMAC（worker/index.ts の authLoginRateLimitKey）で、生 IP は渡さない。
+      // 20 件/分は「正規利用者が 1 分間にログインし直す回数」から見て十分に緩く、共有 NAT でも
+      // 誤爆しない一方、curl ループによる消耗は頭打ちにできる水準。
+      // `period` を変えるときは worker/index.ts の AUTH_LOGIN_RATE_LIMIT_WINDOW_SECONDS も合わせること。
+      "name": "AUTH_LOGIN_RATE_LIMIT",
+      "namespace_id": "1005",
+      "simple": { "limit": 20, "period": 60 }
+    },
+    {
+      // E2E 専用の緩い上限（`ISSUE_RATE_LIMIT_RELAXED_ENABLED=1` のときだけ使う）。E2E は全 spec が
+      // 同一ホスト（= 同一キー）から繰り返しログインするため、本番の上限ではスイート後半が
+      // 429 で落ちる（テスト分離の問題）。本番では参照されない。
+      "name": "AUTH_LOGIN_RATE_LIMIT_RELAXED",
+      "namespace_id": "1006",
+      "simple": { "limit": 1000, "period": 60 }
     }
   ],
   // Workers Logs（既定は有効・サンプリング 100%・invocation log 有効）。未設定のままだと

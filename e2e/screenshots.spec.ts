@@ -32,6 +32,10 @@ test.use({
   viewport: { width: 390, height: 844 },
   deviceScaleFactor: 2,
   locale: "ja-JP",
+  // CSP（#209）の img-src は本番のアバター配信元（avatars.githubusercontent.com）だけを許可するため、
+  // 上の page.route() が差し込む代替アバターはブラウザ側でブロックされる。撮影のときだけ CSP を
+  // 迂回する（本番の CSP は変えない・他の spec には影響しない）。
+  bypassCSP: true,
 });
 
 test.beforeAll(() => {
