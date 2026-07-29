@@ -6,15 +6,19 @@
 
 **「思いついた瞬間」を逃さない。ホーム画面をタップして数秒で GitHub に Issue を立てる、Android 向けの PWA です。**
 
+> **In English**: An Android PWA that turns a home-screen tap into a GitHub issue in seconds. Sign in with GitHub — no personal access token to create or manage. The server keeps no database: your GitHub token lives in an encrypted cookie on your device and is only decrypted per request to relay the call to GitHub. The app itself ships in both Japanese and English; this README is Japanese only.
+
 PAT（個人アクセストークン）の発行も管理も不要 — GitHub でログインするだけ。ショートカットがリポジトリとラベルを覚えているので、タップした時点で入力欄にカーソルが立っています。
 
-**サーバーはあなたのデータを保存しません。** GitHub のトークンは暗号化した Cookie としてあなたの端末に置かれ、サーバーはリクエストのたびに復号して GitHub へ中継するだけです（データベースを持っていません）。
+**サーバーはあなたのデータを保存しません。** GitHub のトークンは暗号化した Cookie としてあなたの端末に置かれ、サーバーはリクエストのたびに復号して GitHub へ中継するだけです（データベースを持っていません）。ただし「ログを一切取っていない」わけではなく、Cloudflare 基盤側に例外ログが 5% サンプリングで最長 3 日残ることがあります。どのデータがどこに保持されるかは [データ保持インベントリ](docs/research/2026-07-28-data-retention-inventory.md) に全数を棚卸ししています。
 
 👉 **[アプリを開く](https://github-issue-shortcut.kinamocchi-tech.workers.dev)**
 
-| 起票フォーム | スマート入力（`@` でラベル候補） | ログイン |
+要求する権限は **Issues の読み書きのみ**（ほかに GitHub が自動付与する Metadata の読み取りが付きます）。コードには一切アクセスしません — 実際に要求される権限は GitHub のインストール画面でご自身で確認できます。個人開発の OSS を Cloudflare Workers 上で運用しているため、可用性は保証していません。利用前に [プライバシーポリシー](https://github-issue-shortcut.kinamocchi-tech.workers.dev/privacy) と [利用規約](https://github-issue-shortcut.kinamocchi-tech.workers.dev/terms) をご確認ください。
+
+| ログイン | 起票フォーム | スマート入力（`@` でラベル候補） |
 |---|---|---|
-| <img src="docs/assets/screenshots/issue-form.png" alt="リポジトリとラベルを選んで Issue を起票する画面" width="240"> | <img src="docs/assets/screenshots/smart-input.png" alt="タイトル欄に @ を打つとラベル候補がインライン表示される画面" width="240"> | <img src="docs/assets/screenshots/login.png" alt="GitHub でログインするだけで使い始められるトップ画面" width="240"> |
+| <img src="docs/assets/screenshots/login.png" alt="GitHub でログインするだけで使い始められるトップ画面" width="240"> | <img src="docs/assets/screenshots/issue-form.png" alt="リポジトリとラベルを選んで Issue を起票する画面" width="240"> | <img src="docs/assets/screenshots/smart-input.png" alt="タイトル欄に @ を打つとラベル候補がインライン表示される画面" width="240"> |
 
 ## なぜ作ったか
 
@@ -27,17 +31,30 @@ GitHub Issues でタスクやアイデアを管理していると、**思いつ�
 
 そこで「ホーム画面タップ → 数秒で起票」だけに特化した PWA を作りました。競合調査の詳細は [市場・競合リサーチ](docs/research/2026-07-10-market-competitors.md) にあります。
 
+## 使い始めるまで
+
+1. **GitHub でログインする** — [アプリを開く](https://github-issue-shortcut.kinamocchi-tech.workers.dev) と GitHub の認可画面に進みます
+2. **起票したいリポジトリに GitHub App をインストールする**（初回のみ） — Organization のリポジトリでは、管理者でない場合はインストール申請となり承認待ちになることがあります
+3. **ホーム画面に追加する** — Android Chrome のメニュー（⋮）→「アプリをインストール」、またはアドレスバーのインストールアイコンをタップします
+4. **アイコンをタップして起票する** — 以降はホーム画面から直行できます
+
 ## できること
 
-- **GitHub ログインだけで使える** — 要求する権限は Issues（Read and write）のみ。コードには一切アクセスしません
-- **ショートカット起動** — `/new?repo=owner/name&labels=bug&title=雛形` でリポジトリ・ラベル・タイトルを初期選択した状態で開けます。ホーム画面にいくつでも並べられます
+- **GitHub ログインだけで使える** — PAT の発行・管理は不要。要求する権限は上記のとおり Issues の読み書きのみです
+- **ショートカット起動** — `/new?repo=owner/name&labels=bug&title=雛形` でリポジトリ・ラベル・タイトルを初期選択した状態で開けます。保存したショートカットはいくつでも作れ、ホーム画面上部の「保存済みショートカット」一覧からタップして開きます（この URL を単体でホーム画面のアイコンにした場合、Android の仕様で初期選択は反映されません）
 - **アイコン長押しメニュー** — よく使うプリセットを最大 3 個、PWA のショートカットとして登録できます
 - **共有シートから起票** — Android の共有シートに本アプリが出ます。記事の URL を共有すれば本文にプレフィルされます
 - **スマート入力** — タイトル欄に `#repo` `@label` と打つとインラインで候補が出て、そのまま指定できます
 - **ラベル権限の事前警告** — push 権限のないリポジトリではラベルが黙って捨てられるため、送信前に警告します
-- **オフラインでも書ける** — 圏外での起票はキューに保存され、次にアプリのホーム画面を開いたときに自動で再送されます（二重起票はしません）
+- **オフラインでも書ける** — 圏外での起票はキューに保存され、次にアプリのホーム画面を開いたときに自動で再送されます。再送の対象はネットワーク接続の失敗のみで、24 時間送信できないままだと自動再送は止まり、アプリ内の一覧から手動で再送・破棄します（同一内容の連続送信は抑止しますが、送信がサーバーに届いた後で応答が端末に返らなかった場合など、ごく稀に重複作成されることがあります）
 - **送信に失敗しても入力は消えない** — 下書きを端末内に保全します
 - **日本語 / English** の 2 言語対応
+
+## 安全性・データの扱い
+
+- **トークンの保管** — GitHub のトークンは暗号化した HttpOnly Cookie として端末に置かれ、JavaScript からは読めません。有効期限は最長 30 日で、リフレッシュしても延長されません
+- **権限の取り消し** — アプリ内の「アカウント削除」で端末内データを消し GitHub 側のトークンも失効させます。GitHub の [Authorized GitHub Apps](https://github.com/settings/apps/authorizations) からいつでも連携を解除できます（ログアウトだけでは GitHub 側のトークンは失効しません）
+- **設計と裏取り** — サーバーが何も保存しない仕組みは [ステートレス化設計](docs/design/stateless-architecture.md)、保持データの全数棚卸しは [データ保持インベントリ](docs/research/2026-07-28-data-retention-inventory.md) にあります
 
 ## 目指している速さ
 
@@ -62,7 +79,7 @@ GitHub Issues でタスクやアイデアを管理していると、**思いつ�
 | CI | GitHub Actions（テスト・型チェック・E2E・Lighthouse） |
 | デプロイ | Cloudflare Workers Builds（Git 連携・キーレス） |
 
-サーバーが何も保存しない設計の詳細は [ステートレス化設計](docs/design/stateless-architecture.md)、どのデータがどこに保持されるかの全数棚卸しは [データ保持インベントリ](docs/research/2026-07-28-data-retention-inventory.md) にまとめています。
+サーバーが何も保存しない設計とデータの保持範囲は「[安全性・データの扱い](#安全性データの扱い)」からたどれます。
 
 ## 開発
 
@@ -88,7 +105,9 @@ npm run e2e        # E2E テスト（Playwright・GitHub API はモック）
 
 ## ドキュメント
 
-- [要件定義](docs/requirements/) — FR / NFR・アーキテクチャ・マイルストーン計画
+- [プライバシーポリシー](https://github-issue-shortcut.kinamocchi-tech.workers.dev/privacy) / [利用規約](https://github-issue-shortcut.kinamocchi-tech.workers.dev/terms) — 利用者向け
+- [セキュリティポリシー](SECURITY.md) — 脆弱性の報告方法
+- [要件定義](docs/requirements/) — FR / NFR・アーキテクチャ・マイルストーン計画（開発者向け）
 - [プロジェクトミッション](docs/project-mission.md) — ミッション・KPI・判断基準
 - [リサーチ](docs/research/) — 認証・技術スタック・市場調査・公開リスク
 

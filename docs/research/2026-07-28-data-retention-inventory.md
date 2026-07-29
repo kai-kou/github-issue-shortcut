@@ -178,7 +178,13 @@ submitGuard（localStorage・30 秒）  <  offlineQueue TTL（24 時間）  <  s
 
 ---
 
-## 9. 設計・プライバシーポリシーとの突合（差分あり 1 件）
+## 9. 設計・プライバシーポリシーとの突合（差分は解消済み）
+
+> **2026-07-29 追記**: 本節が調査時点（2026-07-28）に「⚠️ 不一致」と結論したアカウント削除の範囲は、**`#181` で解消済み**。
+> 現在の実装は `src/auth/useAuthState.ts` の `clearAllLocalUserData()` が `clearAllUserCaches()` に加えて
+> `clearDraft()`・`clearOfflineQueue()`・`clearSentRequestIds()` を呼び、未送信の下書き・オフラインキューまで消去する
+> （`src/auth/AccountDeletion.tsx` から呼び出し。削除される内容は確認 UI で明示する）。
+> 以下の表と「見つかった差分」は **調査時点の記録** として残す。
 
 | 主張（プライバシーポリシー / 設計） | 実装 | 判定 |
 |--------------------------------|------|------|
@@ -187,11 +193,11 @@ submitGuard（localStorage・30 秒）  <  offlineQueue TTL（24 時間）  <  s
 | レート制限には「ユーザー ID そのものは渡さない」 | HMAC-SHA256 でハッシュ化して渡す | ✅ 一致 |
 | 基盤の記録は例外のみ・5% サンプリング・最長 3 日 | `observability` の設定と一致 | ✅ 一致 |
 | トークン Cookie は最長 30 日で失効 | `SESSION_MAX_AGE = 30 日`・リフレッシュで延長しない | ✅ 一致 |
-| **アカウント削除で「送信履歴」を即時に削除する** | `clearAllUserCaches()` は auth / repos / shortcuts / labels の 4 種のみ。**`recent-submissions`（送信履歴のハッシュ）・IndexedDB の `sent-request-ids`・`offline-queue`（Issue 本文を平文で保持）・`draft`・`recent-repos` は残る** | ⚠️ **不一致**（下記） |
+| **アカウント削除で「送信履歴」を即時に削除する**（調査時点の判定・現在は解消済み） | `clearAllUserCaches()` は auth / repos / shortcuts / labels の 4 種のみ。**`recent-submissions`（送信履歴のハッシュ）・IndexedDB の `sent-request-ids`・`offline-queue`（Issue 本文を平文で保持）・`draft`・`recent-repos` は残る** | ⚠️ **不一致**（下記） |
 
-### 見つかった差分（要 Issue 化）
+### 見つかった差分（調査時点の記録・1 は #181 で解消済み）
 
-1. **アカウント削除の削除範囲がポリシーの記載より狭い**（`src/auth/AccountDeletion.tsx` → `clearAllUserCaches`）。
+1. ~~**アカウント削除の削除範囲がポリシーの記載より狭い**~~ → **#181 で解消済み**（当時の記録は以下）。（`src/auth/AccountDeletion.tsx` → `clearAllUserCaches`）。
    - ポリシー日本語版: 「端末内に保存されたデータ（トークン Cookie・ショートカット設定・**送信履歴**・各種キャッシュ）を即時に削除し」
    - 実装で残るもののうち、プライバシー影響が大きいのは **`issue-shortcut:offline-queue`（未送信 Issue の本文を平文で保持）** と **`issue-shortcut:draft`（下書き本文）**。共有端末でアカウント削除した場合、次の利用者に前利用者の未送信内容が見える。
    - 一方で「削除ボタンで下書きまで消える」のはミッション（入力内容の保全を最優先）と衝突しうるため、**削除範囲の拡張か文言の修正か** は要判断（下書き・キューは「破棄しますか？」の確認を伴う削除にするのが妥当）。

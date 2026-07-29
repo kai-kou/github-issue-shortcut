@@ -11,7 +11,7 @@
 ## 対象範囲
 
 - 本リポジトリのアプリケーションコード（`src/`・`worker/`）
-- 認証フロー（GitHub OAuth・トークンの取り扱い）
+- 認証フロー（GitHub OAuth・トークンの取り扱い）— 設計の詳細は [ステートレス化設計](docs/design/stateless-architecture.md)、端末・基盤に保持されるデータの棚卸しは [データ保持インベントリ](docs/research/2026-07-28-data-retention-inventory.md) を参照してください
 
 ## 対象外
 
