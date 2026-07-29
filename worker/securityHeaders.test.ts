@@ -8,18 +8,32 @@ import { CONTENT_SECURITY_POLICY, SECURITY_HEADERS } from "./securityHeaders";
  * 「守れていない経路」が静かに生まれ、テストも CI も緑のままになるため、ここで一致を機械検証する。
  */
 describe("public/_headers と Worker のセキュリティヘッダーの一致（#209）", () => {
-  const lines = headersFile.split("\n").map((line) => line.trim());
-  const rules = new Map(
-    lines
-      .filter((line) => line && !line.startsWith("#") && line.includes(":"))
-      .map((line) => {
-        const separator = line.indexOf(":");
-        return [line.slice(0, separator).trim(), line.slice(separator + 1).trim()] as const;
-      }),
-  );
+  // `_headers` は「パスのパターン行 → その配下のヘッダー行」というブロック構造。行を平坦に集めると
+  // **ヘッダーが別パスのブロックへ移動していても検出できない**（`/*` が空でもテストが緑になる）ため、
+  // どのブロックに属するかを追いながら読む。
+  const blocks = new Map<string, Map<string, string>>();
+  let currentPath: string | null = null;
+  for (const raw of headersFile.split("\n")) {
+    const line = raw.trim();
+    if (!line || line.startsWith("#")) continue;
+    if (!raw.startsWith(" ") && !raw.startsWith("\t")) {
+      currentPath = line;
+      if (!blocks.has(currentPath)) blocks.set(currentPath, new Map());
+      continue;
+    }
+    const separator = line.indexOf(":");
+    if (currentPath === null || separator < 0) continue;
+    blocks.get(currentPath)!.set(line.slice(0, separator).trim(), line.slice(separator + 1).trim());
+  }
+  const rules = blocks.get("/*") ?? new Map<string, string>();
 
-  it("全パス（/*）に適用される", () => {
-    expect(lines).toContain("/*");
+  it("全パス（/*）のブロックが存在し、空でない", () => {
+    expect(blocks.has("/*")).toBe(true);
+    expect(rules.size).toBeGreaterThan(0);
+  });
+
+  it("/* 以外のブロックにヘッダーが逃げていない（全ページ無防備になる壊れ方の検知）", () => {
+    expect([...blocks.keys()]).toEqual(["/*"]);
   });
 
   it("Worker 側と同じヘッダー・同じ値を宣言している", () => {
