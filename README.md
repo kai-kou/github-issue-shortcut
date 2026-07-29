@@ -12,7 +12,7 @@ PAT（個人アクセストークン）の発行も管理も不要 — GitHub �
 
 **サーバーはあなたのデータを保存しません。** GitHub のトークンは暗号化した Cookie としてあなたの端末に置かれ、サーバーはリクエストのたびに復号して GitHub へ中継するだけです（データベースを持っていません）。ただし「ログを一切取っていない」わけではなく、Cloudflare 基盤側に例外ログが 5% サンプリングで最長 3 日残ることがあります。
 
-👉 **[アプリを開く](https://github-issue-shortcut.kinamocchi-tech.workers.dev)**
+👉 **[アプリを開く](https://github-issue-shortcut.kinamocchi-tech.workers.dev)** / 📄 **[紹介ページ（LP）](https://kai-kou.github.io/github-issue-shortcut/)**
 
 要求する権限は **Issues の読み書きのみ**（ほかに GitHub が自動付与する Metadata の読み取りが付きます）。コードには一切アクセスしません — 実際に要求される権限は GitHub のインストール画面でご自身で確認できます。個人開発の OSS を Cloudflare Workers 上で運用しているため、可用性は保証していません。利用前に [プライバシーポリシー](https://github-issue-shortcut.kinamocchi-tech.workers.dev/privacy) と [利用規約](https://github-issue-shortcut.kinamocchi-tech.workers.dev/terms) を、データの扱いは「[安全性・データの扱い](#安全性データの扱い)」をご確認ください。
 
@@ -42,7 +42,7 @@ GitHub Issues でタスクやアイデアを管理していると、**思いつ�
 
 - **GitHub ログインだけで使える** — 要求する権限は上記のとおり Issues の読み書きのみです
 - **ショートカット起動** — `/new?repo=owner/name&labels=bug&title=雛形` でリポジトリ・ラベル・タイトルを初期選択した状態で開けます。保存したショートカットはいくつでも作れ、ホーム画面上部の「保存済みショートカット」一覧からタップして開きます（この URL を単体でホーム画面のアイコンにした場合、Android の仕様で初期選択は反映されません）
-- **アイコン長押しメニュー** — よく使うプリセットを最大 3 個、PWA のショートカットとして登録できます
+- **アイコン長押しメニュー** — 「新しい Issue を作成」「バグを報告」「改善案を起票」の 3 つを PWA のショートカットとして用意しています（全ユーザー共通の固定メニューです。自分用のプリセットは上記の保存済みショートカットで作ります）
 - **共有シートから起票** — Android の共有シートに本アプリが出ます。記事の URL を共有すれば本文にプレフィルされます
 - **スマート入力** — タイトル欄に `#repo` `@label` と打つとインラインで候補が出て、そのまま指定できます
 - **ラベル権限の事前警告** — push 権限のないリポジトリではラベルが黙って捨てられるため、送信前に警告します
@@ -89,9 +89,10 @@ npm run dev        # ローカル開発サーバー（Vite）
 npm run build      # 型チェック（tsc -b）+ ビルド
 npm test           # ユニットテスト（vitest / @cloudflare/vitest-pool-workers）
 npm run e2e        # E2E テスト（Playwright・GitHub API はモック）
+npm run lp:assets  # LP（site/）の OGP 画像・切り出しスクリーンショットを再生成（要 npm run screenshots）
 ```
 
-デプロイは Cloudflare Workers Builds（Git 連携）が担当します。要件・アーキテクチャの詳細は [`docs/requirements/`](docs/requirements/) を参照してください。
+デプロイは Cloudflare Workers Builds（Git 連携）が担当します。紹介ページ（`site/`）は GitHub Actions（[`.github/workflows/pages.yml`](.github/workflows/pages.yml)）が GitHub Pages へ公開します。要件・アーキテクチャの詳細は [`docs/requirements/`](docs/requirements/) を参照してください。
 
 ## AI エージェントによる自律開発運用
 
@@ -105,6 +106,7 @@ npm run e2e        # E2E テスト（Playwright・GitHub API はモック）
 
 ## ドキュメント
 
+- [紹介ページ（LP）](https://kai-kou.github.io/github-issue-shortcut/) — 何ができるツールかの紹介（実体は [`site/`](site/)・GitHub Pages で公開）
 - [プライバシーポリシー](https://github-issue-shortcut.kinamocchi-tech.workers.dev/privacy) / [利用規約](https://github-issue-shortcut.kinamocchi-tech.workers.dev/terms) — 利用者向け
 - [セキュリティポリシー](SECURITY.md) — 脆弱性の報告方法
 - [要件定義](docs/requirements/) — FR / NFR・アーキテクチャ・マイルストーン計画（開発者向け）

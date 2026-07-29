@@ -1,0 +1,1211 @@
+<!doctype html>
+<html lang="ja" data-lang="ja" class="no-js">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>GitHub Issue Shortcut — 思いついた瞬間を、数秒で GitHub Issue に</title>
+    <meta
+      name="description"
+      content="Android のホーム画面をタップして数秒で GitHub Issue を立てる PWA。PAT の発行も管理も不要で、GitHub でログインするだけ。サーバーはデータを保存しません。MIT ライセンスのオープンソース。"
+    />
+    <link rel="canonical" href="https://kai-kou.github.io/github-issue-shortcut/" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0d1117" />
+
+    <link rel="icon" href="assets/icon-192.png" type="image/png" />
+    <link rel="apple-touch-icon" href="assets/icon-192.png" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="GitHub Issue Shortcut" />
+    <meta property="og:title" content="GitHub Issue Shortcut — 思いついた瞬間を、数秒で GitHub Issue に" />
+    <meta
+      property="og:description"
+      content="Android のホーム画面をタップして数秒で GitHub Issue を立てる PWA。PAT 不要・GitHub ログインだけ。サーバーはデータを保存しません。"
+    />
+    <meta property="og:url" content="https://kai-kou.github.io/github-issue-shortcut/" />
+    <meta property="og:image" content="https://kai-kou.github.io/github-issue-shortcut/assets/og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:locale" content="ja_JP" />
+    <meta property="og:locale:alternate" content="en_US" />
+    <meta name="twitter:card" content="summary_large_image" />
+
+    <link rel="preload" as="image" href="assets/hero-form.png" fetchpriority="high" />
+    <link rel="stylesheet" href="styles.css" />
+
+    <script>
+      // JS が有効なら reveal アニメーションを使う（無効なら CSS 側で最初から表示する）。
+      document.documentElement.classList.remove("no-js");
+      // main.js の取得に失敗しても本文が透明のまま残らないようにする保険。
+      // main.js が動けば先頭で clearTimeout される。
+      window.__lpRevealFallback = setTimeout(function () {
+        document.documentElement.classList.add("reveal-fallback");
+      }, 3000);
+    </script>
+
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "GitHub Issue Shortcut",
+        "applicationCategory": "DeveloperApplication",
+        "operatingSystem": "Android",
+        "url": "https://github-issue-shortcut.kinamocchi-tech.workers.dev",
+        "description": "Android のホーム画面をタップして数秒で GitHub Issue を立てる PWA。PAT の発行も管理も不要で、GitHub でログインするだけ。",
+        "license": "https://opensource.org/licenses/MIT",
+        "isAccessibleForFree": true,
+        "inLanguage": ["ja", "en"]
+      }
+    </script>
+  </head>
+
+  <body>
+    <!-- 複数箇所で使うアイコンの定義（同じ path を各所へコピーしないための <use> 用） -->
+    <svg width="0" height="0" style="position: absolute" aria-hidden="true" focusable="false">
+      <symbol id="i-check" viewBox="0 0 16 16">
+        <path
+          d="M13.78 4.22a.75.75 0 0 1 0 1.06l-6.5 6.5a.75.75 0 0 1-1.06 0l-3.5-3.5a.75.75 0 1 1 1.06-1.06l2.97 2.97 5.97-5.97a.75.75 0 0 1 1.06 0Z"
+        />
+      </symbol>
+      <symbol id="i-shield" viewBox="0 0 16 16">
+        <path
+          d="M8 0 1.5 2.5v4.75c0 4.02 2.77 7.78 6.5 8.75 3.73-.97 6.5-4.73 6.5-8.75V2.5L8 0Zm3.36 5.53-4.2 4.2a.75.75 0 0 1-1.06 0L4.14 8.77a.75.75 0 1 1 1.06-1.06l1.43 1.43 3.67-3.67a.75.75 0 1 1 1.06 1.06Z"
+        />
+      </symbol>
+    </svg>
+
+    <a class="skip-link" href="#main">
+      <span data-l="ja">本文へスキップ</span><span data-l="en" lang="en">Skip to content</span>
+    </a>
+
+    <!-- ============================ ヘッダー ============================ -->
+    <header class="header">
+      <div class="container header__inner">
+        <a class="brand" href="#top">
+          <img class="brand__mark" src="assets/icon-192.png" alt="" width="30" height="30" />
+          <span class="brand__name">GitHub Issue Shortcut</span>
+        </a>
+
+        <nav class="header__nav" aria-label="セクション" data-label-en="Sections">
+          <a href="#why"><span data-l="ja">課題</span><span data-l="en" lang="en">Why</span></a>
+          <a href="#how"><span data-l="ja">使い方</span><span data-l="en" lang="en">How it works</span></a>
+          <a href="#features"><span data-l="ja">できること</span><span data-l="en" lang="en">Features</span></a>
+          <a href="#security"><span data-l="ja">安全性</span><span data-l="en" lang="en">Security</span></a>
+          <a href="#faq">FAQ</a>
+        </nav>
+
+        <div class="header__actions">
+          <div class="lang-switch" role="group" aria-label="Language / 言語">
+            <button
+              class="lang-switch__btn"
+              type="button"
+              data-set-lang="ja"
+              aria-pressed="true"
+              aria-label="日本語で表示"
+            >
+              JA
+            </button>
+            <button
+              class="lang-switch__btn"
+              type="button"
+              data-set-lang="en"
+              aria-pressed="false"
+              aria-label="Show in English"
+            >
+              EN
+            </button>
+          </div>
+          <a
+            class="btn btn--primary btn--small header__cta"
+            href="https://github-issue-shortcut.kinamocchi-tech.workers.dev"
+          >
+            <span data-l="ja">アプリを開く</span><span data-l="en" lang="en">Open the app</span>
+          </a>
+        </div>
+      </div>
+    </header>
+
+    <main id="main">
+      <!-- ============================ ヒーロー ============================ -->
+      <section class="hero" id="top">
+        <div class="container hero__grid">
+          <div>
+            <p class="eyebrow">
+              <span class="eyebrow__dot" aria-hidden="true"></span>
+              <span data-l="ja">Android 向け PWA・オープンソース（MIT）</span>
+              <span data-l="en" lang="en">Android PWA · Open source (MIT)</span>
+            </p>
+
+            <h1 class="hero__title">
+              <span data-l="ja"
+                ><span class="nw">思いついた瞬間を、</span
+                ><span class="nw"><em>数秒で Issue</em> に。</span></span
+              >
+              <span data-l="en" lang="en">Capture the idea <em>before it's gone</em>.</span>
+            </h1>
+
+            <p class="hero__lead">
+              <span data-l="ja">
+                ホーム画面をタップ → タイトルを入力 → 送信。GitHub Issues への起票だけに特化した
+                Android 向け PWA です。PAT（個人アクセストークン）の発行も管理も不要 — GitHub
+                でログインするだけで使い始められます。
+              </span>
+              <span data-l="en" lang="en">
+                Tap the home-screen icon, type a title, send. An Android PWA built for one job:
+                filing GitHub issues fast. No personal access token to create or rotate — just sign
+                in with GitHub.
+              </span>
+            </p>
+
+            <div class="hero__actions">
+              <a
+                class="btn btn--primary"
+                href="https://github-issue-shortcut.kinamocchi-tech.workers.dev"
+              >
+                <span data-l="ja">アプリを開いて起票する</span>
+                <span data-l="en" lang="en">Open the app</span>
+              </a>
+              <a class="btn btn--secondary" href="https://github.com/kai-kou/github-issue-shortcut">
+                <svg
+                  width="18"
+                  height="18"
+                  viewBox="0 0 16 16"
+                  fill="currentColor"
+                  aria-hidden="true"
+                >
+                  <path
+                    d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.4 7.4 0 0 1 2-.27c.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"
+                  />
+                </svg>
+                <span data-l="ja">GitHub でソースを見る</span>
+                <span data-l="en" lang="en">View on GitHub</span>
+              </a>
+            </div>
+
+            <p class="hero__note">
+              <svg width="16" height="16" fill="currentColor" aria-hidden="true">
+                <use href="#i-shield" />
+              </svg>
+              <span data-l="ja">
+                要求する権限は <b>Issues の読み書きのみ</b>。コードには一切アクセスしません。
+                サーバーはあなたのデータを保存しません。
+              </span>
+              <span data-l="en" lang="en">
+                The app asks for <b>read &amp; write on Issues only</b> — never your code. The server
+                stores none of your data.
+              </span>
+            </p>
+          </div>
+
+          <div class="hero__visual">
+            <div class="phone phone--tilt">
+              <img
+                src="assets/hero-form.png"
+                alt="起票フォームの画面。起票先のリポジトリ、タイトル欄、本文欄、bug と P1 のラベル、下部の「Issue を作成」ボタンが並んでいる"
+                data-alt-en="The issue form: target repository, title field, body field, the bug and P1 labels, and a Create issue button at the bottom"
+                width="780"
+                height="1148"
+                fetchpriority="high"
+              />
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============================ トラストバー ============================ -->
+      <section class="section--alt trustbar" aria-label="このツールの前提" data-label-en="What this tool assumes">
+        <div class="container">
+          <ul class="trustbar__list">
+            <li class="trustbar__item">
+              <svg width="18" height="18" fill="currentColor" aria-hidden="true">
+                <use href="#i-check" />
+              </svg>
+              <span>
+                <b><span data-l="ja">PAT 不要</span><span data-l="en" lang="en">No PAT</span></b>
+                <span data-l="ja">GitHub でログインするだけ</span>
+                <span data-l="en" lang="en">Just sign in with GitHub</span>
+              </span>
+            </li>
+            <li class="trustbar__item">
+              <svg width="18" height="18" fill="currentColor" aria-hidden="true">
+                <use href="#i-check" />
+              </svg>
+              <span>
+                <b>
+                  <span data-l="ja">権限は Issues のみ</span>
+                  <span data-l="en" lang="en">Issues-only scope</span>
+                </b>
+                <span data-l="ja">コードにはアクセスしません</span>
+                <span data-l="en" lang="en">It never asks for code access</span>
+              </span>
+            </li>
+            <li class="trustbar__item">
+              <svg width="18" height="18" fill="currentColor" aria-hidden="true">
+                <use href="#i-check" />
+              </svg>
+              <span>
+                <b>
+                  <span data-l="ja">サーバーは保存しない</span>
+                  <span data-l="en" lang="en">Stateless server</span>
+                </b>
+                <span data-l="ja">データベースを持たない設計です</span>
+                <span data-l="en" lang="en">No database behind it</span>
+              </span>
+            </li>
+            <li class="trustbar__item">
+              <svg width="18" height="18" fill="currentColor" aria-hidden="true">
+                <use href="#i-check" />
+              </svg>
+              <span>
+                <b>
+                  <span data-l="ja">MIT ライセンスの OSS</span>
+                  <span data-l="en" lang="en">MIT-licensed OSS</span>
+                </b>
+                <span data-l="ja">実装も運用ルールも公開</span>
+                <span data-l="en" lang="en">Code and operating rules are public</span>
+              </span>
+            </li>
+          </ul>
+        </div>
+      </section>
+
+      <!-- ============================ 課題 ============================ -->
+      <section class="section" id="why">
+        <div class="container">
+          <div class="section__head">
+            <span class="section__kicker">
+              <span data-l="ja">課題</span><span data-l="en" lang="en">The problem</span>
+            </span>
+            <h2 class="section__title">
+              <span data-l="ja"
+                ><span class="nw">スマホからの起票は、</span
+                ><span class="nw">なぜこんなに遠いのか</span></span
+              >
+              <span data-l="en" lang="en">Why filing an issue from a phone feels so far away</span>
+            </h2>
+            <p class="section__lead">
+              <span data-l="ja">
+                GitHub Issues でタスクやアイデアを管理していると、<b
+                  >思いついた瞬間にスマホから書き留める</b
+                >
+                のが一番難しくなります。
+              </span>
+              <span data-l="en" lang="en">
+                When you run your tasks and ideas on GitHub Issues, the hardest moment is
+                <b>writing one down from your phone the second it occurs to you</b>.
+              </span>
+            </p>
+          </div>
+
+          <div class="problems reveal">
+            <article class="problem">
+              <h3>
+                <span data-l="ja">公式アプリは遠い</span>
+                <span data-l="en" lang="en">The official app is far away</span>
+              </h3>
+              <p>
+                <span data-l="ja">
+                  起票まで 3〜4 タップ + 4 画面かかり、ホーム画面からの直行導線がありません。
+                </span>
+                <span data-l="en" lang="en">
+                  It takes 3–4 taps across 4 screens, and there is no direct route from the home
+                  screen.
+                </span>
+              </p>
+            </article>
+
+            <article class="problem">
+              <h3>
+                <span data-l="ja">プレフィル URL は横取りされる</span>
+                <span data-l="en" lang="en">Prefilled URLs get hijacked</span>
+              </h3>
+              <p>
+                <span data-l="ja">
+                  <code>issues/new</code>
+                  のプレフィル URL をショートカットにしても、公式アプリがリンクを横取りして
+                  プレフィルを落とすことがあります。
+                </span>
+                <span data-l="en" lang="en">
+                  Turning an <code>issues/new</code> prefill URL into a shortcut works — until the
+                  official app intercepts the link and drops the prefilled values.
+                </span>
+              </p>
+            </article>
+
+            <article class="problem">
+              <h3>
+                <span data-l="ja">自作すると PAT 管理が残る</span>
+                <span data-l="en" lang="en">Rolling your own leaves PAT chores</span>
+              </h3>
+              <p>
+                <span data-l="ja">
+                  HTTP Shortcuts 等で自作すると動きますが、PAT の手動発行・管理が最大の摩擦として
+                  残り続けます。
+                </span>
+                <span data-l="en" lang="en">
+                  A DIY setup with tools like HTTP Shortcuts does work, but issuing and rotating a
+                  personal access token by hand stays the biggest friction.
+                </span>
+              </p>
+            </article>
+
+            <article class="problem">
+              <h3>
+                <span data-l="ja">Android に選択肢がない</span>
+                <span data-l="en" lang="en">Android has no option</span>
+              </h3>
+              <p>
+                <span data-l="ja">
+                  iOS には専用アプリが複数あるのに、Android × PWA でワンタップ起票できるツールは
+                  調べた限り見当たりませんでした。
+                </span>
+                <span data-l="en" lang="en">
+                  iOS has several dedicated apps, yet as far as our research goes there was no
+                  one-tap issue capture tool for Android as a PWA.
+                </span>
+              </p>
+            </article>
+          </div>
+
+          <p class="answer reveal">
+            <span data-l="ja">
+              そこで「ホーム画面タップ → 数秒で起票」だけに特化した PWA を作りました。
+              <small>
+                キャプチャ（起票）に徹し、整理・閲覧・編集は GitHub 側に委ねる設計です。
+                競合調査の詳細は
+                <a
+                  href="https://github.com/kai-kou/github-issue-shortcut/blob/main/docs/research/2026-07-10-market-competitors.md"
+                  >市場・競合リサーチ</a
+                >
+                に残しています。
+              </small>
+            </span>
+            <span data-l="en" lang="en">
+              So we built a PWA that does one thing: home-screen tap to filed issue, in seconds.
+              <small>
+                It sticks to capture and leaves triage, browsing and editing to GitHub itself. The
+                competitive research behind that call is in the repository (Japanese):
+                <a
+                  href="https://github.com/kai-kou/github-issue-shortcut/blob/main/docs/research/2026-07-10-market-competitors.md"
+                  >market &amp; competitor research</a
+                >.
+              </small>
+            </span>
+          </p>
+        </div>
+      </section>
+
+      <!-- ============================ 使い方 ============================ -->
+      <section class="section section--alt" id="how">
+        <div class="container">
+          <div class="section__head section__head--center">
+            <span class="section__kicker">
+              <span data-l="ja">使い方</span><span data-l="en" lang="en">How it works</span>
+            </span>
+            <h2 class="section__title">
+              <span data-l="ja"
+                ><span class="nw">4 ステップで、</span
+                ><span class="nw">ホーム画面から起票</span></span
+              >
+              <span data-l="en" lang="en">Four steps to home-screen capture</span>
+            </h2>
+            <p class="section__lead">
+              <span data-l="ja"
+                >セットアップは初回だけ。以降はアイコンをタップするところから始まります。</span
+              >
+              <span data-l="en" lang="en"
+                >Setup happens once. After that, every capture starts with a tap on the icon.</span
+              >
+            </p>
+          </div>
+
+          <div class="steps reveal">
+            <article class="step">
+              <h3>
+                <span data-l="ja">GitHub でログインする</span>
+                <span data-l="en" lang="en">Sign in with GitHub</span>
+              </h3>
+              <p>
+                <span data-l="ja">
+                  アプリを開くと GitHub の認可画面に進みます。PAT の発行は必要ありません。
+                </span>
+                <span data-l="en" lang="en">
+                  Opening the app takes you to GitHub's authorization screen. No token to issue.
+                </span>
+              </p>
+            </article>
+
+            <article class="step">
+              <h3>
+                <span data-l="ja">GitHub App を入れる（初回のみ）</span>
+                <span data-l="en" lang="en">Install the GitHub App (once)</span>
+              </h3>
+              <p>
+                <span data-l="ja">
+                  起票したいリポジトリにインストールします。Organization
+                  では、管理者でない場合はインストール申請となり承認待ちになることがあります。
+                </span>
+                <span data-l="en" lang="en">
+                  Install it on the repositories you want to file into. In an organization, a
+                  non-admin request goes to an owner for approval.
+                </span>
+              </p>
+            </article>
+
+            <article class="step">
+              <h3>
+                <span data-l="ja">ホーム画面に追加する</span>
+                <span data-l="en" lang="en">Add it to your home screen</span>
+              </h3>
+              <p>
+                <span data-l="ja">
+                  Android Chrome のメニュー（⋮）→「アプリをインストール」、または
+                  アドレスバーのインストールアイコンをタップします。
+                </span>
+                <span data-l="en" lang="en">
+                  In Android Chrome, use the ⋮ menu → "Install app", or tap the install icon in the
+                  address bar.
+                </span>
+              </p>
+            </article>
+
+            <article class="step">
+              <h3>
+                <span data-l="ja">タップして起票する</span>
+                <span data-l="en" lang="en">Tap and file</span>
+              </h3>
+              <p>
+                <span data-l="ja">
+                  以降はホーム画面から直行できます。ショートカットがリポジトリとラベルを覚えています。
+                </span>
+                <span data-l="en" lang="en">
+                  From then on it's a direct route — the shortcut already remembers the repository
+                  and labels.
+                </span>
+              </p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============================ できること ============================ -->
+      <section class="section" id="features">
+        <div class="container">
+          <div class="section__head section__head--center">
+            <span class="section__kicker">
+              <span data-l="ja">できること</span><span data-l="en" lang="en">Features</span>
+            </span>
+            <h2 class="section__title">
+              <span data-l="ja"
+                ><span class="nw">起票を速くするものだけが</span
+                ><span class="nw">入っています</span></span
+              >
+              <span data-l="en" lang="en">Only what makes capture faster</span>
+            </h2>
+            <p class="section__lead">
+              <span data-l="ja">
+                起動 → 入力 → 送信にタップを 1 つでも足す機能は、既定でオフか、そもそも作りません。
+              </span>
+              <span data-l="en" lang="en">
+                Anything that adds even one tap between launch, typing and sending is off by default
+                — or simply never built.
+              </span>
+            </p>
+          </div>
+
+          <div class="bento reveal">
+            <article class="bento__card bento__card--wide">
+              <span class="bento__icon" aria-hidden="true">
+                <svg width="20" height="20" viewBox="0 0 16 16" fill="currentColor">
+                  <path
+                    d="M9.504.43a1.516 1.516 0 0 1 2.437 1.713L10.415 5.5h2.123c1.57 0 2.346 1.909 1.22 3.004l-7.34 7.142a1.249 1.249 0 0 1-.871.354h-.302a1.25 1.25 0 0 1-1.157-1.723L5.633 10.5H3.462c-1.57 0-2.346-1.909-1.22-3.004L9.504.43Z"
+                  />
+                </svg>
+              </span>
+              <h3>
+                <span data-l="ja">ショートカット起動</span>
+                <span data-l="en" lang="en">Launch from a saved shortcut</span>
+              </h3>
+              <p>
+                <span data-l="ja">
+                  リポジトリ・ラベル・タイトルを初期選択した状態で開く URL
+                  を、いくつでも保存できます。アプリ上部の「保存済みショートカット」一覧から
+                  タップして開きます。
+                </span>
+                <span data-l="en" lang="en">
+                  Save as many launch URLs as you like, each opening the form with its repository,
+                  labels and title already selected — then tap one from the "saved shortcuts" list
+                  at the top of the app.
+                </span>
+              </p>
+              <pre class="bento__code" data-l="ja"><code>/new?repo=<b>kai-kou/notes</b>
+     &amp;labels=<b>idea</b>
+     &amp;title=<b>あとで調べる</b></code></pre>
+              <pre class="bento__code" data-l="en" lang="en"><code>/new?repo=<b>kai-kou/notes</b>
+     &amp;labels=<b>idea</b>
+     &amp;title=<b>Look into later</b></code></pre>
+            </article>
+
+            <article class="bento__card bento__card--wide">
+              <span class="bento__icon" aria-hidden="true">
+                <svg width="20" height="20" viewBox="0 0 16 16" fill="currentColor">
+                  <path
+                    d="M8 0a.75.75 0 0 1 .728.568l.63 2.52 2.52.63a.75.75 0 0 1 0 1.456l-2.52.63-.63 2.52a.75.75 0 0 1-1.456 0l-.63-2.52-2.52-.63a.75.75 0 0 1 0-1.456l2.52-.63.63-2.52A.75.75 0 0 1 8 0Zm4.5 9a.75.75 0 0 1 .728.568l.29 1.164 1.164.29a.75.75 0 0 1 0 1.456l-1.164.29-.29 1.164a.75.75 0 0 1-1.456 0l-.29-1.164-1.164-.29a.75.75 0 0 1 0-1.456l1.164-.29.29-1.164A.75.75 0 0 1 12.5 9ZM3.5 10a.75.75 0 0 1 .728.568l.184.738.738.184a.75.75 0 0 1 0 1.456l-.738.184-.184.738a.75.75 0 0 1-1.456 0l-.184-.738-.738-.184a.75.75 0 0 1 0-1.456l.738-.184.184-.738A.75.75 0 0 1 3.5 10Z"
+                  />
+                </svg>
+              </span>
+              <h3>
+                <span data-l="ja">スマート入力（<code>#</code> と <code>@</code>）</span>
+                <span data-l="en" lang="en">Smart input (<code>#</code> and <code>@</code>)</span>
+              </h3>
+              <p>
+                <span data-l="ja">
+                  タイトル欄に <code>#repo</code> <code>@label</code>
+                  と打つとインラインで候補が出て、指を動かさずにそのまま指定できます。
+                </span>
+                <span data-l="en" lang="en">
+                  Type <code>#repo</code> or <code>@label</code> right in the title field and
+                  suggestions appear inline — no need to move your thumb elsewhere.
+                </span>
+              </p>
+              <figure class="bento__figure">
+                <img
+                  src="assets/smart-input.png"
+                  alt="タイトルに「決済ボタンが反応しない @b」と入力すると、直下に bug と backlog のラベル候補が表示されている画面"
+                  data-alt-en="Typing a title ending in @b shows bug and backlog label suggestions right below the field"
+                  width="780"
+                  height="352"
+                  loading="lazy"
+                />
+              </figure>
+            </article>
+
+            <article class="bento__card">
+              <span class="bento__icon" aria-hidden="true">
+                <svg width="20" height="20" viewBox="0 0 16 16" fill="currentColor">
+                  <path
+                    d="M2 2.75A.75.75 0 0 1 2.75 2h3.5a.75.75 0 0 1 .75.75v3.5a.75.75 0 0 1-.75.75h-3.5A.75.75 0 0 1 2 6.25v-3.5Zm7 0A.75.75 0 0 1 9.75 2h3.5a.75.75 0 0 1 .75.75v3.5a.75.75 0 0 1-.75.75h-3.5A.75.75 0 0 1 9 6.25v-3.5Zm-7 7A.75.75 0 0 1 2.75 9h3.5a.75.75 0 0 1 .75.75v3.5a.75.75 0 0 1-.75.75h-3.5A.75.75 0 0 1 2 13.25v-3.5Zm7 0A.75.75 0 0 1 9.75 9h3.5a.75.75 0 0 1 .75.75v3.5a.75.75 0 0 1-.75.75h-3.5A.75.75 0 0 1 9 13.25v-3.5Z"
+                  />
+                </svg>
+              </span>
+              <h3>
+                <span data-l="ja">アイコン長押しメニュー</span>
+                <span data-l="en" lang="en">Long-press icon menu</span>
+              </h3>
+              <p>
+                <span data-l="ja">
+                  アイコンを長押しすると「新しい Issue」「バグを報告」「改善案を起票」の 3 つを
+                  直接開けます（Android）。自分用のプリセットは保存済みショートカットで作ります。
+                </span>
+                <span data-l="en" lang="en">
+                  Long-press the icon to jump straight to "New issue", "Report a bug" or "Suggest an
+                  improvement" (Android only). Your own presets live in saved shortcuts.
+                </span>
+              </p>
+            </article>
+
+            <article class="bento__card">
+              <span class="bento__icon" aria-hidden="true">
+                <svg width="20" height="20" viewBox="0 0 16 16" fill="currentColor">
+                  <path
+                    d="M8 1.5 4.72 4.78a.75.75 0 0 0 1.06 1.06l1.47-1.47V10a.75.75 0 0 0 1.5 0V4.37l1.47 1.47a.75.75 0 1 0 1.06-1.06L8 1.5ZM3 9.75a.75.75 0 0 0-1.5 0v3c0 .97.78 1.75 1.75 1.75h9.5c.97 0 1.75-.78 1.75-1.75v-3a.75.75 0 0 0-1.5 0v3a.25.25 0 0 1-.25.25h-9.5a.25.25 0 0 1-.25-.25v-3Z"
+                  />
+                </svg>
+              </span>
+              <h3>
+                <span data-l="ja">共有シートから起票</span>
+                <span data-l="en" lang="en">File from the share sheet</span>
+              </h3>
+              <p>
+                <span data-l="ja">
+                  Android の共有シートに本アプリが出ます。記事の URL を共有すれば本文にプレフィルされます。
+                </span>
+                <span data-l="en" lang="en">
+                  The app shows up in Android's share sheet — share an article URL and it lands
+                  prefilled in the body.
+                </span>
+              </p>
+            </article>
+
+            <article class="bento__card">
+              <span class="bento__icon" aria-hidden="true">
+                <svg width="20" height="20" viewBox="0 0 16 16" fill="currentColor">
+                  <path
+                    d="M1.705 8.005a.75.75 0 0 1 .834.656 5.5 5.5 0 0 0 9.592 2.97l-1.204-1.204a.25.25 0 0 1 .177-.427h3.646a.25.25 0 0 1 .25.25v3.646a.25.25 0 0 1-.427.177l-1.38-1.38A7.002 7.002 0 0 1 1.05 8.84a.75.75 0 0 1 .655-.835ZM8 2.5a5.487 5.487 0 0 0-4.131 1.869l1.204 1.204A.25.25 0 0 1 4.896 6H1.25A.25.25 0 0 1 1 5.75V2.104a.25.25 0 0 1 .427-.177l1.38 1.38A7.002 7.002 0 0 1 14.95 7.16a.75.75 0 0 1-1.49.178A5.5 5.5 0 0 0 8 2.5Z"
+                  />
+                </svg>
+              </span>
+              <h3>
+                <span data-l="ja">オフラインでも書ける</span>
+                <span data-l="en" lang="en">Write offline</span>
+              </h3>
+              <p>
+                <span data-l="ja">
+                  圏外での起票はキューに保存され、次にアプリのホーム画面を開いたときに自動で再送されます。
+                </span>
+                <span data-l="en" lang="en">
+                  Issues written out of coverage are queued and resent automatically the next time
+                  you open the app's home screen.
+                </span>
+              </p>
+            </article>
+
+            <article class="bento__card">
+              <span class="bento__icon" aria-hidden="true">
+                <svg width="20" height="20" viewBox="0 0 16 16" fill="currentColor">
+                  <path
+                    d="M11.013 1.427a1.75 1.75 0 0 1 2.474 0l1.086 1.086a1.75 1.75 0 0 1 0 2.474l-8.61 8.61c-.21.21-.47.364-.756.445l-3.251.93a.75.75 0 0 1-.927-.928l.929-3.25c.081-.286.235-.547.445-.758l8.61-8.61Z"
+                  />
+                </svg>
+              </span>
+              <h3>
+                <span data-l="ja">入力は消えない</span>
+                <span data-l="en" lang="en">Your input survives</span>
+              </h3>
+              <p>
+                <span data-l="ja">
+                  送信に失敗しても下書きを端末内に保全します。無言で消すことはしません。
+                </span>
+                <span data-l="en" lang="en">
+                  If sending fails, the draft is kept on your device. Nothing is discarded silently.
+                </span>
+              </p>
+            </article>
+
+            <article class="bento__card">
+              <span class="bento__icon" aria-hidden="true">
+                <svg width="20" height="20" viewBox="0 0 16 16" fill="currentColor">
+                  <path
+                    d="M6.457 1.047c.659-1.234 2.427-1.234 3.086 0l6.082 11.38A1.75 1.75 0 0 1 14.082 15H1.918a1.75 1.75 0 0 1-1.543-2.573Zm1.763.707a.25.25 0 0 0-.44 0L1.698 13.132a.25.25 0 0 0 .22.368h12.164a.25.25 0 0 0 .22-.368Zm.53 3.996v2.5a.75.75 0 0 1-1.5 0v-2.5a.75.75 0 0 1 1.5 0ZM9 11a1 1 0 1 1-2 0 1 1 0 0 1 2 0Z"
+                  />
+                </svg>
+              </span>
+              <h3>
+                <span data-l="ja">ラベル権限の事前警告</span>
+                <span data-l="en" lang="en">Warns before labels are dropped</span>
+              </h3>
+              <p>
+                <span data-l="ja">
+                  push 権限のないリポジトリではラベルが黙って捨てられるため、送信前に警告します。
+                </span>
+                <span data-l="en" lang="en">
+                  On repositories where you lack push access, labels are silently discarded — so the
+                  app warns you before you send.
+                </span>
+              </p>
+            </article>
+
+            <article class="bento__card">
+              <span class="bento__icon" aria-hidden="true">
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 16 16"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.5"
+                >
+                  <circle cx="8" cy="8" r="6.25" />
+                  <path d="M1.75 8h12.5" />
+                  <ellipse cx="8" cy="8" rx="3.1" ry="6.25" />
+                </svg>
+              </span>
+              <h3>
+                <span data-l="ja">日本語 / English</span>
+                <span data-l="en" lang="en">Japanese / English</span>
+              </h3>
+              <p>
+                <span data-l="ja">
+                  アプリ本体は 2 言語対応です。ブラウザの言語設定から自動で選ばれます。
+                </span>
+                <span data-l="en" lang="en">
+                  The app ships in both languages and picks one from your browser settings.
+                </span>
+              </p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============================ 速さの目標 ============================ -->
+      <section class="section section--alt" id="goals">
+        <div class="container">
+          <div class="section__head section__head--center">
+            <span class="section__kicker">
+              <span data-l="ja">設計目標</span><span data-l="en" lang="en">Design targets</span>
+            </span>
+            <h2 class="section__title">
+              <span data-l="ja">「速い」を数字で決めています</span>
+              <span data-l="en" lang="en">"Fast" is written down as numbers</span>
+            </h2>
+          </div>
+
+          <div class="goals reveal">
+            <div class="goal">
+              <p class="goal__value">
+                <span data-l="ja">10 秒</span><span data-l="en" lang="en">10 s</span>
+              </p>
+              <p class="goal__label">
+                <span data-l="ja">起動 → Issue 作成完了（タイトルのみなら 5 秒）</span>
+                <span data-l="en" lang="en">Launch to created issue (5 s for title-only)</span>
+              </p>
+            </div>
+            <div class="goal">
+              <p class="goal__value">
+                <span data-l="ja">3 タップ</span><span data-l="en" lang="en">3 taps</span>
+              </p>
+              <p class="goal__label">
+                <span data-l="ja">ショートカット起動 → 入力 → 送信</span>
+                <span data-l="en" lang="en">Shortcut launch → type → send</span>
+              </p>
+            </div>
+            <div class="goal">
+              <p class="goal__value">99%</p>
+              <p class="goal__label">
+                <span data-l="ja">起票成功率（失敗しても入力内容を失わない）</span>
+                <span data-l="en" lang="en">Filing success rate (input never lost on failure)</span>
+              </p>
+            </div>
+            <div class="goal">
+              <p class="goal__value">
+                <span data-l="ja">5 分</span><span data-l="en" lang="en">5 min</span>
+              </p>
+              <p class="goal__label">
+                <span data-l="ja">初回セットアップ（ログイン → 初起票）</span>
+                <span data-l="en" lang="en">First-run setup (sign-in to first issue)</span>
+              </p>
+            </div>
+          </div>
+
+          <p class="goals__note">
+            <span data-l="ja">
+              これらは <b>プロジェクトが目標として掲げている値</b> であり、実測値ではありません。
+              目標と、それに基づく設計判断は
+              <a
+                href="https://github.com/kai-kou/github-issue-shortcut/blob/main/docs/project-mission.md"
+                >プロジェクトミッション</a
+              >
+              に公開しています。
+            </span>
+            <span data-l="en" lang="en">
+              These are <b>the project's targets, not measured results</b>. The targets and the
+              design decisions derived from them are published in the repository (Japanese):
+              <a
+                href="https://github.com/kai-kou/github-issue-shortcut/blob/main/docs/project-mission.md"
+                >project mission</a
+              >.
+            </span>
+          </p>
+        </div>
+      </section>
+
+      <!-- ============================ 安全性 ============================ -->
+      <section class="section" id="security">
+        <div class="container security">
+          <div class="section__head">
+            <span class="section__kicker">
+              <span data-l="ja">安全性</span><span data-l="en" lang="en">Security</span>
+            </span>
+            <h2 class="section__title">
+              <span data-l="ja"
+                ><span class="nw">預かるものを、</span
+                ><span class="nw">できるだけ減らす</span></span
+              >
+              <span data-l="en" lang="en">Hold on to as little as possible</span>
+            </h2>
+            <p class="section__lead">
+              <span data-l="ja">
+                サーバーはあなたのデータを保存しません。ただし「ログを一切取っていない」わけでもない
+                ので、そこも書いておきます。
+              </span>
+              <span data-l="en" lang="en">
+                The server stores none of your data. That said, it is not a "zero logs" service
+                either — so that is written down too.
+              </span>
+            </p>
+          </div>
+
+          <ul class="security__list reveal">
+            <li class="security__item">
+              <svg width="20" height="20" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                <path
+                  d="M4 4a4 4 0 1 1 8 0v2h.25c.966 0 1.75.784 1.75 1.75v5.5A1.75 1.75 0 0 1 12.25 15h-8.5A1.75 1.75 0 0 1 2 13.25v-5.5C2 6.784 2.784 6 3.75 6H4V4Zm1.5 2h5V4a2.5 2.5 0 0 0-5 0v2Z"
+                />
+              </svg>
+              <div>
+                <h3>
+                  <span data-l="ja">トークンは暗号化 Cookie で端末に</span>
+                  <span data-l="en" lang="en">The token lives on your device</span>
+                </h3>
+                <p>
+                  <span data-l="ja">
+                    GitHub のトークンは暗号化した HttpOnly Cookie として端末に置かれ、JavaScript
+                    からは読めません。有効期限は最長 30 日で、リフレッシュしても延長されません。
+                  </span>
+                  <span data-l="en" lang="en">
+                    Your GitHub token is stored as an encrypted HttpOnly cookie on your device, out
+                    of reach of JavaScript. It lasts at most 30 days and refreshing does not extend
+                    that.
+                  </span>
+                </p>
+              </div>
+            </li>
+
+            <li class="security__item">
+              <svg width="20" height="20" fill="currentColor" aria-hidden="true">
+                <use href="#i-shield" />
+              </svg>
+              <div>
+                <h3>
+                  <span data-l="ja">サーバーに永続層がない</span>
+                  <span data-l="en" lang="en">The server has no storage layer</span>
+                </h3>
+                <p>
+                  <span data-l="ja">
+                    リクエストのたびに Cookie を復号して GitHub へ中継するだけで、データベースを
+                    持っていません。入力内容や設定は端末内（localStorage / IndexedDB）にのみ残ります。
+                  </span>
+                  <span data-l="en" lang="en">
+                    Each request simply decrypts the cookie and relays to GitHub — there is no
+                    database. Your drafts and settings stay on the device (localStorage /
+                    IndexedDB).
+                  </span>
+                </p>
+              </div>
+            </li>
+
+            <li class="security__item">
+              <svg width="20" height="20" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                <path
+                  d="M8 1.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13ZM0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8Zm8-3.25a.75.75 0 0 1 .75.75v3a.75.75 0 0 1-1.5 0v-3A.75.75 0 0 1 8 4.75ZM8 11.5a.9.9 0 1 1 0-1.8.9.9 0 0 1 0 1.8Z"
+                />
+              </svg>
+              <div>
+                <h3>
+                  <span data-l="ja">ログはゼロではありません</span>
+                  <span data-l="en" lang="en">Logs are not zero</span>
+                </h3>
+                <p>
+                  <span data-l="ja">
+                    Cloudflare 基盤側に例外ログが 5% サンプリングで最長 3 日残ることがあります。
+                    「一切取っていない」とは言いません。
+                  </span>
+                  <span data-l="en" lang="en">
+                    Exception logs may remain on the Cloudflare platform at 5% sampling for up to
+                    three days. We won't claim "no logs at all".
+                  </span>
+                </p>
+              </div>
+            </li>
+
+            <li class="security__item">
+              <svg width="20" height="20" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                <path
+                  d="M3.72 3.72a.75.75 0 0 1 1.06 0L8 6.94l3.22-3.22a.75.75 0 1 1 1.06 1.06L9.06 8l3.22 3.22a.75.75 0 1 1-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 0 1-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 0 1 0-1.06Z"
+                />
+              </svg>
+              <div>
+                <h3>
+                  <span data-l="ja">いつでも取り消せる</span>
+                  <span data-l="en" lang="en">Revoke it whenever you like</span>
+                </h3>
+                <p>
+                  <span data-l="ja">
+                    ログアウト・アカウント削除のどちらでも GitHub 側のトークンを失効させます
+                    （削除は加えて端末内のデータを消します）。アプリを経由せず GitHub の
+                    <a href="https://github.com/settings/apps/authorizations"
+                      >Authorized GitHub Apps</a
+                    >
+                    から連携を解除することもできます。
+                  </span>
+                  <span data-l="en" lang="en">
+                    Signing out or deleting your account both revoke the token on GitHub's side
+                    (deletion also wipes on-device data). You can also disconnect it directly from
+                    GitHub's
+                    <a href="https://github.com/settings/apps/authorizations"
+                      >Authorized GitHub Apps</a
+                    >
+                    page.
+                  </span>
+                </p>
+              </div>
+            </li>
+          </ul>
+        </div>
+      </section>
+
+      <!-- ============================ FAQ ============================ -->
+      <section class="section section--alt" id="faq">
+        <div class="container">
+          <div class="section__head section__head--center">
+            <span class="section__kicker">FAQ</span>
+            <h2 class="section__title">
+              <span data-l="ja">よくある質問</span>
+              <span data-l="en" lang="en">Frequently asked questions</span>
+            </h2>
+          </div>
+
+          <div class="faq reveal">
+            <details class="faq__item">
+              <summary>
+                <span data-l="ja">料金はかかりますか？</span>
+                <span data-l="en" lang="en">Does it cost anything?</span>
+              </summary>
+              <div class="faq__body">
+                <p>
+                  <span data-l="ja">
+                    現在、課金の仕組みはありません（利用料は発生しません）。個人開発のオープンソースを
+                    Cloudflare Workers 上で運用しているため、可用性は保証していません。業務クリティカルな
+                    用途では、その前提でご利用ください。
+                  </span>
+                  <span data-l="en" lang="en">
+                    There is no billing of any kind today, so using it costs nothing. It is a personal
+                    open-source project running on Cloudflare Workers, so availability is not
+                    guaranteed — please keep that in mind for business-critical use.
+                  </span>
+                </p>
+              </div>
+            </details>
+
+            <details class="faq__item">
+              <summary>
+                <span data-l="ja">どんな権限を要求しますか？</span>
+                <span data-l="en" lang="en">What permissions does it request?</span>
+              </summary>
+              <div class="faq__body">
+                <p>
+                  <span data-l="ja">
+                    Issues の読み書きのみです（ほかに GitHub が自動付与する Metadata
+                    の読み取りが付きます）。コードには一切アクセスしません。実際に要求される権限は
+                    GitHub のインストール画面でご自身で確認できます。
+                  </span>
+                  <span data-l="en" lang="en">
+                    Read and write on Issues only, plus the Metadata read permission GitHub attaches
+                    automatically. It never touches your code — and you can verify the exact
+                    permissions on GitHub's own installation screen.
+                  </span>
+                </p>
+              </div>
+            </details>
+
+            <details class="faq__item">
+              <summary>
+                <span data-l="ja">iPhone でも使えますか？</span>
+                <span data-l="en" lang="en">Can I use it on iPhone?</span>
+              </summary>
+              <div class="faq__body">
+                <p>
+                  <span data-l="ja">
+                    Android 向けに設計しています。Web アプリなのでブラウザからは開けますが、
+                    アイコン長押しメニューなど Android 固有の導線は iOS では利用できません。
+                  </span>
+                  <span data-l="en" lang="en">
+                    It is designed for Android. Being a web app it opens in any browser, but
+                    Android-specific entry points such as the long-press icon menu are not available
+                    on iOS.
+                  </span>
+                </p>
+              </div>
+            </details>
+
+            <details class="faq__item">
+              <summary>
+                <span data-l="ja">Organization のリポジトリでも使えますか？</span>
+                <span data-l="en" lang="en">Does it work with organization repositories?</span>
+              </summary>
+              <div class="faq__body">
+                <p>
+                  <span data-l="ja">
+                    使えます。ただし管理者でない場合、GitHub App
+                    のインストールは申請となり、承認待ちになることがあります。
+                  </span>
+                  <span data-l="en" lang="en">
+                    Yes. If you are not an admin, installing the GitHub App becomes a request that
+                    waits for an owner's approval.
+                  </span>
+                </p>
+              </div>
+            </details>
+
+            <details class="faq__item">
+              <summary>
+                <span data-l="ja">圏外で書いた Issue はどうなりますか？</span>
+                <span data-l="en" lang="en">What happens to issues written offline?</span>
+              </summary>
+              <div class="faq__body">
+                <p>
+                  <span data-l="ja">
+                    キューに保存され、次にアプリのホーム画面を開いたときに自動で再送されます。
+                    再送の対象はネットワーク接続の失敗のみで、24 時間送信できないままだと自動再送は
+                    止まり、アプリ内の一覧から手動で再送・破棄します。
+                  </span>
+                  <span data-l="en" lang="en">
+                    They are queued and resent automatically the next time you open the app's home
+                    screen. Only network failures are retried; after 24 hours without success the
+                    automatic retry stops and you resend or discard manually from the in-app list.
+                  </span>
+                </p>
+              </div>
+            </details>
+
+            <details class="faq__item">
+              <summary>
+                <span data-l="ja">ショートカット URL をそのままホーム画面に置けますか？</span>
+                <span data-l="en" lang="en">Can I put a shortcut URL on the home screen?</span>
+              </summary>
+              <div class="faq__body">
+                <p>
+                  <span data-l="ja">
+                    置けますが、この URL を単体でホーム画面のアイコンにした場合、Android の仕様で
+                    リポジトリ・ラベルの初期選択は反映されません。アプリ内の「保存済みショートカット」
+                    一覧からタップして開いてください。
+                  </span>
+                  <span data-l="en" lang="en">
+                    You can, but an Android home-screen icon pointing straight at that URL will not
+                    apply the preselected repository and labels. Launch it from the "saved shortcuts"
+                    list inside the app instead.
+                  </span>
+                </p>
+              </div>
+            </details>
+
+            <details class="faq__item">
+              <summary>
+                <span data-l="ja">ソースコードは公開されていますか？</span>
+                <span data-l="en" lang="en">Is the source code public?</span>
+              </summary>
+              <div class="faq__body">
+                <p>
+                  <span data-l="ja">
+                    MIT ライセンスで公開しています。実装だけでなく、AI エージェント（Claude Code）に
+                    よる自律開発の運用ルールもリポジトリ内で管理しています。
+                  </span>
+                  <span data-l="en" lang="en">
+                    Yes, under the MIT license. Beyond the implementation, the operating rules for
+                    autonomous development by an AI agent (Claude Code) are kept in the repository
+                    too.
+                  </span>
+                </p>
+                <p>
+                  <a href="https://github.com/kai-kou/github-issue-shortcut">
+                    github.com/kai-kou/github-issue-shortcut
+                  </a>
+                </p>
+              </div>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============================ 最終 CTA ============================ -->
+      <section class="finalcta">
+        <div class="container finalcta__inner">
+          <h2 class="finalcta__title">
+            <span data-l="ja"
+              ><span class="nw">次に思いついたことは、</span
+              ><span class="nw">ホーム画面のタップから。</span></span
+            >
+            <span data-l="en" lang="en">Your next idea starts with one tap.</span>
+          </h2>
+          <p class="finalcta__lead">
+            <span data-l="ja">
+              GitHub でログインするだけ。PAT の発行も管理も要りません。
+            </span>
+            <span data-l="en" lang="en">
+              Just sign in with GitHub. No personal access token to create or manage.
+            </span>
+          </p>
+          <div class="finalcta__actions">
+            <a
+              class="btn btn--onDark"
+              href="https://github-issue-shortcut.kinamocchi-tech.workers.dev"
+            >
+              <span data-l="ja">アプリを開いて起票する</span>
+              <span data-l="en" lang="en">Open the app</span>
+            </a>
+            <a
+              class="btn btn--ghostOnDark"
+              href="https://github.com/kai-kou/github-issue-shortcut"
+            >
+              <span data-l="ja">GitHub でソースを見る</span>
+              <span data-l="en" lang="en">View on GitHub</span>
+            </a>
+          </div>
+          <p class="finalcta__note">
+            <span data-l="ja">
+              ご利用前に
+              <a href="https://github-issue-shortcut.kinamocchi-tech.workers.dev/privacy"
+                >プライバシーポリシー</a
+              >
+              と
+              <a href="https://github-issue-shortcut.kinamocchi-tech.workers.dev/terms">利用規約</a>
+              をご確認ください。
+            </span>
+            <span data-l="en" lang="en">
+              Please read the
+              <a href="https://github-issue-shortcut.kinamocchi-tech.workers.dev/privacy"
+                >privacy policy</a
+              >
+              and
+              <a href="https://github-issue-shortcut.kinamocchi-tech.workers.dev/terms"
+                >terms of service</a
+              >
+              before you start.
+            </span>
+          </p>
+        </div>
+      </section>
+    </main>
+
+    <!-- ============================ フッター ============================ -->
+    <footer class="footer">
+      <div class="container footer__inner">
+        <div>
+          <p class="footer__brand">GitHub Issue Shortcut</p>
+          <p class="footer__tagline">
+            <span data-l="ja">
+              「思いついた瞬間」を逃さない、Android 向けの GitHub Issue 起票 PWA。
+            </span>
+            <span data-l="en" lang="en">
+              An Android PWA for capturing GitHub issues the moment you think of them.
+            </span>
+          </p>
+        </div>
+
+        <nav class="footer__links" aria-label="関連リンク" data-label-en="Related links">
+          <a href="https://github-issue-shortcut.kinamocchi-tech.workers.dev">
+            <span data-l="ja">アプリ</span><span data-l="en" lang="en">App</span>
+          </a>
+          <a href="https://github.com/kai-kou/github-issue-shortcut">GitHub</a>
+          <a href="https://github-issue-shortcut.kinamocchi-tech.workers.dev/privacy">
+            <span data-l="ja">プライバシーポリシー</span>
+            <span data-l="en" lang="en">Privacy</span>
+          </a>
+          <a href="https://github-issue-shortcut.kinamocchi-tech.workers.dev/terms">
+            <span data-l="ja">利用規約</span><span data-l="en" lang="en">Terms</span>
+          </a>
+          <a href="https://github.com/kai-kou/github-issue-shortcut/blob/main/SECURITY.md">
+            <span data-l="ja">セキュリティ</span><span data-l="en" lang="en">Security</span>
+          </a>
+          <a href="https://github.com/kai-kou/github-issue-shortcut/blob/main/LICENSE">
+            <span data-l="ja">MIT ライセンス</span><span data-l="en" lang="en">MIT license</span>
+          </a>
+        </nav>
+
+        <p class="footer__legal">
+          <span data-l="ja">
+            個人開発のオープンソースプロジェクトです。GitHub は GitHub, Inc.
+            の、Android は Google LLC の商標です。本サイトはいずれとも関係ありません。
+          </span>
+          <span data-l="en" lang="en">
+            An independent open-source project. GitHub is a trademark of GitHub, Inc. and Android is
+            a trademark of Google LLC; this site is not affiliated with either.
+          </span>
+        </p>
+      </div>
+    </footer>
+
+    <script src="main.js" defer></script>
+  </body>
+</html>

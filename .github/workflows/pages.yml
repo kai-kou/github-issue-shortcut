@@ -1,0 +1,53 @@
+name: Deploy LP
+
+# site/ のランディングページを GitHub Pages へ公開する。
+# アプリ本体（Cloudflare Workers）とは別系統で、Pages に載せるのは site/ 配下だけ。
+# docs/ 等のリポジトリ内ドキュメントは公開対象に含めない。
+#
+# 前提: リポジトリ設定 Settings → Pages → Build and deployment の Source が
+# 「GitHub Actions」であること（未設定だと deploy-pages が失敗する）。
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "site/**"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+# 既定は権限なし。必要な権限は deploy ジョブにだけ与える。
+permissions: {}
+
+# 公開は直列化する。進行中のデプロイは打ち切らない（公開途中で止めない）。
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    # workflow_dispatch は任意のブランチを選べるため、公開元を main に限定する
+    # （作業ブランチの site/ が本番 Pages に載るのを防ぐ）。
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # 後続ステップから読める GITHUB_TOKEN を .git/config に残さない
+          persist-credentials: false
+
+      # LP はビルド不要（依存ゼロの静的ファイル）なので、site/ をそのまま成果物にする。
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - id: deployment
+        uses: actions/deploy-pages@v4

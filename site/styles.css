@@ -1,0 +1,1123 @@
+/* GitHub Issue Shortcut — ランディングページ
+   設計方針（docs/research/2026-07-29-landing-page-best-practices.md が根拠）
+   - 依存ゼロ・ビルド不要の静的 CSS（アプリ本体と同じ「追加ライブラリなし」方針・design-guidelines D-6）
+   - カラートークンはアプリ本体（src/App.css）と同系統（accent・primary・text・border は同値、
+     背景と余白は LP 用に拡張）。ライト / ダークを prefers-color-scheme で切替（D-9）
+   - タップターゲット・コントラスト・reduced-motion は design-guidelines.md §2 の数値基準に準拠 */
+
+/* ============================================================
+   1. トークン
+   ============================================================ */
+:root {
+  --color-bg: #ffffff;
+  --color-bg-alt: #f6f8fa;
+  --color-surface: #ffffff;
+  --color-text: #1f2328;
+  --color-text-muted: #59636e;
+  --color-border: #d1d9e0;
+  --color-border-subtle: #e4e8ed;
+  --color-accent: #0969da;
+  --color-accent-soft: rgb(9 105 218 / 0.08);
+  --color-primary: #1f883d;
+  --color-primary-hover: #1a7f37;
+  --color-primary-text: #ffffff;
+  --color-invert-bg: #0d1117;
+  --color-invert-text: #e6edf3;
+  --color-invert-muted: #9198a1;
+  --color-invert-border: #30363d;
+
+  --radius-s: 8px;
+  --radius-m: 12px;
+  --radius-l: 18px;
+  --radius-xl: 28px;
+
+  --shadow-card: 0 1px 2px rgb(31 35 40 / 0.06), 0 8px 24px rgb(31 35 40 / 0.06);
+  --shadow-raised: 0 12px 40px rgb(31 35 40 / 0.14);
+
+  --space-section: clamp(64px, 9vw, 112px);
+  --container: 1120px;
+
+  --font-sans:
+    system-ui, -apple-system, "Segoe UI", "Hiragino Sans", "Noto Sans JP", Meiryo, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-bg: #0d1117;
+    --color-bg-alt: #010409;
+    --color-surface: #161b22;
+    --color-text: #e6edf3;
+    --color-text-muted: #9198a1;
+    --color-border: #30363d;
+    --color-border-subtle: #21262d;
+    --color-accent: #4493f8;
+    --color-accent-soft: rgb(68 147 248 / 0.12);
+    --color-primary: #238636;
+    --color-primary-hover: #2ea043;
+    /* 反転（常時ダーク）面のトークンはライト側と同値でよいため、変わる bg だけを上書きする。 */
+    --color-invert-bg: #161b22;
+
+    --shadow-card: 0 1px 2px rgb(1 4 9 / 0.6), 0 8px 24px rgb(1 4 9 / 0.5);
+    --shadow-raised: 0 12px 40px rgb(1 4 9 / 0.7);
+  }
+}
+
+/* ============================================================
+   2. ベース
+   ============================================================ */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+  /* sticky ヘッダーぶんのアンカーオフセット */
+  scroll-padding-top: 84px;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  font-size: 17px;
+  line-height: 1.75;
+  letter-spacing: 0.01em;
+  overflow-x: hidden;
+}
+
+h1,
+h2,
+h3 {
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+  text-wrap: balance;
+  margin: 0;
+}
+
+p {
+  margin: 0;
+  text-wrap: pretty;
+}
+
+img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
+
+a {
+  color: var(--color-accent);
+  text-underline-offset: 3px;
+}
+
+ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+:focus-visible {
+  outline: 3px solid var(--color-accent);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+.container {
+  width: 100%;
+  max-width: var(--container);
+  margin-inline: auto;
+  padding-inline: clamp(20px, 5vw, 32px);
+}
+
+.section {
+  padding-block: var(--space-section);
+}
+
+.section--alt {
+  background: var(--color-bg-alt);
+  border-block: 1px solid var(--color-border-subtle);
+}
+
+.skip-link {
+  position: absolute;
+  left: 16px;
+  top: -100px;
+  z-index: 100;
+  padding: 12px 20px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-s);
+  color: var(--color-text);
+  text-decoration: none;
+  transition: top 0.15s ease;
+}
+
+.skip-link:focus {
+  top: 16px;
+}
+
+/* 日本語見出しの改行位置制御。CJK は任意の文字間で折り返せてしまうため、
+   意味のまとまりを inline-block で包んで「句の途中で折らない」ようにする。 */
+.nw {
+  display: inline-block;
+}
+
+/* 言語切替: 非アクティブ言語のノードを隠す（JS 無効時は既定の日本語が表示される） */
+html[data-lang="ja"] [data-l="en"],
+html[data-lang="en"] [data-l="ja"] {
+  display: none !important;
+}
+
+/* ============================================================
+   3. 見出しの共通スタイル
+   ============================================================ */
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 20px;
+  padding: 7px 16px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 1.5;
+}
+
+.eyebrow__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  flex: none;
+}
+
+.section__head {
+  max-width: 44rem;
+  margin-bottom: clamp(36px, 5vw, 56px);
+}
+
+.section__head--center {
+  margin-inline: auto;
+  text-align: center;
+}
+
+.section__title {
+  font-size: clamp(28px, 4.2vw, 42px);
+  font-weight: 800;
+}
+
+.section__lead {
+  margin-top: 18px;
+  color: var(--color-text-muted);
+  font-size: clamp(16px, 1.6vw, 18px);
+}
+
+.section__kicker {
+  display: block;
+  margin-bottom: 12px;
+  color: var(--color-accent);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* ============================================================
+   4. ボタン
+   ============================================================ */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 12px 26px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-family: inherit;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.4;
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    background-color 0.18s ease,
+    border-color 0.18s ease,
+    transform 0.18s ease,
+    box-shadow 0.18s ease;
+}
+
+/* 浮き上がりは全 modifier 共通。reduced-motion の打ち消しも .btn:hover 1 本で足りている。 */
+.btn:hover {
+  transform: translateY(-1px);
+}
+
+.btn svg {
+  flex: none;
+}
+
+.btn--primary {
+  background: var(--color-primary);
+  color: var(--color-primary-text);
+  box-shadow: 0 6px 20px rgb(31 136 61 / 0.28);
+}
+
+.btn--primary:hover {
+  background: var(--color-primary-hover);
+}
+
+.btn--secondary {
+  background: var(--color-surface);
+  border-color: var(--color-border);
+  color: var(--color-text);
+}
+
+.btn--secondary:hover {
+  border-color: var(--color-text-muted);
+}
+
+.btn--onDark {
+  background: #ffffff;
+  color: #0d1117;
+}
+
+.btn--onDark:hover {
+  background: #e6edf3;
+}
+
+.btn--ghostOnDark {
+  background: transparent;
+  border-color: var(--color-invert-border);
+  color: var(--color-invert-text);
+}
+
+.btn--ghostOnDark:hover {
+  border-color: var(--color-invert-muted);
+}
+
+.btn--small {
+  min-height: 40px;
+  padding: 8px 18px;
+  font-size: 15px;
+}
+
+/* ============================================================
+   5. ヘッダー
+   ============================================================ */
+.header {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  /* color-mix() 非対応（Safari 16.1 以前）では次行が無効値として捨てられるため、
+     不透明のフォールバックを先に置く。これがないとヘッダーが透過して本文と重なる。 */
+  background: var(--color-bg);
+  background: color-mix(in srgb, var(--color-bg) 82%, transparent);
+  -webkit-backdrop-filter: saturate(180%) blur(14px);
+  backdrop-filter: saturate(180%) blur(14px);
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.header__inner {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-height: 68px;
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  color: var(--color-text);
+  font-weight: 700;
+  font-size: 16px;
+  text-decoration: none;
+}
+
+.brand__name {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.brand__mark {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  flex: none;
+}
+
+.header__nav {
+  display: none;
+  gap: 4px;
+}
+
+.header__nav a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 4px 14px;
+  border-radius: 999px;
+  color: var(--color-text-muted);
+  font-size: 15px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.header__nav a:hover {
+  background: var(--color-accent-soft);
+  color: var(--color-text);
+}
+
+/* 右寄せを担う auto マージンはここ 1 本だけ（nav は actions の直前の兄弟で常に隣り合う）。 */
+.header__actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+}
+
+.header__cta {
+  display: none;
+}
+
+.lang-switch {
+  display: inline-flex;
+  padding: 3px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-surface);
+}
+
+.lang-switch__btn {
+  min-width: 44px;
+  min-height: 34px;
+  padding: 4px 12px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--color-text-muted);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.lang-switch__btn[aria-pressed="true"] {
+  background: var(--color-text);
+  color: var(--color-bg);
+}
+
+/* 狭い画面（360px 級）でロゴと言語切替が競合してはみ出さないよう、両方を一段小さくする。
+   メディアクエリは詳細度を上げないため、必ず上書き対象のベース定義より後ろに置くこと。 */
+@media (max-width: 420px) {
+  .brand {
+    font-size: 15px;
+  }
+
+  .brand__mark {
+    width: 26px;
+    height: 26px;
+  }
+
+  .lang-switch__btn {
+    min-width: 38px;
+    padding: 4px 9px;
+  }
+}
+
+@media (min-width: 900px) {
+  .header__nav {
+    display: flex;
+  }
+
+  .header__cta {
+    display: inline-flex;
+  }
+}
+
+/* ============================================================
+   6. ヒーロー
+   ============================================================ */
+.hero {
+  position: relative;
+  padding-block: clamp(48px, 7vw, 88px) clamp(56px, 8vw, 96px);
+  overflow: hidden;
+}
+
+.hero::before {
+  content: "";
+  position: absolute;
+  inset: -30% 0 auto;
+  height: 640px;
+  background:
+    radial-gradient(46% 52% at 22% 30%, rgb(9 105 218 / 0.13), transparent 70%),
+    radial-gradient(42% 46% at 80% 18%, rgb(31 136 61 / 0.13), transparent 70%);
+  pointer-events: none;
+  z-index: -1;
+}
+
+.hero__grid {
+  display: grid;
+  gap: clamp(40px, 6vw, 64px);
+  align-items: center;
+}
+
+.hero__title {
+  font-size: clamp(33px, 5.2vw, 54px);
+  font-weight: 800;
+  letter-spacing: -0.025em;
+}
+
+/* ブランドのグラデーション文字（ヒーロー見出しの強調と設計目標の数値で共有）。 */
+.hero__title em,
+.goal__value {
+  background: linear-gradient(100deg, var(--color-accent), var(--color-primary));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.hero__title em {
+  font-style: normal;
+}
+
+.hero__lead {
+  margin-top: 22px;
+  max-width: 36rem;
+  color: var(--color-text-muted);
+  font-size: clamp(16px, 1.9vw, 19px);
+}
+
+.hero__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 32px;
+}
+
+/* 狭い画面では主要 CTA を画面幅いっぱいにして、親指の届く面積を最大化する（D-4 / D-5）。 */
+@media (max-width: 520px) {
+  .hero__actions .btn,
+  .finalcta__actions .btn {
+    width: 100%;
+  }
+}
+
+.hero__note {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 18px;
+  max-width: 34rem;
+  color: var(--color-text-muted);
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+.hero__note svg {
+  flex: none;
+  margin-top: 3px;
+  color: var(--color-primary);
+}
+
+.hero__visual {
+  display: flex;
+  justify-content: center;
+}
+
+@media (min-width: 900px) {
+  .hero__grid {
+    grid-template-columns: minmax(0, 1.18fr) minmax(0, 0.82fr);
+  }
+
+  .hero__visual {
+    justify-content: flex-end;
+  }
+}
+
+/* 端末フレーム */
+.phone {
+  position: relative;
+  width: min(320px, 80vw);
+  padding: 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-raised);
+}
+
+.phone::after {
+  content: "";
+  position: absolute;
+  top: 18px;
+  left: 50%;
+  translate: -50% 0;
+  width: 68px;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--color-border);
+}
+
+.phone img {
+  border-radius: 20px;
+  border: 1px solid var(--color-border-subtle);
+}
+
+.phone--tilt {
+  rotate: -1.6deg;
+}
+
+/* ============================================================
+   7. トラストバー
+   ============================================================ */
+/* 淡色帯の見た目は .section--alt を併用して得る（HTML 側で両方付ける）。 */
+.trustbar {
+  padding-block: 28px;
+}
+
+.trustbar__list {
+  display: grid;
+  gap: 18px 32px;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr));
+}
+
+.trustbar__item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+.trustbar__item svg {
+  flex: none;
+  margin-top: 3px;
+  color: var(--color-primary);
+}
+
+.trustbar__item b {
+  display: block;
+  font-weight: 700;
+}
+
+.trustbar__item span {
+  color: var(--color-text-muted);
+  font-size: 13.5px;
+}
+
+/* 見出しラベルは <b> の中に言語切替 span が入るため、子孫セレクタの muted 指定を打ち消す。 */
+.trustbar__item b span {
+  color: inherit;
+  font-size: inherit;
+}
+
+/* ============================================================
+   8. 課題（Problem）
+   ============================================================ */
+/* カードの外枠・見出し・本文は 4 セクション共通（.problem / .step / .bento__card / .goal）。
+   1 箇所直して他を直し忘れる事故を避けるため、共通分はここに集約し各所は差分だけ持つ。 */
+.problem,
+.step,
+.bento__card,
+.goal {
+  padding: 26px 24px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-l);
+  background: var(--color-surface);
+}
+
+.problem h3,
+.step h3,
+.bento__card h3 {
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.problem p,
+.step p,
+.bento__card p {
+  margin-top: 10px;
+  color: var(--color-text-muted);
+  font-size: 15px;
+  line-height: 1.7;
+}
+
+.problems {
+  display: grid;
+  gap: 20px;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 264px), 1fr));
+  counter-reset: problem;
+}
+
+/* 番号バッジは使い方セクションと同じく CSS カウンタで採番する（HTML に数字を書かない）。 */
+.problem::before {
+  counter-increment: problem;
+  content: counter(problem, decimal-leading-zero);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  margin-bottom: 16px;
+  border-radius: 10px;
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.answer {
+  margin-top: 32px;
+  padding: 28px clamp(24px, 4vw, 40px);
+  border: 1px solid var(--color-border);
+  border-left: 4px solid var(--color-primary);
+  border-radius: var(--radius-l);
+  background: var(--color-surface);
+  font-size: clamp(17px, 2vw, 21px);
+  font-weight: 700;
+  line-height: 1.65;
+}
+
+.answer small {
+  display: block;
+  margin-top: 10px;
+  color: var(--color-text-muted);
+  font-size: 14.5px;
+  font-weight: 400;
+  line-height: 1.7;
+}
+
+/* ============================================================
+   9. 使い方（Steps）
+   ============================================================ */
+.steps {
+  display: grid;
+  gap: 20px;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 232px), 1fr));
+  counter-reset: step;
+}
+
+.step {
+  position: relative;
+}
+
+.step::before {
+  counter-increment: step;
+  content: counter(step);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  margin-bottom: 16px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  color: var(--color-primary-text);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+/* ============================================================
+   10. 機能（ベントーグリッド）
+   ============================================================ */
+.bento {
+  display: grid;
+  gap: 18px;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+}
+
+.bento__card {
+  display: flex;
+  flex-direction: column;
+  box-shadow: var(--shadow-card);
+}
+
+.bento__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  margin-bottom: 16px;
+  border-radius: 11px;
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+}
+
+.bento__figure {
+  margin: auto 0 0;
+  padding-top: 22px;
+}
+
+.bento__code {
+  margin: auto 0 0;
+  padding: 16px 18px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-m);
+  background: var(--color-bg-alt);
+  color: var(--color-text);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.85;
+  overflow-x: auto;
+}
+
+.bento__code b {
+  color: var(--color-accent);
+}
+
+.bento__figure img {
+  width: 100%;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-m);
+  background: var(--color-bg-alt);
+}
+
+@media (min-width: 860px) {
+  .bento {
+    grid-template-columns: repeat(6, 1fr);
+  }
+
+  .bento__card {
+    grid-column: span 2;
+  }
+
+  .bento__card--wide {
+    grid-column: span 3;
+  }
+}
+
+/* 課題カードは 1 → 2 → 4 列。auto-fit だと 1120px で 3+1 に割れて見出しがちぐはぐになる。 */
+@media (min-width: 620px) {
+  .problems,
+  .steps {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1000px) {
+  .problems,
+  .steps {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+/* ============================================================
+   11. 速さの目標
+   ============================================================ */
+.goals {
+  display: grid;
+  gap: 18px;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 214px), 1fr));
+}
+
+.goal {
+  padding-inline: 22px;
+  text-align: center;
+}
+
+.goal__value {
+  font-size: clamp(30px, 4.4vw, 42px);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+}
+
+.goal__label {
+  margin-top: 10px;
+  color: var(--color-text-muted);
+  font-size: 14.5px;
+  line-height: 1.65;
+}
+
+.goals__note {
+  margin-top: 22px;
+  color: var(--color-text-muted);
+  font-size: 14px;
+  line-height: 1.7;
+  text-align: center;
+}
+
+/* ============================================================
+   12. セキュリティ
+   ============================================================ */
+.security {
+  display: grid;
+  gap: clamp(28px, 4vw, 48px);
+}
+
+.security__list {
+  display: grid;
+  gap: 16px;
+}
+
+.security__item {
+  display: flex;
+  gap: 14px;
+  padding: 20px 22px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-m);
+  background: var(--color-surface);
+}
+
+.security__item svg {
+  flex: none;
+  margin-top: 4px;
+  color: var(--color-primary);
+}
+
+.security__item h3 {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.security__item p {
+  margin-top: 6px;
+  color: var(--color-text-muted);
+  font-size: 14.5px;
+  line-height: 1.7;
+}
+
+@media (min-width: 900px) {
+  .security {
+    grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
+    align-items: start;
+  }
+
+  .security .section__head {
+    margin-bottom: 0;
+    position: sticky;
+    top: 100px;
+  }
+}
+
+/* ============================================================
+   13. FAQ
+   ============================================================ */
+.faq {
+  display: grid;
+  gap: 12px;
+  max-width: 52rem;
+  margin-inline: auto;
+}
+
+.faq__item {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-m);
+  background: var(--color-surface);
+  overflow: hidden;
+}
+
+.faq__item summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 60px;
+  padding: 16px 22px;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.6;
+  cursor: pointer;
+  list-style: none;
+}
+
+.faq__item summary::-webkit-details-marker {
+  display: none;
+}
+
+.faq__item summary::after {
+  content: "";
+  flex: none;
+  width: 11px;
+  height: 11px;
+  border-right: 2px solid var(--color-text-muted);
+  border-bottom: 2px solid var(--color-text-muted);
+  rotate: 45deg;
+  translate: 0 -3px;
+  transition: rotate 0.2s ease;
+}
+
+.faq__item[open] summary::after {
+  rotate: -135deg;
+  translate: 0 3px;
+}
+
+.faq__body {
+  padding: 0 22px 22px;
+  color: var(--color-text-muted);
+  font-size: 15px;
+  line-height: 1.8;
+}
+
+.faq__body p + p {
+  margin-top: 12px;
+}
+
+/* ============================================================
+   14. 最終 CTA
+   ============================================================ */
+.finalcta {
+  padding-block: var(--space-section);
+  background: var(--color-invert-bg);
+  color: var(--color-invert-text);
+  border-top: 1px solid var(--color-invert-border);
+}
+
+.finalcta__inner {
+  max-width: 46rem;
+  margin-inline: auto;
+  text-align: center;
+}
+
+.finalcta__title {
+  font-size: clamp(28px, 4.4vw, 44px);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.finalcta__lead {
+  margin-top: 18px;
+  color: var(--color-invert-muted);
+  font-size: clamp(16px, 1.7vw, 18px);
+}
+
+.finalcta__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 32px;
+}
+
+.finalcta__note {
+  margin-top: 20px;
+  color: var(--color-invert-muted);
+  font-size: 13.5px;
+  line-height: 1.7;
+}
+
+/* 反転（常時ダーク）面ではリンク色を明色に振る。ライトモードの --color-accent(#0969da) を
+   そのまま使うと暗背景に対してコントラスト 4.5:1 を割るため（WCAG AA・axe color-contrast）。 */
+.finalcta a:not(.btn) {
+  color: #79c0ff;
+}
+
+/* ============================================================
+   15. フッター
+   ============================================================ */
+.footer {
+  background: var(--color-invert-bg);
+  color: var(--color-invert-muted);
+  padding-block: 44px;
+  border-top: 1px solid var(--color-invert-border);
+  font-size: 14.5px;
+}
+
+.footer__inner {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24px 40px;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.footer__brand {
+  color: var(--color-invert-text);
+  font-weight: 700;
+}
+
+.footer__tagline {
+  margin-top: 8px;
+  max-width: 26rem;
+  line-height: 1.7;
+}
+
+.footer__links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 24px;
+}
+
+.footer__links a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  color: var(--color-invert-muted);
+  text-decoration: none;
+}
+
+.footer__links a:hover {
+  color: var(--color-invert-text);
+  text-decoration: underline;
+}
+
+.footer__legal {
+  width: 100%;
+  margin-top: 12px;
+  padding-top: 20px;
+  border-top: 1px solid var(--color-invert-border);
+  font-size: 13.5px;
+  line-height: 1.7;
+}
+
+/* ============================================================
+   16. モーション（reduced-motion で完全に無効化・D-9）
+   ============================================================ */
+.reveal {
+  opacity: 0;
+  translate: 0 14px;
+  transition:
+    opacity 0.5s ease,
+    translate 0.5s ease;
+}
+
+/* 本文が読めなくならないための 3 系統の可視化。
+   ① is-visible: main.js の IntersectionObserver が付ける通常経路
+   ② html.no-js: JS 無効（head のインラインスクリプトが走らない）
+   ③ html.reveal-fallback: JS は有効だが main.js の取得に失敗した場合の保険
+      （head のインラインスクリプトが仕掛けたタイマーが発火する。main.js が動けば解除される） */
+.reveal.is-visible,
+html.no-js .reveal,
+html.reveal-fallback .reveal {
+  opacity: 1;
+  translate: 0 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+
+  .reveal {
+    opacity: 1;
+    translate: 0 0;
+  }
+
+  .btn:hover {
+    transform: none;
+  }
+}

@@ -190,5 +190,6 @@ CI で E2E が落ちた
 - `tools/smoke_prod.sh` / `.github/workflows/smoke.yml` / `worker/index.ts` の `/api/ready`
 - `playwright.config.ts` / `e2e/login.spec.ts` / `e2e/mock-github.mjs`
 - `e2e/repos-shortcuts-swr-cache.spec.ts`（#101 SWR・afterEach クリーンアップの模範）・`e2e/pwa.spec.ts`（#107 manifest 実挙動）
+- `e2e/lp.spec.ts` + `e2e/lp-server.mjs`（#214 GitHub Pages の LP。アプリ本体とは独立した静的サーバーで配信し、WCAG・横スクロール・画像/OGP・言語切替と永続化・JS 無効時の可読性を検証する）
 - `docs/requirements/00-requirements.md` NFR-15・§4.2
 - Issue #52・#14・#106・#107
