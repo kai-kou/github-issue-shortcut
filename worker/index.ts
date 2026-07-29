@@ -66,6 +66,17 @@ const ISSUE_LABEL_MAX_LENGTH = 50;
 const ISSUE_LABELS_MAX_COUNT = 100;
 
 /**
+ * リポジトリ名（`owner/repo`）の形式。`worker/github.ts` は受け取った値を
+ * `${apiBase}/repos/${repoFullName}/issues` のように文字列結合して `fetch` に渡すため、形式を
+ * ここで固定しないと URL パーサーの正規化が働き、実際のリクエスト先が別のエンドポイントへ化ける
+ * （例: `../orgs/x/repos#` → `https://api.github.com/orgs/x/repos`）。owner・repo とも英数字で
+ * 始まり英数字で終わる形に限ることで、`..` セグメント・`#`・`?`・追加の `/` をまとめて弾く。
+ * 長さは GitHub の上限（owner 39 文字・repo 100 文字）に合わせる。
+ */
+const REPO_FULL_NAME_PATTERN =
+  /^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,37}[A-Za-z0-9])?\/[A-Za-z0-9](?:[A-Za-z0-9._-]{0,98}[A-Za-z0-9])?$/;
+
+/**
  * 使用するレート制限バインディングを選ぶ。既定は本番の上限（10 件/分）で、E2E の
  * wrangler dev 起動時（`ISSUE_RATE_LIMIT_RELAXED_ENABLED=1`）だけ緩い上限へ切り替える
  * （単一モックユーザーを全 spec が使い回すため・playwright.config.ts）。
@@ -414,6 +425,9 @@ app.get("/api/labels", async (c) => {
   if (!repo) {
     return c.json(jsonError("invalid_request", "repo query parameter is required"), 400);
   }
+  if (!REPO_FULL_NAME_PATTERN.test(repo)) {
+    return c.json(jsonError("invalid_request", "repo must be in owner/name format"), 400);
+  }
 
   try {
     const labels = await fetchRepoLabels(c.env.GITHUB_API_BASE ?? DEFAULT_API_BASE, bundle.a, repo);
@@ -460,6 +474,9 @@ app.post("/api/issues", async (c) => {
     : [];
   if (!repo || !title) {
     return c.json(jsonError("invalid_request", "repo and title are required"), 400);
+  }
+  if (!REPO_FULL_NAME_PATTERN.test(repo)) {
+    return c.json(jsonError("invalid_request", "repo must be in owner/name format"), 400);
   }
 
   // 入力長・件数の上限（不正利用対策・#179）。GitHub へ転送する前にここで弾き、GitHub 側 422 に

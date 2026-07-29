@@ -34,7 +34,10 @@ _broker_json="$(curl -fsS --max-time 10 \
 }
 
 # JSON を「未設定の変数のみ」export 文に変換（値は対話的に stdout 表示しない・P-12 準拠）
-: > "$_broker_out"
+# 所有者のみ読める権限で作り直してから追記する（既定 umask 0022 のままだと 644 = 同一コンテナの
+# 他プロセス・他ツールから平文の TOKEN_ENCRYPTION_KEY / GITHUB_CLIENT_SECRET が読めてしまう）。
+# umask はサブシェルに閉じ込める（source される想定のため呼び出し元の umask を変えない）。
+( umask 077; : > "$_broker_out" )
 printf '%s' "$_broker_json" | python3 -c "
 import json, os, sys
 try:

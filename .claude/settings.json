@@ -81,6 +81,9 @@
       "Read(**/id_ed25519)",
       "Read(**/.aws/**)",
       "Read(**/*service-account*.json)",
+      "Read(/tmp/*.env)",
+      "Read(**/broker_secrets.env)",
+      "Read(**/github_variables.env)",
       "Write(.claude/settings.local.json)",
       "Edit(.claude/settings.local.json)"
     ]

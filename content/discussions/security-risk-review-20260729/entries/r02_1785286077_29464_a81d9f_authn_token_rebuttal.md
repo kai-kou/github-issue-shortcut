@@ -25,4 +25,4 @@ ts: 2026-07-29T09:47:57+09:00
 ### [クロスレンズ補強・注意喚起] `secrets_supplychain` [high] `/tmp` 平文シークレット漏洩と、自分の round1 medium 指摘の関係を整理
 - 対象: `secrets_supplychain` round1 [high]（`.claude/hooks/session-start.sh` 等）と `authn_token` round1 [medium]（`TOKEN_ENCRYPTION_KEY` の AES-GCM/HMAC 無分離）
 - 認証レンズから明確にしておく: 両者は独立した問題であり、**片方の対策が他方を代替しない**。仮に `secrets_supplychain` の指摘どおり `TOKEN_ENCRYPTION_KEY` 生鍵が `/tmp` から漏れた場合、HKDF でサブキー分離していたとしても（導出関数・salt/info が公開されている前提のため）攻撃者は同じ手順でサブキーを再導出でき、鍵分離は master key 漏洩そのものへの防御にはならない。したがって `secrets_supplychain` の high 指摘が仮に妥当だとしても、それを理由に自分の round1 medium 指摘を high へ格上げするのは論理的に不適切と判断し、見送る（両指摘は「鍵管理の別レイヤー」の問題であり、severity を混同しないよう明示しておく）。
-- 一方で、`secrets_supplychain` の指摘が事実なら **認証レンズで最重要視すべきは round1 の medium ではなく `TOKEN_ENCRYPTION_KEY` そのものの漏洩経路**である点には同意する。round1 で自分は「秘密情報を console 出力する箇所は無い」ことしか確認しておらず、ハーネスの一時ファイル書き出し経路までは検証していなかった（自分のレンズの死角だったと認める）。
+- 一方で、`secrets_supplychain` の指摘が事実なら **認証レンズで最重要視すべきは round1 の medium ではなく `TOKEN_ENCRYPTION_KEY` そのものの漏洩経路** である点には同意する。round1 で自分は「秘密情報を console 出力する箇所は無い」ことしか確認しておらず、ハーネスの一時ファイル書き出し経路までは検証していなかった（自分のレンズの死角だったと認める）。

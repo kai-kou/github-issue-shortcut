@@ -310,3 +310,55 @@ describe("POST /api/issues の入力長・件数の上限 (不正利用対策・
     expect(res.status).toBe(201);
   });
 });
+
+describe("repo パラメータの形式検証 (GitHub API へのパス注入防止・#204)", () => {
+  // `worker/github.ts` は repo を URL へ文字列結合するため、`..` や `#` を含む値を通すと
+  // URL 正規化で実際のリクエスト先が `/repos/{repo}/issues` 以外へ化ける。GitHub へ届く前に弾く。
+  const invalidRepos = [
+    "../orgs/some-org/repos#",
+    "kai-kou/alpha/../../user",
+    "kai-kou/alpha?x=1",
+    "kai-kou/alpha#frag",
+    "kai-kou",
+    "kai-kou/",
+    "/alpha",
+    "kai-kou/alpha/beta",
+    "kai-kou/..",
+  ];
+
+  for (const repo of invalidRepos) {
+    it(`rejects ${JSON.stringify(repo)} on POST /api/issues without calling GitHub`, async () => {
+      const cookie = await loginSession();
+      const fetchSpy = vi.fn();
+      vi.stubGlobal("fetch", fetchSpy);
+
+      const res = await postIssue(cookie, { repo });
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as { error: { code: string } };
+      expect(body.error.code).toBe("invalid_request");
+      expect(fetchSpy).not.toHaveBeenCalled();
+    });
+
+    it(`rejects ${JSON.stringify(repo)} on GET /api/labels without calling GitHub`, async () => {
+      const cookie = await loginSession();
+      const fetchSpy = vi.fn();
+      vi.stubGlobal("fetch", fetchSpy);
+
+      const res = await SELF.fetch(`https://example.com/api/labels?repo=${encodeURIComponent(repo)}`, {
+        headers: { Cookie: cookie },
+      });
+      expect(res.status).toBe(400);
+      expect(fetchSpy).not.toHaveBeenCalled();
+    });
+  }
+
+  it("accepts a normal owner/repo including dots, dashes and underscores", async () => {
+    const cookie = await loginSession();
+    const fetchSpy = vi.fn(async () => jsonResponse(201, { number: 1, html_url: "https://github.com/kai-kou/a.b_c-d/issues/1" }));
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const res = await postIssue(cookie, { repo: "kai-kou/a.b_c-d" });
+    expect(res.status).toBe(201);
+    expect(fetchSpy).toHaveBeenCalledOnce();
+  });
+});
