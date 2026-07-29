@@ -38,8 +38,11 @@ jobs:
   cleanup:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/github-script@v8
+      # 公式 Action もサードパーティ Action と同じくコミット SHA に固定する（#211）。
+      # このジョブは `contents: write` を持ちブランチ削除という破壊的操作を行うため、
+      # 差し替えうるタグ参照を残さない。バージョン更新は Dependabot（github-actions・weekly）が追う。
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
         with:
           script: |
             const fs = require('fs');

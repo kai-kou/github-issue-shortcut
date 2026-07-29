@@ -29,6 +29,19 @@ export interface Env {
    * が "1" のときだけこちらを使う。
    */
   ISSUE_DUPLICATE_SUBMISSION_LIMIT_RELAXED: RateLimit;
+  /**
+   * 認証不要で叩ける `GET /auth/login` のレート制限（#207）。他の 2 つと違いユーザー ID を
+   * キーにできないため、接続元 IP（`CF-Connecting-IP`）の HMAC をキーに使う（生 IP は渡さない・
+   * `worker/index.ts` の `authLoginRateLimitKey`）。上流の GitHub を消費しない経路で
+   * Worker のリクエスト数・CPU 時間だけを消耗させる可用性攻撃を頭打ちにする。
+   */
+  AUTH_LOGIN_RATE_LIMIT: RateLimit;
+  /**
+   * E2E 専用の緩い上限（本番では使わない）。E2E は全 spec が同一ホスト（= 同一キー）から
+   * 繰り返しログインするため、本番の上限（20 件/分）のままではスイート後半が 429 で落ちる。
+   * `ISSUE_RATE_LIMIT_RELAXED_ENABLED` が "1" のときだけこちらを使う。
+   */
+  AUTH_LOGIN_RATE_LIMIT_RELAXED: RateLimit;
   /** GitHub App の Client ID（公開値）。 */
   GITHUB_CLIENT_ID: string;
   /** GitHub App の Client Secret（Workers Secret）。 */

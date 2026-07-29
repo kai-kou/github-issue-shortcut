@@ -208,7 +208,8 @@ Cloudflare Workers（単一 Worker）
 ├── API: Hono（/api/*, /auth/*）… run_worker_first
 │     ├── GitHub App 認可（state + PKCE・トークン交換・暗号化トークン Cookie の発行/書き戻し）
 │     └── Issue 作成プロキシ（POST /repos/{owner}/{repo}/issues・API version pin）
-├── Rate Limiting binding: 起票のレート制限（カウンタは Cloudflare 管理・キーはユーザー ID のハッシュ）
+├── Rate Limiting binding: 起票のレート制限 2 本（キーはユーザー ID のハッシュ）+ ログイン開始のレート制限 1 本
+│     （キーは接続元 IP の HMAC・20 件/分・#207）。カウンタはいずれも Cloudflare 管理で永続層を持たない
 │     └── D1 は廃止（P1〜P3 で全用途を移設し、P4 でバインディング・migrations も撤去済み）
 ├── Workers Logs: observability を明示設定（invocation log 無効化 + 5% サンプリング・保持は無料 3 日 / 有料 7 日・P4）
 └── Workers Secrets: GitHub App client secret・トークン暗号鍵
@@ -242,7 +243,7 @@ GitHub 連携解除の案内** で完了する（MUST）。サーバーに削除
 
 | メソッド / パス | 概要 | 認証 |
 |------|------|------|
-| GET /auth/login | 認可開始（state + PKCE 生成 → GitHub へリダイレクト） | 不要 |
+| GET /auth/login | 認可開始（state + PKCE 生成 → GitHub へリダイレクト）。認証不要だが接続元 IP ベースのレート制限あり（20 件/分・#207） | 不要 |
 | GET /auth/callback | コールバック。state 検証・トークン交換・暗号化トークン Cookie 発行 | pre-auth Cookie |
 | POST /auth/refresh | refresh token のローテーションと Cookie 書き戻し（クライアントが Web Locks で 1 本化・P2） | トークン Cookie |
 | POST /auth/logout | トークン Cookie の破棄 | 必要 |
@@ -327,7 +328,7 @@ GitHub 連携解除の案内** で完了する（MUST）。サーバーに削除
 | OQ-4 | 計測イベント（FR-26）の実装方式: サーバーに個人データを持たない方針（P2）と両立する形（クライアント側集計 or Workers Analytics Engine）を選ぶこと。実装時にプライバシーポリシーへ「収集する計測イベント」を追記する（現行ポリシーからは削除済み）。第 3 の選択肢として GA4 を 2026-07-28 に専門チームで検討した（記録: `content/discussions/ga4-adoption-20260728/`）。**チームの推奨は「GA4 を採用せず、当面は現状維持（`e2e/kpi.spec.ts` の CI 計測）とし、能動的な集客告知のタイミングで Workers Analytics Engine を第一候補に再評価する」**（理由: gtag.js 直挿しは実転送量 gzip 約 135KB で Lighthouse CI の performance 閾値と NFR-1 を直撃する / サーバー送出にしても同意取得・越境移転開示・Google DPA の法務義務が残る / 現在の母数では数字が意思決定に使えない）。⚠️ **本行は推奨であって決定ではない。OQ-4 は未決のままで、採否はオーナーが判断する**（再評価の受け皿は #195） | M2 |
 | OQ-5 | ~~i18n（NFR-13）の初期リリース範囲~~ **決定済み（2026-07-10）: M1 から日本語・英語の 2 言語** | 決定済み |
 | OQ-6 | ~~アプリ側レート制限（PR-4）の具体値と実装層~~ **決定済み（2026-07-16 / P3 で実装層を変更 / #179 で拡張）**: 起票 10 件/分（GitHub の二次制限 80 req/min の 1/8）。実装層は Workers Rate Limiting binding（データセンター単位の best-effort。実効上限は利用者が到達した colo 数に比例して緩むため、厳密なカウントを前提にした表示・テストにしない）。**#179**: この上限だけではサーバー個人データ保持ゼロ化（Epic #162・P3）で失われた「同一内容の連投抑止」を補えないため、`HMAC(userId + contentHash)` をキーにした別目的の binding（`ISSUE_DUPLICATE_SUBMISSION_LIMIT`・`limit: 1, period: 10`）を追加した。実効値の引き下げ（検討案 3）は不採用（`docs/design/stateless-architecture.md` §6.1） | 決定済み |
-| OQ-7 | ~~カスタムドメインの選定~~ **決定済み（2026-07-10 / 2026-07-28 に根拠と再検討条件を更新・#188）: カスタムドメインは現時点で取得しない**。本番 URL は workers.dev サブドメイン（名称は M0 で確定）で運用する。`__Host-` Cookie はホスト単位のため workers.dev でも問題ない。**継続の根拠は「コストが高いから」ではない**（実費はドメイン登録料のみ・.com で年 $10.44 程度。WAF Free Managed Ruleset・Rate Limiting 1 ルール・Turnstile は Free ゾーンプランの範囲で使える）。根拠は ① 切替の不可逆コスト（OAuth callback URL・GitHub App 設定・利用者のブックマーク切れ）② Free ゾーンの Rate Limiting は 1 ルールのみで `/auth/login` と `/api/issues` の両方を守り切れず防御が部分的、の 2 点。**再検討条件は ①#171（使用量アラート）実装後の費用対効果再評価、または ②TWA（M4・保留）の実施判断時**（根拠: `content/discussions/public-release-strategy-20260728/`） | 決定済み |
+| OQ-7 | ~~カスタムドメインの選定~~ **決定済み（2026-07-10 / 2026-07-28 に根拠と再検討条件を更新・#188）: カスタムドメインは現時点で取得しない**。本番 URL は workers.dev サブドメイン（名称は M0 で確定）で運用する。`__Host-` Cookie はホスト単位のため workers.dev でも問題ない。**継続の根拠は「コストが高いから」ではない**（実費はドメイン登録料のみ・.com で年 $10.44 程度。WAF Free Managed Ruleset・Rate Limiting 1 ルール・Turnstile は Free ゾーンプランの範囲で使える）。根拠は ① 切替の不可逆コスト（OAuth callback URL・GitHub App 設定・利用者のブックマーク切れ）② Free ゾーンの Rate Limiting は 1 ルールのみで `/auth/login` と `/api/issues` の両方を守り切れず防御が部分的、の 2 点。**② の前提は #207 で一部解消した**（`/auth/login` はゾーンの Rate Limiting Rule ではなくアプリ層の Workers Rate Limiting binding で保護済み・カスタムドメイン非依存）。ゾーン側 1 ルール制限の影響は `/api/issues` 側にのみ残る。**再検討条件は ①#171（使用量アラート）実装後の費用対効果再評価、または ②TWA（M4・保留）の実施判断時**（根拠: `content/discussions/public-release-strategy-20260728/`） | 決定済み |
 | OQ-8 | ~~オフラインキュー（FR-22）採用時の重複防止（FR-24）との整合~~ **決定済み（2026-07-25・#20 / #91 実装時。P3 で保存先を端末内へ変更）**: 再送は `client_request_id` を固定し、**端末内の予約（IndexedDB・26 時間窓・複数タブ間で直列化）** で重複を弾く（B4-4）。窓を超えて滞留したキューはクライアント側 TTL（24 時間・**予約窓の 26 時間より必ず短く保つ**。旧根拠だった Background Sync の保持期間は #177 で撤去済み）で自動再送を打ち切り、D2-1 の一覧から手動で再送・破棄させる | 決定済み |
 | OQ-9 | ~~セッション TTL の設計~~ **決定済み（2026-07-27・#164 P2）**: サーバー側セッションを廃止し、トークン Cookie の `Max-Age` を refresh token の有効期限（約 6 ヶ月）に揃える。アイドル失効は設けず、失効・鍵ローテーション時は再ログインへ誘導する | 決定済み |
 | OQ-10 | ~~GitHub App の表示名・公開名~~ **決定済み（2026-07-10）: 「Issue Shortcut」**（商標配慮で名称に「GitHub」を含めない。プロダクト名・リポジトリ名は GitHub Issue Shortcut のまま） | 決定済み |
