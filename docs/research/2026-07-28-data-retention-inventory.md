@@ -169,7 +169,7 @@ submitGuard（localStorage・30 秒）  <  offlineQueue TTL（24 時間）  <  s
 | 契機 | 消えるもの | **残るもの** |
 |------|-----------|------------|
 | ログアウト（`useAuthState.logout`） | `auth-cache` / `repos-cache` / `shortcuts-cache` / `repo-labels:*`、トークン Cookie（サーバー側で破棄 + GitHub のトークン失効） | `draft` / `offline-queue` / `recent-repos` / `recent-submissions` / `locale`、IndexedDB の `sent-request-ids` |
-| アカウント削除（`AccountDeletion` → `DELETE /api/account`） | 同上（`clearAllUserCaches()` は上記 4 種のみ） | 同上 |
+| アカウント削除（`AccountDeletion` → `DELETE /api/account`） | ログアウトで消えるもの **＋ `draft` / `offline-queue` / IndexedDB の `sent-request-ids`**（`clearAllLocalUserData()`・#181 で拡張。調査時点では `clearAllUserCaches()` の 4 種のみだった） | `recent-repos` / `recent-submissions` / `locale` |
 | 別ユーザーでログイン検知（`useAuthState`） | 同上 4 種 | 同上 |
 | 匿名（未ログイン）と判明 | 同上 4 種（セッション失効時は保持） | 同上 |
 | 鍵ローテーション（`TOKEN_KEY_VERSION` +1） | トークン Cookie が復号不能になり再ログインへ | 端末内データはすべて残る（設計どおり） |
