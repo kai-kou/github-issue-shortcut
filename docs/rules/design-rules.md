@@ -1,12 +1,12 @@
 # デザインルール（実装セッション向け・Warm 層）
 
 > **SSOT は `docs/design/design-guidelines.md`**（根拠・出典・パターン詳細はそちら）。
-> 本ファイルはフロントエンド（`src/`・`index.html`・PWA manifest）を変更するタスクの着手時に Read する
+> 本ファイルはフロントエンド（`src/`・`index.html`・PWA manifest・`site/`）を変更するタスクの着手時に Read する
 > 要約ルール。タスク依存ルールのため `.claude/rules/` への symlink は作らない（常駐不要）。
 
 ## いつ Read するか
 
-- `src/**`・`index.html`・`vite.config.ts`（manifest）・`src/**/*.css` を変更するタスクの着手前
+- `src/**`・`index.html`・`vite.config.ts`（manifest）・`src/**/*.css`・`site/**`（GitHub Pages の LP）を変更するタスクの着手前
 - UI/UX の設計判断（画面追加・フロー変更・コンポーネント追加）を含む Issue の着手前
 - `design-review` スキル実行時（スキルが本ファイルとチェックリストを Read する）
 

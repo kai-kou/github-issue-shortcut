@@ -41,6 +41,14 @@ export default defineConfig({
       reuseExistingServer: !process.env.CI,
       timeout: 20_000,
     },
+    // LP（site/）は静的ファイルのみでビルド不要。本番と同じ http オリジンで開けるように
+    // 依存ゼロの静的サーバーを立てる（e2e/lp.spec.ts が使う）。
+    {
+      command: "node e2e/lp-server.mjs",
+      url: "http://localhost:8790/index.html",
+      reuseExistingServer: !process.env.CI,
+      timeout: 20_000,
+    },
     {
       command:
         "npx wrangler dev --port 8789 " +

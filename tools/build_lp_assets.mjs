@@ -15,7 +15,7 @@
 import { chromium } from "@playwright/test";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, "..");
@@ -117,28 +117,41 @@ const html = `<!doctype html>
   </body>
 </html>`;
 
+// 元スクリーンショットが揃っていない状態で og.png だけ更新してしまうと、生成物が
+// 半端に混ざったままコミットされる。1 枚も書き出す前に入力の存在を確認する。
+const missing = CROPS.filter((crop) => !existsSync(resolve(repoRoot, crop.source)));
+if (missing.length > 0) {
+  console.error(
+    `元スクリーンショットがありません: ${missing.map((crop) => crop.source).join(", ")}\n` +
+      "先に `npm run screenshots` を実行してください。"
+  );
+  process.exit(1);
+}
+
 // 既定は Playwright が管理する Chromium。別途用意した実行ファイルを使うときは
 // OG_CHROMIUM_PATH で上書きする（Playwright のバージョンと同梱ブラウザがずれる環境向け）。
 const browser = await chromium.launch(
   process.env.OG_CHROMIUM_PATH ? { executablePath: process.env.OG_CHROMIUM_PATH } : {}
 );
-const page = await browser.newPage({ viewport: { width: 1200, height: 630 } });
-await page.setContent(html, { waitUntil: "load" });
-await page.screenshot({ path: outPath });
-console.log(`wrote ${outPath}`);
+try {
+  const page = await browser.newPage({ viewport: { width: 1200, height: 630 } });
+  await page.setContent(html, { waitUntil: "load" });
+  await page.screenshot({ path: outPath });
+  console.log(`wrote ${outPath}`);
 
-for (const crop of CROPS) {
-  const target = resolve(repoRoot, crop.out);
-  await page.setViewportSize({ width: 780, height: crop.height });
-  await page.setContent(
-    `<body style="margin:0"><img src="${toDataUri(crop.source)}" style="display:block;width:780px;margin-top:-${crop.y}px"></body>`,
-    { waitUntil: "load" }
-  );
-  await page.screenshot({
-    path: target,
-    clip: { x: 0, y: 0, width: 780, height: crop.height },
-  });
-  console.log(`wrote ${target}`);
+  for (const crop of CROPS) {
+    const target = resolve(repoRoot, crop.out);
+    await page.setViewportSize({ width: 780, height: crop.height });
+    await page.setContent(
+      `<body style="margin:0"><img src="${toDataUri(crop.source)}" style="display:block;width:780px;margin-top:-${crop.y}px"></body>`,
+      { waitUntil: "load" }
+    );
+    await page.screenshot({
+      path: target,
+      clip: { x: 0, y: 0, width: 780, height: crop.height },
+    });
+    console.log(`wrote ${target}`);
+  }
+} finally {
+  await browser.close();
 }
-
-await browser.close();

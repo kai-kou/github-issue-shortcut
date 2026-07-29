@@ -107,6 +107,7 @@
 | E2E（ブロッキング） | `e2e/design-guidelines.spec.ts` | タップターゲット 24/44px・フォーム 16px・ダークモード smoke |
 | E2E（既存） | `e2e/issue-draft.spec.ts` ほか | 下書き保全・起票フロー |
 | E2E（ブロッキング・a11y） | `e2e/a11y.spec.ts`（`@axe-core/playwright`・wcag2a/wcag2aa/wcag22aa タグ） | ログイン前画面・起票フォーム画面の WCAG 違反 |
+| E2E（ブロッキング・LP） | `e2e/lp.spec.ts`（配信は `e2e/lp-server.mjs`） | GitHub Pages の LP（`site/`）: WCAG 違反（日英 × ライト/ダーク）・横スクロール・画像/OGP のリンク切れ・言語切替と永続化・JS 無効時と `main.js` 取得失敗時の可読性 |
 | CI（ブロッキング） | `.github/workflows/ci.yml` `lighthouse` ジョブ（`lighthouserc.json`） | ログイン前トップページの performance / accessibility minScore |
 | CI（ブロッキング・PR コメント） | `.github/workflows/ci.yml` `size` ジョブ（`andresz1/size-limit-action` + package.json `size-limit`） | クライアント/Worker バンドルサイズ予算 |
 | レビュー観点 | `docs/rules/design-review-checklist.md` + `design-review` スキル | 機械化できない原則（D-1〜D-3・D-5・情報階層・文言） |

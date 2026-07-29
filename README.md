@@ -42,7 +42,7 @@ GitHub Issues でタスクやアイデアを管理していると、**思いつ�
 
 - **GitHub ログインだけで使える** — 要求する権限は上記のとおり Issues の読み書きのみです
 - **ショートカット起動** — `/new?repo=owner/name&labels=bug&title=雛形` でリポジトリ・ラベル・タイトルを初期選択した状態で開けます。保存したショートカットはいくつでも作れ、ホーム画面上部の「保存済みショートカット」一覧からタップして開きます（この URL を単体でホーム画面のアイコンにした場合、Android の仕様で初期選択は反映されません）
-- **アイコン長押しメニュー** — よく使うプリセットを最大 3 個、PWA のショートカットとして登録できます
+- **アイコン長押しメニュー** — 「新しい Issue を作成」「バグを報告」「改善案を起票」の 3 つを PWA のショートカットとして用意しています（全ユーザー共通の固定メニューです。自分用のプリセットは上記の保存済みショートカットで作ります）
 - **共有シートから起票** — Android の共有シートに本アプリが出ます。記事の URL を共有すれば本文にプレフィルされます
 - **スマート入力** — タイトル欄に `#repo` `@label` と打つとインラインで候補が出て、そのまま指定できます
 - **ラベル権限の事前警告** — push 権限のないリポジトリではラベルが黙って捨てられるため、送信前に警告します
@@ -89,9 +89,10 @@ npm run dev        # ローカル開発サーバー（Vite）
 npm run build      # 型チェック（tsc -b）+ ビルド
 npm test           # ユニットテスト（vitest / @cloudflare/vitest-pool-workers）
 npm run e2e        # E2E テスト（Playwright・GitHub API はモック）
+npm run lp:assets  # LP（site/）の OGP 画像・切り出しスクリーンショットを再生成（要 npm run screenshots）
 ```
 
-デプロイは Cloudflare Workers Builds（Git 連携）が担当します。要件・アーキテクチャの詳細は [`docs/requirements/`](docs/requirements/) を参照してください。
+デプロイは Cloudflare Workers Builds（Git 連携）が担当します。紹介ページ（`site/`）は GitHub Actions（[`.github/workflows/pages.yml`](.github/workflows/pages.yml)）が GitHub Pages へ公開します。要件・アーキテクチャの詳細は [`docs/requirements/`](docs/requirements/) を参照してください。
 
 ## AI エージェントによる自律開発運用
 

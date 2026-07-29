@@ -1,7 +1,8 @@
 /* GitHub Issue Shortcut — ランディングページ
    設計方針（docs/research/2026-07-29-landing-page-best-practices.md が根拠）
    - 依存ゼロ・ビルド不要の静的 CSS（アプリ本体と同じ「追加ライブラリなし」方針・design-guidelines D-6）
-   - カラートークンはアプリ本体（src/App.css）と同一。ライト / ダークを prefers-color-scheme で切替（D-9）
+   - カラートークンはアプリ本体（src/App.css）と同系統（accent・primary・text・border は同値、
+     背景と余白は LP 用に拡張）。ライト / ダークを prefers-color-scheme で切替（D-9）
    - タップターゲット・コントラスト・reduced-motion は design-guidelines.md §2 の数値基準に準拠 */
 
 /* ============================================================
@@ -56,10 +57,8 @@
     --color-accent-soft: rgb(68 147 248 / 0.12);
     --color-primary: #238636;
     --color-primary-hover: #2ea043;
+    /* 反転（常時ダーク）面のトークンはライト側と同値でよいため、変わる bg だけを上書きする。 */
     --color-invert-bg: #161b22;
-    --color-invert-text: #e6edf3;
-    --color-invert-muted: #9198a1;
-    --color-invert-border: #30363d;
 
     --shadow-card: 0 1px 2px rgb(1 4 9 / 0.6), 0 8px 24px rgb(1 4 9 / 0.5);
     --shadow-raised: 0 12px 40px rgb(1 4 9 / 0.7);
@@ -170,17 +169,6 @@ ul {
   display: inline-block;
 }
 
-.visually-hidden {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  margin: -1px;
-  padding: 0;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
-}
-
 /* 言語切替: 非アクティブ言語のノードを隠す（JS 無効時は既定の日本語が表示される） */
 html[data-lang="ja"] [data-l="en"],
 html[data-lang="en"] [data-l="ja"] {
@@ -270,6 +258,15 @@ html[data-lang="en"] [data-l="ja"] {
     box-shadow 0.18s ease;
 }
 
+/* 浮き上がりは全 modifier 共通。reduced-motion の打ち消しも .btn:hover 1 本で足りている。 */
+.btn:hover {
+  transform: translateY(-1px);
+}
+
+.btn svg {
+  flex: none;
+}
+
 .btn--primary {
   background: var(--color-primary);
   color: var(--color-primary-text);
@@ -278,7 +275,6 @@ html[data-lang="en"] [data-l="ja"] {
 
 .btn--primary:hover {
   background: var(--color-primary-hover);
-  transform: translateY(-1px);
 }
 
 .btn--secondary {
@@ -289,7 +285,6 @@ html[data-lang="en"] [data-l="ja"] {
 
 .btn--secondary:hover {
   border-color: var(--color-text-muted);
-  transform: translateY(-1px);
 }
 
 .btn--onDark {
@@ -299,7 +294,6 @@ html[data-lang="en"] [data-l="ja"] {
 
 .btn--onDark:hover {
   background: #e6edf3;
-  transform: translateY(-1px);
 }
 
 .btn--ghostOnDark {
@@ -310,17 +304,12 @@ html[data-lang="en"] [data-l="ja"] {
 
 .btn--ghostOnDark:hover {
   border-color: var(--color-invert-muted);
-  transform: translateY(-1px);
 }
 
 .btn--small {
   min-height: 40px;
   padding: 8px 18px;
   font-size: 15px;
-}
-
-.btn__icon {
-  flex: none;
 }
 
 /* ============================================================
@@ -330,7 +319,11 @@ html[data-lang="en"] [data-l="ja"] {
   position: sticky;
   top: 0;
   z-index: 50;
+  /* color-mix() 非対応（Safari 16.1 以前）では次行が無効値として捨てられるため、
+     不透明のフォールバックを先に置く。これがないとヘッダーが透過して本文と重なる。 */
+  background: var(--color-bg);
   background: color-mix(in srgb, var(--color-bg) 82%, transparent);
+  -webkit-backdrop-filter: saturate(180%) blur(14px);
   backdrop-filter: saturate(180%) blur(14px);
   border-bottom: 1px solid var(--color-border-subtle);
 }
@@ -366,26 +359,8 @@ html[data-lang="en"] [data-l="ja"] {
   flex: none;
 }
 
-/* 狭い画面（360px 級）でロゴと言語切替が競合してはみ出さないよう、両方を一段小さくする。 */
-@media (max-width: 420px) {
-  .brand {
-    font-size: 15px;
-  }
-
-  .brand__mark {
-    width: 26px;
-    height: 26px;
-  }
-
-  .lang-switch__btn {
-    min-width: 38px;
-    padding: 4px 9px;
-  }
-}
-
 .header__nav {
   display: none;
-  margin-left: auto;
   gap: 4px;
 }
 
@@ -406,15 +381,12 @@ html[data-lang="en"] [data-l="ja"] {
   color: var(--color-text);
 }
 
+/* 右寄せを担う auto マージンはここ 1 本だけ（nav は actions の直前の兄弟で常に隣り合う）。 */
 .header__actions {
   display: flex;
   align-items: center;
   gap: 10px;
   margin-left: auto;
-}
-
-.header__nav + .header__actions {
-  margin-left: 0;
 }
 
 .header__cta {
@@ -447,6 +419,24 @@ html[data-lang="en"] [data-l="ja"] {
 .lang-switch__btn[aria-pressed="true"] {
   background: var(--color-text);
   color: var(--color-bg);
+}
+
+/* 狭い画面（360px 級）でロゴと言語切替が競合してはみ出さないよう、両方を一段小さくする。
+   メディアクエリは詳細度を上げないため、必ず上書き対象のベース定義より後ろに置くこと。 */
+@media (max-width: 420px) {
+  .brand {
+    font-size: 15px;
+  }
+
+  .brand__mark {
+    width: 26px;
+    height: 26px;
+  }
+
+  .lang-switch__btn {
+    min-width: 38px;
+    padding: 4px 9px;
+  }
 }
 
 @media (min-width: 900px) {
@@ -492,12 +482,17 @@ html[data-lang="en"] [data-l="ja"] {
   letter-spacing: -0.025em;
 }
 
-.hero__title em {
-  font-style: normal;
+/* ブランドのグラデーション文字（ヒーロー見出しの強調と設計目標の数値で共有）。 */
+.hero__title em,
+.goal__value {
   background: linear-gradient(100deg, var(--color-accent), var(--color-primary));
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
+}
+
+.hero__title em {
+  font-style: normal;
 }
 
 .hero__lead {
@@ -589,9 +584,8 @@ html[data-lang="en"] [data-l="ja"] {
 /* ============================================================
    7. トラストバー
    ============================================================ */
+/* 淡色帯の見た目は .section--alt を併用して得る（HTML 側で両方付ける）。 */
 .trustbar {
-  border-block: 1px solid var(--color-border-subtle);
-  background: var(--color-bg-alt);
   padding-block: 28px;
 }
 
@@ -625,23 +619,54 @@ html[data-lang="en"] [data-l="ja"] {
   font-size: 13.5px;
 }
 
+/* 見出しラベルは <b> の中に言語切替 span が入るため、子孫セレクタの muted 指定を打ち消す。 */
+.trustbar__item b span {
+  color: inherit;
+  font-size: inherit;
+}
+
 /* ============================================================
    8. 課題（Problem）
    ============================================================ */
-.problems {
-  display: grid;
-  gap: 20px;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 264px), 1fr));
-}
-
-.problem {
+/* カードの外枠・見出し・本文は 4 セクション共通（.problem / .step / .bento__card / .goal）。
+   1 箇所直して他を直し忘れる事故を避けるため、共通分はここに集約し各所は差分だけ持つ。 */
+.problem,
+.step,
+.bento__card,
+.goal {
   padding: 26px 24px;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-l);
   background: var(--color-surface);
 }
 
-.problem__num {
+.problem h3,
+.step h3,
+.bento__card h3 {
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.problem p,
+.step p,
+.bento__card p {
+  margin-top: 10px;
+  color: var(--color-text-muted);
+  font-size: 15px;
+  line-height: 1.7;
+}
+
+.problems {
+  display: grid;
+  gap: 20px;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 264px), 1fr));
+  counter-reset: problem;
+}
+
+/* 番号バッジは使い方セクションと同じく CSS カウンタで採番する（HTML に数字を書かない）。 */
+.problem::before {
+  counter-increment: problem;
+  content: counter(problem, decimal-leading-zero);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -654,18 +679,6 @@ html[data-lang="en"] [data-l="ja"] {
   font-family: var(--font-mono);
   font-size: 14px;
   font-weight: 700;
-}
-
-.problem h3 {
-  font-size: 17px;
-  font-weight: 700;
-}
-
-.problem p {
-  margin-top: 10px;
-  color: var(--color-text-muted);
-  font-size: 15px;
-  line-height: 1.7;
 }
 
 .answer {
@@ -701,10 +714,6 @@ html[data-lang="en"] [data-l="ja"] {
 
 .step {
   position: relative;
-  padding: 26px 24px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-l);
-  background: var(--color-surface);
 }
 
 .step::before {
@@ -723,18 +732,6 @@ html[data-lang="en"] [data-l="ja"] {
   font-weight: 700;
 }
 
-.step h3 {
-  font-size: 17px;
-  font-weight: 700;
-}
-
-.step p {
-  margin-top: 10px;
-  color: var(--color-text-muted);
-  font-size: 15px;
-  line-height: 1.7;
-}
-
 /* ============================================================
    10. 機能（ベントーグリッド）
    ============================================================ */
@@ -747,23 +744,7 @@ html[data-lang="en"] [data-l="ja"] {
 .bento__card {
   display: flex;
   flex-direction: column;
-  padding: 26px 24px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-l);
-  background: var(--color-surface);
   box-shadow: var(--shadow-card);
-}
-
-.bento__card h3 {
-  font-size: 17px;
-  font-weight: 700;
-}
-
-.bento__card p {
-  margin-top: 10px;
-  color: var(--color-text-muted);
-  font-size: 15px;
-  line-height: 1.7;
 }
 
 .bento__icon {
@@ -846,10 +827,7 @@ html[data-lang="en"] [data-l="ja"] {
 }
 
 .goal {
-  padding: 26px 22px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-l);
-  background: var(--color-surface);
+  padding-inline: 22px;
   text-align: center;
 }
 
@@ -858,10 +836,6 @@ html[data-lang="en"] [data-l="ja"] {
   font-weight: 800;
   letter-spacing: -0.02em;
   line-height: 1.15;
-  background: linear-gradient(100deg, var(--color-accent), var(--color-primary));
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
 }
 
 .goal__label {
@@ -1113,13 +1087,14 @@ html[data-lang="en"] [data-l="ja"] {
     translate 0.5s ease;
 }
 
-.reveal.is-visible {
-  opacity: 1;
-  translate: 0 0;
-}
-
-/* JS 無効時に本文が読めなくならないようにする（no-js は main.js が外す） */
-html.no-js .reveal {
+/* 本文が読めなくならないための 3 系統の可視化。
+   ① is-visible: main.js の IntersectionObserver が付ける通常経路
+   ② html.no-js: JS 無効（head のインラインスクリプトが走らない）
+   ③ html.reveal-fallback: JS は有効だが main.js の取得に失敗した場合の保険
+      （head のインラインスクリプトが仕掛けたタイマーが発火する。main.js が動けば解除される） */
+.reveal.is-visible,
+html.no-js .reveal,
+html.reveal-fallback .reveal {
   opacity: 1;
   translate: 0 0;
 }
