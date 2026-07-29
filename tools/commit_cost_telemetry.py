@@ -74,11 +74,19 @@ TELEMETRY_BRANCH = "telemetry/cost-data"
 TELEMETRY_REF = f"refs/remotes/origin/{TELEMETRY_BRANCH}"
 BRANCH_README = (
     "# telemetry/cost-data\n\n"
-    "Claude Code セッションの月次コスト集計（機械生成テレメトリ）専用のデータブランチにゃ。\n\n"
+    "Claude Code セッションの月次トークン集計（機械生成テレメトリ）専用のデータブランチにゃ。\n\n"
     "- 書き込みは `tools/commit_cost_telemetry.py`（Stop hook から 1 日 1 回）のみ。\n"
     "- main とはマージしない（コード履歴を汚さない・#242）。\n"
+    "- **コスト実額（`cost_usd` / `cost_jpy_approx`）は含まない**。本リポジトリは public であり、\n"
+    "  運営者の Claude API 利用実額を残さないと決めている（#189）。ブランチを分けても公開されて\n"
+    "  いることに変わりはないため、このブランチも対象にした（#202）。較正に使うのはトークン数・\n"
+    "  セッション数で、金額はドル換算の便宜値にすぎず落としても用途は損なわれない。\n"
     "- 参照: `git show origin/telemetry/cost-data:content/analytics/cost_monthly/YYYY-MM.json`\n"
 )
+
+# 公開ペイロードから落とすフィールド（#189 の決定 / #202）。ローカルの計測ファイル
+# （`content/analytics/cost_monthly/*.json`・gitignore 対象）には残るので較正は従来どおり行える。
+REDACTED_COST_KEYS = ("cost_usd",)
 
 
 def _run(cmd: list, timeout: int = 60, cwd: str | None = None,
@@ -227,14 +235,42 @@ def merge_report(month: str, remote_report: dict | None, local_report: dict,
     # `or ""` で確実に空文字へフォールバックする。
     remote_lu = (remote_report.get("last_updated") if isinstance(remote_report, dict) else None) or ""
     last_updated = max(remote_lu, local_report.get("last_updated") or "")
-    return {
+    # 公開ペイロードなのでコスト実額はここで落とす（#202）。substance() の比較キーも
+    # 落とした後の値で作られるため、リモート（同じく実額なし）との冪等比較が壊れない。
+    return redact_costs({
         "month": month,
         "totals": totals,
         "cost_jpy_approx": round(totals["cost_usd"] * USD_TO_JPY),
         "daily": dict(sorted(merged_daily.items())),
         "sessions": dict(sorted(merged_sessions.items())),
         "last_updated": last_updated,
-    }
+    })
+
+
+def redact_costs(report: dict) -> dict:
+    """データブランチへ公開する月次レポートからコスト実額を取り除く（#202）。
+
+    **どこで落とすかが重要**: 計算そのものは従来どおり実額込みで行い、`git push` するペイロードを
+    作る最後の段階（`merge_report` の戻り値）でだけ落とす。ローカルの月次ファイルは実額を保ったまま
+    なので、見積もり較正（`tokens/sp` 等）や手元の分析は影響を受けない。
+
+    落とすのは `totals` / `daily` / `sessions` 各レコードの `cost_usd` と、月次の `cost_jpy_approx`。
+    トークン数・セッション数は金額ではないため残す（`token-optimization-rules.md`「コスト計測データの
+    公開範囲」）。
+    """
+    out = {k: v for k, v in report.items() if k != "cost_jpy_approx"}
+    for section in ("totals",):
+        if isinstance(out.get(section), dict):
+            out[section] = {k: v for k, v in out[section].items() if k not in REDACTED_COST_KEYS}
+    for section in ("daily", "sessions"):
+        if not isinstance(out.get(section), dict):
+            continue
+        out[section] = {
+            key: ({k: v for k, v in rec.items() if k not in REDACTED_COST_KEYS}
+                  if isinstance(rec, dict) else rec)
+            for key, rec in out[section].items()
+        }
+    return out
 
 
 def substance(report: dict | None) -> str:
@@ -374,6 +410,10 @@ def read_remote_monthly(month: str) -> dict | None:
     2. origin/main の追跡コピー（apply-base 派生リポが #242 移行前の場合）
     3. origin/main 履歴上の最終追跡版（派生リポが追跡削除だけ先に取り込んだ場合の種データ。
        これが無いと初回 push が「現コンテナの部分ビューのみ」になり過去履歴が失われる）
+
+    フォールバック 2・3 は #189 の main 履歴書き換え前に存在した実額入り JSON を拾いうるが、
+    公開ペイロードに実額が混入することはない: ここで読んだ値は必ず `merge_report()` を通り、
+    その戻り値が `redact_costs()` で実額を落とされる（#202）。
     """
     rel = f"{MONTHLY_REL_DIR}/{month}.json"
     rep = _json_at(f"{TELEMETRY_REF}:{rel}")
@@ -604,12 +644,14 @@ def self_test() -> int:
 
     # 3) 冪等: last_updated だけ違い実データ同一なら差分なし
     #    本番のリモート側ファイルは totals 再計算済みなので、テストでも再計算した totals を持たせる
-    persisted = {
+    #    リモートのファイルはコスト実額を落とした形で永続化される（#202）ので、fixture も
+    #    redact_costs を通した形にする（通さないと本番に存在しない状態と比較してしまう）
+    persisted = redact_costs({
         "month": "2099-01",
         "totals": recompute_totals(remote_rep["daily"]),
         "daily": remote_rep["daily"],
         "last_updated": "2099-01-02T10:00:00+09:00",
-    }
+    })
     bumped = merge_report("2099-01", persisted, {
         "month": "2099-01", "daily": remote_rep["daily"],
         "last_updated": "2099-01-09T23:59:59+09:00",
@@ -642,7 +684,7 @@ def self_test() -> int:
                         "cache_write_tokens": 1, "cache_read_tokens": 2, "cost_usd": 7.61},
     }, "last_updated": "2099-03-01T18:00:00+09:00"}
     m6 = merge_report("2099-03", rich, partial)
-    if m6["daily"]["2099-03-01"]["sessions"] != 3 or m6["daily"]["2099-03-01"]["cost_usd"] != 28.33:
+    if m6["daily"]["2099-03-01"]["sessions"] != 3 or m6["daily"]["2099-03-01"]["input_tokens"] != 100:
         failures.append("部分ビューで永続化済みデータが後退（単調性違反）")
 
     # 7) 単調性の逆方向: local の方がリッチならフィールド毎 max で local 値が採用される
@@ -658,14 +700,14 @@ def self_test() -> int:
     remote_a = merge_report("2099-04", None, {}, {"sess-a": s1})  # コンテナ A が push 済み
     m8 = merge_report("2099-04", remote_a, {}, {"sess-b": s2})    # コンテナ B（fresh）が push
     d8 = m8["daily"]["2099-04-01"]
-    if d8["sessions"] != 2 or d8["cost_usd"] != 12.0 or d8["input_tokens"] != 40:
+    if d8["sessions"] != 2 or d8["output_tokens"] != 60 or d8["input_tokens"] != 40:
         failures.append(f"クロスコンテナ合算が不正: {d8}")
 
     # 9) 同一セッションの重複排除: 累積スナップショットはフィールド毎 max（=最新値）に畳まれる
     s1_later = dict(s1, cost_usd=9.0, output_tokens=50)
     m9 = merge_report("2099-04", remote_a, {}, {"sess-a": s1_later})
     d9 = m9["daily"]["2099-04-01"]
-    if len(m9["sessions"]) != 1 or d9["sessions"] != 1 or d9["cost_usd"] != 9.0:
+    if len(m9["sessions"]) != 1 or d9["sessions"] != 1 or d9["output_tokens"] != 50:
         failures.append(f"同一セッションの重複排除が不正: {d9}")
 
     # 10) レガシーフロア保全: セッション詳細の無い既存 daily はセッション導出値より
@@ -676,15 +718,34 @@ def self_test() -> int:
     }, "last_updated": "2099-04-01T10:00:00+09:00"}
     m10 = merge_report("2099-04", legacy, {}, {"sess-c": s2})
     d10 = m10["daily"]["2099-04-01"]
-    if d10["sessions"] != 3 or d10["cost_usd"] != 28.33 or d10["input_tokens"] != 500:
+    if d10["sessions"] != 3 or d10["input_tokens"] != 500 or d10["output_tokens"] != 600:
         failures.append(f"レガシーフロア保全に失敗: {d10}")
+
+    # 11) 公開ペイロードにコスト実額が残らない（#202）。ケース 9・10 が cost_usd ではなく
+    #     トークン数で検証しているのはこのため（公開物から実額が消えているのが正しい状態）。
+    for section, rec in (("totals", m10["totals"]),
+                         ("daily", d10),
+                         ("sessions", next(iter(m10["sessions"].values()), {}))):
+        if "cost_usd" in rec:
+            failures.append(f"公開ペイロードの {section} に cost_usd が残っている")
+    if "cost_jpy_approx" in m10:
+        failures.append("公開ペイロードに cost_jpy_approx が残っている")
+    if "cost_usd" in serialize(m10) or "cost_jpy" in serialize(m10):
+        failures.append("直列化した公開ペイロードにコスト実額のキーが残っている")
+
+    # 12) 内部のマージ規則（フィールド毎 max）は実額でも従来どおり動く。公開時に落とすだけで
+    #     計算そのものは変えていないことを、公開境界の手前の関数で直接確認する。
+    if _merge_day({"cost_usd": 1.5}, {"cost_usd": 2.25})["cost_usd"] != 2.25:
+        failures.append("_merge_day の cost_usd max が壊れている")
+    if _merge_session({"cost_usd": 3.0}, {"cost_usd": 1.0})["cost_usd"] != 3.0:
+        failures.append("_merge_session の cost_usd max が壊れている")
 
     if failures:
         for f in failures:
             print(f"  ✗ {f}", file=sys.stderr)
         print(f"self-test FAILED（{len(failures)} 件）", file=sys.stderr)
         return 1
-    print("self-test PASSED（10 ケース）")
+    print("self-test PASSED（12 ケース）")
     return 0
 
 
