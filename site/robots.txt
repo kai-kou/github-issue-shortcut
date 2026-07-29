@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://kai-kou.github.io/github-issue-shortcut/sitemap.xml

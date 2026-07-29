@@ -9,6 +9,16 @@ const LP_URL = "http://localhost:8790/index.html";
 const WCAG_TAGS = ["wcag2a", "wcag2aa", "wcag22aa"];
 const APP_URL = "https://github-issue-shortcut.kinamocchi-tech.workers.dev";
 
+/**
+ * 公開 URL（`https://kai-kou.github.io/github-issue-shortcut/...`）をローカル配信の URL に読み替える。
+ * GitHub Pages のプロジェクトサイトはリポジトリ名のパス配下に載るため、その 1 階層を落とす。
+ */
+function toLocalUrl(publicUrl: string): string {
+  if (!/^https?:\/\//.test(publicUrl)) return new URL(publicUrl, LP_URL).href;
+  const withoutProjectPrefix = new URL(publicUrl).pathname.replace(/^\/[^/]+/, "");
+  return new URL(withoutProjectPrefix || "/", LP_URL).href;
+}
+
 // 既定言語は日本語。ブラウザのロケール既定（en-US）に引きずられて監査対象言語が
 // 変わらないよう、明示的に固定する。
 test.use({ locale: "ja-JP" });
@@ -95,11 +105,23 @@ test.describe("ランディングページ（site/）", () => {
     );
     expect(referenced.length).toBeGreaterThan(0);
     for (const reference of referenced) {
-      // og:image は公開 URL（絶対パス）で書くため、ファイル名だけをローカル配信で確認する
-      const path = reference.replace(/^https?:\/\/[^/]+\/[^/]*/, "");
-      const response = await page.request.get(new URL(path || reference, LP_URL).href);
+      const response = await page.request.get(toLocalUrl(reference));
       expect(response.status(), `${reference} が取得できない`).toBe(200);
     }
+  });
+
+  test("robots.txt と sitemap.xml が配信され、互いに整合している", async ({ page }) => {
+    const robots = await page.request.get(new URL("/robots.txt", LP_URL).href);
+    expect(robots.status()).toBe(200);
+    const sitemapUrl = (await robots.text()).match(/^Sitemap:\s*(\S+)$/m)?.[1];
+    expect(sitemapUrl, "robots.txt に Sitemap 行がない").toBeTruthy();
+
+    const sitemap = await page.request.get(toLocalUrl(sitemapUrl as string));
+    expect(sitemap.status()).toBe(200);
+    const body = await sitemap.text();
+    // 名前空間の綴り間違い（sitemap.org / sitemaps.org）は検索エンジン側で無効扱いになる
+    expect(body).toContain("http://www.sitemaps.org/schemas/sitemap/0.9");
+    expect(body).toContain("https://kai-kou.github.io/github-issue-shortcut/");
   });
 
   test("言語切替で本文・属性・タイトルがまとめて入れ替わる", async ({ page }) => {
