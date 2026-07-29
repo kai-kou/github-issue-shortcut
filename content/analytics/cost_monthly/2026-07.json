@@ -1,0 +1,610 @@
+{
+  "month": "2026-07",
+  "totals": {
+    "sessions": 76,
+    "input_tokens": 144949,
+    "output_tokens": 5903593,
+    "cache_write_tokens": 39388421,
+    "cache_read_tokens": 1026261604
+  },
+  "daily": {
+    "2026-07-17": {
+      "sessions": 5,
+      "input_tokens": 1961,
+      "output_tokens": 546598,
+      "cache_write_tokens": 2489979,
+      "cache_read_tokens": 92362151
+    },
+    "2026-07-18": {
+      "sessions": 16,
+      "input_tokens": 46906,
+      "output_tokens": 1221577,
+      "cache_write_tokens": 6708372,
+      "cache_read_tokens": 269794522
+    },
+    "2026-07-19": {
+      "sessions": 9,
+      "input_tokens": 619,
+      "output_tokens": 437853,
+      "cache_write_tokens": 3183356,
+      "cache_read_tokens": 85024505
+    },
+    "2026-07-20": {
+      "sessions": 2,
+      "input_tokens": 885,
+      "output_tokens": 637363,
+      "cache_write_tokens": 5259846,
+      "cache_read_tokens": 122631718
+    },
+    "2026-07-21": {
+      "sessions": 4,
+      "input_tokens": 8035,
+      "output_tokens": 506198,
+      "cache_write_tokens": 1949401,
+      "cache_read_tokens": 50890837
+    },
+    "2026-07-22": {
+      "sessions": 5,
+      "input_tokens": 709,
+      "output_tokens": 603669,
+      "cache_write_tokens": 4697406,
+      "cache_read_tokens": 44000366
+    },
+    "2026-07-24": {
+      "sessions": 2,
+      "input_tokens": 544,
+      "output_tokens": 174305,
+      "cache_write_tokens": 835717,
+      "cache_read_tokens": 43756021
+    },
+    "2026-07-25": {
+      "sessions": 14,
+      "input_tokens": 20390,
+      "output_tokens": 317633,
+      "cache_write_tokens": 4532158,
+      "cache_read_tokens": 64425236
+    },
+    "2026-07-26": {
+      "sessions": 4,
+      "input_tokens": 328,
+      "output_tokens": 82744,
+      "cache_write_tokens": 1773506,
+      "cache_read_tokens": 18078038
+    },
+    "2026-07-27": {
+      "sessions": 5,
+      "input_tokens": 31129,
+      "output_tokens": 647031,
+      "cache_write_tokens": 3230996,
+      "cache_read_tokens": 134171134
+    },
+    "2026-07-28": {
+      "sessions": 5,
+      "input_tokens": 404,
+      "output_tokens": 199012,
+      "cache_write_tokens": 2277087,
+      "cache_read_tokens": 24937218
+    },
+    "2026-07-29": {
+      "sessions": 5,
+      "input_tokens": 33039,
+      "output_tokens": 529610,
+      "cache_write_tokens": 2450597,
+      "cache_read_tokens": 76189858
+    }
+  },
+  "sessions": {
+    "0a501577-df8c-59b8-b0d4-c916c1979973": {
+      "date": "2026-07-27",
+      "input_tokens": 611,
+      "output_tokens": 82611,
+      "cache_write_tokens": 882910,
+      "cache_read_tokens": 16823002
+    },
+    "0ad45183-091b-54bd-9a04-96feb9482927": {
+      "date": "2026-07-22",
+      "input_tokens": 37,
+      "output_tokens": 35913,
+      "cache_write_tokens": 448171,
+      "cache_read_tokens": 1707409
+    },
+    "0e284889-a2de-533c-ab19-9b3457fd60e2": {
+      "date": "2026-07-18",
+      "input_tokens": 66,
+      "output_tokens": 15412,
+      "cache_write_tokens": 250820,
+      "cache_read_tokens": 3489009
+    },
+    "15a3d892-d525-55ee-b0a9-100947adcd7e": {
+      "date": "2026-07-26",
+      "input_tokens": 48,
+      "output_tokens": 12934,
+      "cache_write_tokens": 171983,
+      "cache_read_tokens": 2472906
+    },
+    "1852da0e-60cf-5c54-b5a6-116d679ab022": {
+      "date": "2026-07-20",
+      "input_tokens": 736,
+      "output_tokens": 537952,
+      "cache_write_tokens": 4525735,
+      "cache_read_tokens": 112052885
+    },
+    "1865895b-9692-5d17-941b-cecea4dbc652": {
+      "date": "2026-07-25",
+      "input_tokens": 60,
+      "output_tokens": 22653,
+      "cache_write_tokens": 309748,
+      "cache_read_tokens": 3236176
+    },
+    "1a4b1563-64be-5e86-b890-71e2b69dc3e0": {
+      "date": "2026-07-18",
+      "input_tokens": 22,
+      "output_tokens": 4568,
+      "cache_write_tokens": 212323,
+      "cache_read_tokens": 933401
+    },
+    "1a6c07e9-baee-5a3a-95fc-f5ece47ff900": {
+      "date": "2026-07-21",
+      "input_tokens": 92,
+      "output_tokens": 167360,
+      "cache_write_tokens": 421281,
+      "cache_read_tokens": 5709419
+    },
+    "1c4214b9-a08b-5ddb-aa1a-9d203dbb52b1": {
+      "date": "2026-07-24",
+      "input_tokens": 324,
+      "output_tokens": 123883,
+      "cache_write_tokens": 461444,
+      "cache_read_tokens": 27744613
+    },
+    "24ff4482-2ff4-546c-b07a-e905681d4055": {
+      "date": "2026-07-25",
+      "input_tokens": 54,
+      "output_tokens": 15117,
+      "cache_write_tokens": 260751,
+      "cache_read_tokens": 2834166
+    },
+    "2c8e8859-4846-5457-a314-2062bc3d8585": {
+      "date": "2026-07-25",
+      "input_tokens": 44,
+      "output_tokens": 11754,
+      "cache_write_tokens": 244462,
+      "cache_read_tokens": 2156360
+    },
+    "31cb16fe-ea3e-5013-bda5-15237b068742": {
+      "date": "2026-07-29",
+      "input_tokens": 10980,
+      "output_tokens": 74035,
+      "cache_write_tokens": 419314,
+      "cache_read_tokens": 2830397
+    },
+    "322a358b-dfa2-59f1-94e5-26a0d1df681d": {
+      "date": "2026-07-18",
+      "input_tokens": 4,
+      "output_tokens": 202,
+      "cache_write_tokens": 200442,
+      "cache_read_tokens": 0
+    },
+    "335686f4-89c5-52b2-ad0b-d3c39bd7edd5": {
+      "date": "2026-07-29",
+      "input_tokens": 18003,
+      "output_tokens": 230785,
+      "cache_write_tokens": 640253,
+      "cache_read_tokens": 40057816
+    },
+    "37f52bd3-f367-5316-8b24-afb2c5462bae": {
+      "date": "2026-07-18",
+      "input_tokens": 400,
+      "output_tokens": 98599,
+      "cache_write_tokens": 481694,
+      "cache_read_tokens": 35651939
+    },
+    "39245a35-0c0a-54f4-99dd-40fd43fda364": {
+      "date": "2026-07-24",
+      "input_tokens": 220,
+      "output_tokens": 50422,
+      "cache_write_tokens": 374273,
+      "cache_read_tokens": 16011408
+    },
+    "3a8cb27a-491e-5e9f-8f2c-a6bb5d6c81bb": {
+      "date": "2026-07-28",
+      "input_tokens": 64,
+      "output_tokens": 59147,
+      "cache_write_tokens": 559608,
+      "cache_read_tokens": 4009522
+    },
+    "3d20d04c-0913-5c19-91ef-488557f60b3c": {
+      "date": "2026-07-25",
+      "input_tokens": 542,
+      "output_tokens": 85543,
+      "cache_write_tokens": 467689,
+      "cache_read_tokens": 21060890
+    },
+    "3d3c2878-6a29-5d44-87e7-57867afd401a": {
+      "date": "2026-07-18",
+      "input_tokens": 68,
+      "output_tokens": 28413,
+      "cache_write_tokens": 333289,
+      "cache_read_tokens": 3816308
+    },
+    "3e27081c-c1c8-5a2b-ae28-4920b7dc554a": {
+      "date": "2026-07-17",
+      "input_tokens": 140,
+      "output_tokens": 35143,
+      "cache_write_tokens": 399772,
+      "cache_read_tokens": 3171549
+    },
+    "423f6222-213d-5b38-8b7e-28bdcc73a0cc": {
+      "date": "2026-07-25",
+      "input_tokens": 18347,
+      "output_tokens": 10650,
+      "cache_write_tokens": 475526,
+      "cache_read_tokens": 1632352
+    },
+    "481dd0e7-f541-53c6-b485-858d86faf889": {
+      "date": "2026-07-21",
+      "input_tokens": 7599,
+      "output_tokens": 128562,
+      "cache_write_tokens": 617309,
+      "cache_read_tokens": 15079878
+    },
+    "4d302ae9-21be-574b-82b3-c9b3120cc95b": {
+      "date": "2026-07-22",
+      "input_tokens": 310,
+      "output_tokens": 426317,
+      "cache_write_tokens": 1035538,
+      "cache_read_tokens": 26948070
+    },
+    "4d6d1420-72d3-583a-8671-54e9426f869a": {
+      "date": "2026-07-29",
+      "input_tokens": 3729,
+      "output_tokens": 17532,
+      "cache_write_tokens": 372098,
+      "cache_read_tokens": 2967547
+    },
+    "53a4cf8a-d91b-5e0f-83fd-0fe09c6c6722": {
+      "date": "2026-07-21",
+      "input_tokens": 326,
+      "output_tokens": 195718,
+      "cache_write_tokens": 615195,
+      "cache_read_tokens": 29514352
+    },
+    "54de50ea-ab7d-5155-9209-290167af2c96": {
+      "date": "2026-07-28",
+      "input_tokens": 87,
+      "output_tokens": 46515,
+      "cache_write_tokens": 478427,
+      "cache_read_tokens": 5312248
+    },
+    "55a14260-4562-5729-8cdc-29490f5edbae": {
+      "date": "2026-07-25",
+      "input_tokens": 123,
+      "output_tokens": 30215,
+      "cache_write_tokens": 289575,
+      "cache_read_tokens": 7605822
+    },
+    "5723be14-8009-57ea-afcc-9df025861b0a": {
+      "date": "2026-07-18",
+      "input_tokens": 1635,
+      "output_tokens": 73219,
+      "cache_write_tokens": 538722,
+      "cache_read_tokens": 1422866
+    },
+    "59f8af9f-298b-55b0-9ba4-e6841e29c08b": {
+      "date": "2026-07-19",
+      "input_tokens": 68,
+      "output_tokens": 29309,
+      "cache_write_tokens": 346870,
+      "cache_read_tokens": 3731138
+    },
+    "5baec612-e750-5949-84d4-34562e4e1acf": {
+      "date": "2026-07-29",
+      "input_tokens": 274,
+      "output_tokens": 165577,
+      "cache_write_tokens": 664181,
+      "cache_read_tokens": 27648708
+    },
+    "62b351c3-51ad-57b9-b6b9-011100084326": {
+      "date": "2026-07-18",
+      "input_tokens": 374,
+      "output_tokens": 153057,
+      "cache_write_tokens": 595564,
+      "cache_read_tokens": 38431535
+    },
+    "637a23a1-479d-5341-aacd-393c590d45a5": {
+      "date": "2026-07-25",
+      "input_tokens": 30,
+      "output_tokens": 7930,
+      "cache_write_tokens": 465916,
+      "cache_read_tokens": 1210493
+    },
+    "6a8ea77a-3605-5076-9320-009f5a3bda32": {
+      "date": "2026-07-18",
+      "input_tokens": 322,
+      "output_tokens": 107474,
+      "cache_write_tokens": 537507,
+      "cache_read_tokens": 28522436
+    },
+    "6cd47f44-e474-5205-a754-dbd0e88b7aec": {
+      "date": "2026-07-18",
+      "input_tokens": 192,
+      "output_tokens": 37770,
+      "cache_write_tokens": 298621,
+      "cache_read_tokens": 12273301
+    },
+    "6e393d1f-fa02-5553-8364-5aaedded259e": {
+      "date": "2026-07-18",
+      "input_tokens": 130,
+      "output_tokens": 111710,
+      "cache_write_tokens": 340655,
+      "cache_read_tokens": 8201490
+    },
+    "6f99dc12-6200-5019-a284-7a5ae6981be8": {
+      "date": "2026-07-17",
+      "input_tokens": 574,
+      "output_tokens": 144322,
+      "cache_write_tokens": 604847,
+      "cache_read_tokens": 19450257
+    },
+    "704f0ce9-df86-5992-bad7-627251eda430": {
+      "date": "2026-07-19",
+      "input_tokens": 74,
+      "output_tokens": 31841,
+      "cache_write_tokens": 365416,
+      "cache_read_tokens": 3972300
+    },
+    "71903f16-04b1-5976-909b-e392ea6b38d4": {
+      "date": "2026-07-18",
+      "input_tokens": 60,
+      "output_tokens": 22932,
+      "cache_write_tokens": 422137,
+      "cache_read_tokens": 3290160
+    },
+    "754f5e60-f604-5a0c-b170-08db368ca402": {
+      "date": "2026-07-25",
+      "input_tokens": 54,
+      "output_tokens": 16292,
+      "cache_write_tokens": 274688,
+      "cache_read_tokens": 2838752
+    },
+    "7bc8b768-2291-5245-90ca-78596a4b3cf3": {
+      "date": "2026-07-25",
+      "input_tokens": 60,
+      "output_tokens": 18601,
+      "cache_write_tokens": 272753,
+      "cache_read_tokens": 3174720
+    },
+    "7d95f2ee-de4f-560f-8efe-13fc264f1ce0": {
+      "date": "2026-07-18",
+      "input_tokens": 36,
+      "output_tokens": 9981,
+      "cache_write_tokens": 385276,
+      "cache_read_tokens": 1793055
+    },
+    "7eb3d2a0-7f28-5ea3-99fd-2127202f33ae": {
+      "date": "2026-07-18",
+      "input_tokens": 330,
+      "output_tokens": 108341,
+      "cache_write_tokens": 468339,
+      "cache_read_tokens": 28986269
+    },
+    "7f091115-333a-562c-8ed6-36c94ad874f4": {
+      "date": "2026-07-25",
+      "input_tokens": 26,
+      "output_tokens": 14225,
+      "cache_write_tokens": 259076,
+      "cache_read_tokens": 1173114
+    },
+    "8245adfe-af2e-5717-94f5-0f022453064f": {
+      "date": "2026-07-17",
+      "input_tokens": 248,
+      "output_tokens": 106342,
+      "cache_write_tokens": 427280,
+      "cache_read_tokens": 18942858
+    },
+    "84f2c124-c340-5d8d-8539-93d8c1f259fb": {
+      "date": "2026-07-27",
+      "input_tokens": 20035,
+      "output_tokens": 180826,
+      "cache_write_tokens": 646142,
+      "cache_read_tokens": 45560047
+    },
+    "9007a116-0031-576f-a9f3-b0e552403b73": {
+      "date": "2026-07-19",
+      "input_tokens": 66,
+      "output_tokens": 28878,
+      "cache_write_tokens": 343992,
+      "cache_read_tokens": 3578078
+    },
+    "91614121-4aca-5d66-914e-5f805e335d52": {
+      "date": "2026-07-26",
+      "input_tokens": 42,
+      "output_tokens": 11970,
+      "cache_write_tokens": 249285,
+      "cache_read_tokens": 2033229
+    },
+    "99663d2b-a83c-5b73-af79-84f2adce3d4a": {
+      "date": "2026-07-28",
+      "input_tokens": 30,
+      "output_tokens": 9758,
+      "cache_write_tokens": 352128,
+      "cache_read_tokens": 1156347
+    },
+    "9c8830a7-b24c-5fd7-9029-96af9fb768ac": {
+      "date": "2026-07-25",
+      "input_tokens": 153,
+      "output_tokens": 8356,
+      "cache_write_tokens": 262941,
+      "cache_read_tokens": 1894813
+    },
+    "9d147d98-4394-5031-8aea-97ec176c21b4": {
+      "date": "2026-07-20",
+      "input_tokens": 149,
+      "output_tokens": 99411,
+      "cache_write_tokens": 734111,
+      "cache_read_tokens": 10578833
+    },
+    "9daa8d29-da0c-5b7c-ad5b-b50400f6d08a": {
+      "date": "2026-07-28",
+      "input_tokens": 91,
+      "output_tokens": 34767,
+      "cache_write_tokens": 344013,
+      "cache_read_tokens": 4783494
+    },
+    "9f210bfd-9c38-5472-b4c6-c83524777ada": {
+      "date": "2026-07-18",
+      "input_tokens": 20723,
+      "output_tokens": 266237,
+      "cache_write_tokens": 748791,
+      "cache_read_tokens": 67685389
+    },
+    "a0e9f010-2ec0-5e8c-92f4-9b8971a92aa6": {
+      "date": "2026-07-19",
+      "input_tokens": 50,
+      "output_tokens": 27891,
+      "cache_write_tokens": 366034,
+      "cache_read_tokens": 2555142
+    },
+    "a955e0db-c7d8-5525-b2f4-a2b5983b7fa8": {
+      "date": "2026-07-27",
+      "input_tokens": 266,
+      "output_tokens": 71593,
+      "cache_write_tokens": 402927,
+      "cache_read_tokens": 22763253
+    },
+    "ad732691-1022-52be-aadb-ae9bdd804e3d": {
+      "date": "2026-07-28",
+      "input_tokens": 132,
+      "output_tokens": 48825,
+      "cache_write_tokens": 542911,
+      "cache_read_tokens": 9675607
+    },
+    "af91c495-d6b7-563e-b9d9-6cb992555e9c": {
+      "date": "2026-07-19",
+      "input_tokens": 58,
+      "output_tokens": 25459,
+      "cache_write_tokens": 313523,
+      "cache_read_tokens": 3033279
+    },
+    "b279f27d-2700-520d-b0a4-91a493dfdde8": {
+      "date": "2026-07-19",
+      "input_tokens": 14,
+      "output_tokens": 24742,
+      "cache_write_tokens": 500120,
+      "cache_read_tokens": 195240
+    },
+    "b8fa45e7-8595-598f-8245-8479e4399d7c": {
+      "date": "2026-07-18",
+      "input_tokens": 146,
+      "output_tokens": 41909,
+      "cache_write_tokens": 295473,
+      "cache_read_tokens": 8840345
+    },
+    "be70f84f-2232-53a0-ae22-04ca2cfba31e": {
+      "date": "2026-07-22",
+      "input_tokens": 49,
+      "output_tokens": 41437,
+      "cache_write_tokens": 1422921,
+      "cache_read_tokens": 1474280
+    },
+    "bf2e256d-cdac-578d-9bb9-0beb546b058d": {
+      "date": "2026-07-19",
+      "input_tokens": 64,
+      "output_tokens": 22115,
+      "cache_write_tokens": 318380,
+      "cache_read_tokens": 3588177
+    },
+    "c476d7c3-1a9f-5def-b7ab-1b9a38cac024": {
+      "date": "2026-07-17",
+      "input_tokens": 883,
+      "output_tokens": 177358,
+      "cache_write_tokens": 623497,
+      "cache_read_tokens": 43583065
+    },
+    "d0205cff-f151-5beb-9c65-25882b604ec2": {
+      "date": "2026-07-18",
+      "input_tokens": 22398,
+      "output_tokens": 141753,
+      "cache_write_tokens": 598719,
+      "cache_read_tokens": 26457019
+    },
+    "d7818646-b542-5e68-8a6b-bf00e6ab5f60": {
+      "date": "2026-07-26",
+      "input_tokens": 170,
+      "output_tokens": 40857,
+      "cache_write_tokens": 1078959,
+      "cache_read_tokens": 9921213
+    },
+    "df02137f-b257-5e24-8f08-cbcd633f0823": {
+      "date": "2026-07-22",
+      "input_tokens": 172,
+      "output_tokens": 48812,
+      "cache_write_tokens": 437470,
+      "cache_read_tokens": 11239598
+    },
+    "e0cb442a-f032-5ab3-af37-186b5293f9d3": {
+      "date": "2026-07-27",
+      "input_tokens": 7743,
+      "output_tokens": 212484,
+      "cache_write_tokens": 745861,
+      "cache_read_tokens": 38540451
+    },
+    "e26ed233-0900-56f7-a47d-8575452bf9aa": {
+      "date": "2026-07-25",
+      "input_tokens": 68,
+      "output_tokens": 25954,
+      "cache_write_tokens": 336934,
+      "cache_read_tokens": 3845219
+    },
+    "e3503a84-6d2c-57ba-9ea1-3225643e6d74": {
+      "date": "2026-07-25",
+      "input_tokens": 671,
+      "output_tokens": 11017,
+      "cache_write_tokens": 258410,
+      "cache_read_tokens": 2078408
+    },
+    "e3bfb32f-7e13-5cd1-9105-cd38b1817faa": {
+      "date": "2026-07-17",
+      "input_tokens": 116,
+      "output_tokens": 83433,
+      "cache_write_tokens": 434583,
+      "cache_read_tokens": 7214422
+    },
+    "ea46b253-1d17-56ab-b111-6a5248c4c45c": {
+      "date": "2026-07-29",
+      "input_tokens": 53,
+      "output_tokens": 41681,
+      "cache_write_tokens": 354751,
+      "cache_read_tokens": 2685390
+    },
+    "ee7f15f5-4d8b-55f2-abeb-0a95073da934": {
+      "date": "2026-07-26",
+      "input_tokens": 68,
+      "output_tokens": 16983,
+      "cache_write_tokens": 273279,
+      "cache_read_tokens": 3650690
+    },
+    "fa0d3dc6-2555-5c46-948c-66b5d9ab9069": {
+      "date": "2026-07-19",
+      "input_tokens": 88,
+      "output_tokens": 48390,
+      "cache_write_tokens": 341333,
+      "cache_read_tokens": 5064296
+    },
+    "faa03030-e83b-5374-a054-ceff7fe55caf": {
+      "date": "2026-07-22",
+      "input_tokens": 141,
+      "output_tokens": 51190,
+      "cache_write_tokens": 1353306,
+      "cache_read_tokens": 2631009
+    },
+    "fc023615-1bae-5805-bbcb-f2ad8b099ebf": {
+      "date": "2026-07-27",
+      "input_tokens": 2474,
+      "output_tokens": 99517,
+      "cache_write_tokens": 553156,
+      "cache_read_tokens": 10484381
+    }
+  },
+  "last_updated": "2026-07-29T10:45:33+09:00"
+}
