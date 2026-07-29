@@ -53,7 +53,7 @@ GitHub Issues でタスクやアイデアを管理していると、**思いつ�
 ## 安全性・データの扱い
 
 - **トークンの保管** — GitHub のトークンは暗号化した HttpOnly Cookie として端末に置かれ、JavaScript からは読めません。有効期限は最長 30 日で、リフレッシュしても延長されません
-- **権限の取り消し** — アプリ内の「アカウント削除」で端末内データを消し GitHub 側のトークンも失効させます。GitHub の [Authorized GitHub Apps](https://github.com/settings/apps/authorizations) からいつでも連携を解除できます（ログアウトだけでは GitHub 側のトークンは失効しません）
+- **権限の取り消し** — ログアウト・アカウント削除のどちらでも GitHub 側のトークンを失効させます（アカウント削除は加えて端末内のデータを消します）。アプリを経由せず GitHub の [Authorized GitHub Apps](https://github.com/settings/apps/authorizations) から連携を解除することもできます
 - **設計と裏取り** — サーバーが何も保存しない仕組みは [ステートレス化設計](docs/design/stateless-architecture.md)、保持データの全数棚卸しは [データ保持インベントリ](docs/research/2026-07-28-data-retention-inventory.md) にあります
 
 ## 目指している速さ
