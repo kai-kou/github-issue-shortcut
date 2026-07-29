@@ -1,0 +1,37 @@
+{
+  "topic": "リポジトリ全体のセキュリティ・リスク管理レビュー（敵対的多観点）",
+  "brief": "本リポジトリは Cloudflare Workers 上で動く GitHub Issue 起票 PWA であり、GitHub OAuth のユーザートークンを暗号化 Cookie として扱う（サーバー永続層ゼロ）。一般公開を準備中で、リポジトリ自体も public。あなた方は攻撃者視点と運用者視点を併せ持つ外部セキュリティレビュアーである。実コード（worker/・src/）と設定（wrangler.jsonc・CI・hooks）を唯一の根拠として、実害のある脆弱性・リスクを探す。ラウンド 2 では互いの指摘を批判検証し、議論を経ても残る真の問題だけを critical にする（理論上の懸念・規模不相応な要求・好みの問題は除外）。指摘は必ず該当箇所（ファイル:行）に接地させ、根拠なき憶測は出さない。個人開発 OSS・実質ユーザー数極小という規模を踏まえ、対策コストに見合わない要求（SOC2・WAF 有償プラン等）は出さない。",
+  "participants": [
+    {
+      "name": "authn_token",
+      "model": "sonnet",
+      "lens": "認証・認可・トークンライフサイクルの観点。GitHub OAuth フロー（state パラメータの生成/検証・リプレイ耐性・redirect_uri 固定）、トークン Cookie の属性（HttpOnly/Secure/SameSite/Path/Max-Age）、AES-GCM 暗号化の実装（IV の一意性・AAD・鍵導出・鍵バージョン/ローテーション）、リフレッシュトークンの取り扱い、ログアウト・失効・アカウント削除時のトークン破棄、スコープ最小化を worker/index.ts・worker/tokenCookie.ts・worker/crypto.ts・worker/tokens.ts・src/auth/ の該当行を根拠に検証する。暗号実装の誤り（nonce 再利用・タイミング非安全比較・鍵の平文露出）は最優先で探す。"
+    },
+    {
+      "name": "web_appsec",
+      "model": "sonnet",
+      "lens": "Web アプリケーション攻撃面の観点。XSS（React の dangerouslySetInnerHTML・URL 由来の値の描画）、CSRF（Cookie ベース認証の状態変更 API に対する防御・SameSite だけに依存していないか）、CORS 設定、オープンリダイレクト（OAuth callback・launchUrl・share_target）、SSRF（Worker から外部への fetch にユーザー入力が混入しないか）、リクエスト検証（repo/owner/label 等のパス・クエリのバリデーション）、CSP・セキュリティヘッダ、Service Worker / PWA 固有リスク（キャッシュ汚染・オフラインキューの毒入れ）、prefillParams による意図しない起票を worker/index.ts・worker/github.ts・src/issues/・src/shortcuts/・vite.config.ts の該当行を根拠に検証する。攻撃シナリオを 1 文で再現可能に書けるものだけ critical にする。"
+    },
+    {
+      "name": "secrets_supplychain",
+      "model": "sonnet",
+      "lens": "シークレット管理とサプライチェーン・CI/CD 権限の観点。リポジトリ内への秘密情報の混入（コミット履歴・設定ファイル・ドキュメント・テストフィクスチャ）、wrangler.jsonc の vars と Workers Secrets の使い分けの妥当性、GitHub Actions の permissions 設定・pull_request_target 等の危険トリガー・サードパーティ Action のバージョン固定、依存パッケージのリスク（postinstall・過剰依存）、.claude/hooks と tools/*.py がリポジトリ内容を信頼して任意コード実行しうる経路（プロンプトインジェクション経由の実行を含む）、public リポジトリであることに起因する情報露出（運用実額・内部 URL・アカウント識別子）を .github/workflows/・wrangler.jsonc・package.json・.gitignore・.gitguardian.yaml・.claude/hooks/・tools/ の該当行を根拠に検証する。"
+    },
+    {
+      "name": "privacy_data",
+      "model": "sonnet",
+      "lens": "個人データ保護と法務・実装整合の観点。プライバシーポリシー・利用規約（src/pages/・src/i18n/translations.ts）が実装の実態と一致しているか、サーバー保持ゼロという設計主張が実際に守られているか（ログ出力・エラー通知・レート制限キーへの個人情報混入を含む）、端末内保存（localStorage/IndexedDB/Cache Storage）に残る個人データとその削除経路（ログアウト・アカウント削除）、第三者への送信、越境移転の開示、データ最小化を docs/design/stateless-architecture.md・src/auth/・src/issues/・src/repos/・worker/index.ts の該当行を根拠に検証する。ポリシー文言と実装が食い違う箇所は実害ありとして扱う。"
+    },
+    {
+      "name": "ops_risk",
+      "model": "sonnet",
+      "lens": "運用リスク・可用性・悪用耐性の観点。レート制限（wrangler.jsonc の ratelimits と worker/index.ts の実装）が実際に悪用を止められるか（キーの選び方・バイパス経路・データセンター単位 best-effort の限界）、認証なしで叩けるエンドポイントの有無、コスト暴走・DoS への耐性と検知（使用量アラートの欠如）、障害時の挙動（例外時にトークンや内部情報を漏らさないか・エラーメッセージの情報量）、鍵ローテーション・インシデント初動手順の実在性、フォーク/セルフホスト運用時に設定ミスが生む危険、SECURITY.md の報告経路の実効性を検証する。個人開発 OSS の規模で現実的に取るべき対策に絞り、エンタープライズ要求は出さない。"
+    }
+  ],
+  "synthesizer": {
+    "name": "lead",
+    "instruction": "5 観点の指摘を読み、ラウンド 2 の相互検証で否定されなかった真のリスクのみを critical に集約する。各 critical は「ファイル:行・リスク・攻撃/失敗シナリオ・推奨対応」を含める。重大度は critical（実害のある脆弱性・即対応）と high（放置すべきでないが緊急性は低い）に分け、誤検知・好み・規模不相応な要求は除外する。実害のある脆弱性がなければ verdict=PASS とし、放置すべきでない high があれば WARN、即時修正が要る critical があれば FAIL とする。",
+    "model": "sonnet"
+  },
+  "verdict_schema": "{\"verdict\":\"PASS|WARN|FAIL\",\"critical\":[],\"high\":[],\"consensus\":\"レビュー総括1文\",\"summary\":\"検出した主な観点1-2文\"}"
+}
