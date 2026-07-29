@@ -352,13 +352,58 @@ describe("repo パラメータの形式検証 (GitHub API へのパス注入防�
     });
   }
 
-  it("accepts a normal owner/repo including dots, dashes and underscores", async () => {
+  // 正当な repo 名を誤って弾かないこと。特に `.github`（org の community health files 用の特殊
+  // リポジトリ）は `.` 始まりだが実在する正規の名前で、これを拒否すると起票できなくなる。
+  const validRepos = [
+    "kai-kou/a.b_c-d",
+    "kai-kou/.github",
+    "kai-kou/-leading-dash",
+    "kai-kou/trailing_",
+    "a/b",
+    "0/0",
+    `${"a".repeat(39)}/${"b".repeat(100)}`,
+  ];
+
+  for (const repo of validRepos) {
+    it(`accepts ${JSON.stringify(repo)}`, async () => {
+      const cookie = await loginSession();
+      const fetchSpy = vi.fn(async () => jsonResponse(201, { number: 1, html_url: "https://github.com/x/y/issues/1" }));
+      vi.stubGlobal("fetch", fetchSpy);
+
+      const res = await postIssue(cookie, { repo });
+      expect(res.status).toBe(201);
+      expect(fetchSpy).toHaveBeenCalledOnce();
+    });
+  }
+
+  it("rejects an owner over the GitHub limit (39 chars)", async () => {
     const cookie = await loginSession();
-    const fetchSpy = vi.fn(async () => jsonResponse(201, { number: 1, html_url: "https://github.com/kai-kou/a.b_c-d/issues/1" }));
+    const fetchSpy = vi.fn();
     vi.stubGlobal("fetch", fetchSpy);
 
-    const res = await postIssue(cookie, { repo: "kai-kou/a.b_c-d" });
-    expect(res.status).toBe(201);
-    expect(fetchSpy).toHaveBeenCalledOnce();
+    const res = await postIssue(cookie, { repo: `${"a".repeat(40)}/beta` });
+    expect(res.status).toBe(400);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("rejects a repo name over the GitHub limit (100 chars)", async () => {
+    const cookie = await loginSession();
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const res = await postIssue(cookie, { repo: `kai-kou/${"b".repeat(101)}` });
+    expect(res.status).toBe(400);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  // owner は GitHub のアカウント名規則どおり英数字とハイフンのみ（`.` `_` は使えない）。
+  it("rejects an owner containing a dot", async () => {
+    const cookie = await loginSession();
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const res = await postIssue(cookie, { repo: "kai.kou/alpha" });
+    expect(res.status).toBe(400);
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 });
