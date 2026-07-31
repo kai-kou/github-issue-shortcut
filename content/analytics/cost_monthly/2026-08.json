@@ -1,0 +1,29 @@
+{
+  "month": "2026-08",
+  "totals": {
+    "sessions": 1,
+    "input_tokens": 32,
+    "output_tokens": 17626,
+    "cache_write_tokens": 360770,
+    "cache_read_tokens": 1393419
+  },
+  "daily": {
+    "2026-08-01": {
+      "sessions": 1,
+      "input_tokens": 32,
+      "output_tokens": 17626,
+      "cache_write_tokens": 360770,
+      "cache_read_tokens": 1393419
+    }
+  },
+  "sessions": {
+    "95ee1974-ab04-532e-9926-8a1a10547dfb": {
+      "date": "2026-08-01",
+      "input_tokens": 32,
+      "output_tokens": 17626,
+      "cache_write_tokens": 360770,
+      "cache_read_tokens": 1393419
+    }
+  },
+  "last_updated": "2026-08-01T08:17:16+09:00"
+}
