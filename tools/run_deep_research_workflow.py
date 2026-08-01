@@ -6,7 +6,9 @@ Claude Code のネイティブ /deep-research（Dynamic Workflows）を起動し
 `tools/research_schema.json` 準拠の JSON に正規化する。
 
 背景・位置づけ（research-runner SKILL.md「採用方針」「Step 3」）:
-  - 主エンジン Step 3a（対話起動）: メインセッションから `Skill` ツールで /deep-research を直接呼ぶ
+  - 主エンジン Step 3a（対話起動）: メインセッションから `Workflow` ツール
+    （`Workflow({name: 'deep-research', args: ...})`）で /deep-research を直接呼ぶ。
+    `Skill` ツール経由は CLI v2.1.218 以降 disable-model-invocation で不可（実機検証 2026-07-29）
     （本ツールは経由しない。生レポートを保存後は本ツールの --normalize-only だけを使う）
   - 主エンジン Step 3b（本ツール・自律/バッチ起動）: /deep-research を claude -p サブプロセス経由で
     実行 + 正規化。Opus 明示指定（#2417）・レート枠スキップカウンタ・月次コストログ等の既存インフラを
@@ -28,7 +30,7 @@ Claude Code のネイティブ /deep-research（Dynamic Workflows）を起動し
   実績: V167 実走で「23ソース取得→92主張抽出→25主張を3票 adversarial 検証（refute 0）」の
   引用付きレポートを生成（fixtures/ にサンプル保存）。
 
-起動形式の追従（2026-07-16 kinako-mocchi #4699/#4722 反映・Issue #262）:
+起動形式の追従（2026-07-16 下流プロジェクトの実運用障害を反映・Issue #262）:
   CLI v2.1.2xx で /deep-research のスラッシュコマンド解釈が廃止され、bundled workflow を
   Workflow ツール（`Workflow({name: 'deep-research', args: ...})`）で起動する形式に変わった。
   旧形式プロンプト `/deep-research {質問}` は素の短文回答しか返さず EXIT=4 が恒常化するため、
@@ -98,8 +100,10 @@ WORKFLOW_ENGINE_PREFIX = "deep-research-workflow"
 # 🔴 Bash/Write は必須: /deep-research（Dynamic Workflows）はオーケストレーションスクリプトの
 #   実行に Bash を、中間成果物の保存に Write を使う。これらを外すと -p 非対話モードで
 #   権限待ちハングする（2026-06-01 実機検証: 除外で 7分超 [1/3] 停止・付与で ~90秒完走）。
-# 🔴 Skill も必須（#4699）: CLI v2.1.2xx で deep-research が bundled workflow の Skill 起動
-#   （`Workflow({name: 'deep-research', args: ...})` / `Skill("deep-research")`）に変わったため。
+# 🔴 Workflow が必須（#4699）: CLI v2.1.2xx で deep-research の起動形式が bundled workflow の
+#   `Workflow({name: 'deep-research', args: ...})` に変わったため。
+#   なお `Skill("deep-research")` は CLI v2.1.218 以降 disable-model-invocation で失敗する
+#   （実機検証 2026-07-29 / v2.1.220・#370）。allowedTools の `Skill` は他スキル起動用に残す。
 # 🔴 TaskOutput/TaskGet も必須（#4722）: dr_prompt がバックグラウンド Workflow の完了ポーリングに
 #   指示するツール。未許可だと -p 非対話モードで権限待ちになり、ポーリングできず早期リターンする。
 # プロンプトインジェクション（取得ページ経由の任意コマンド実行）対策は、サブプロセスを
@@ -189,9 +193,9 @@ def _now_iso() -> str:
 
 
 def _log_engine_failure(research_id: str, exit_code: int, reason: str) -> None:
-    """主エンジン（/deep-research）失敗を research_fallback_log.jsonl に永続記録する（#4699）。
+    """主エンジン（/deep-research）失敗を research_fallback_log.jsonl に永続記録する（下流プロジェクトの実障害を契機に追加）。
 
-    kinako-mocchi 2026-07 の EXIT=4 恒常化はこのログに一切記録されず、フォールバック理由の
+    下流プロジェクトで 2026-07 に発生した EXIT=4 恒常化はこのログに一切記録されず、フォールバック理由の
     記録源が PR 本文だけだったため横断検知が遅れた。EXIT=1/4/5/6 の全失敗経路で必ず記録し、
     同型失敗の反復（CLI インターフェース変化等）を検知可能にする。
     記録の実体は run_deep_research.append_fallback_log に一本化（FALLBACK_LOG は
@@ -327,9 +331,9 @@ def _build_dr_prompt(prompt: str) -> str:
     """/deep-research 起動用の作業指示プロンプトを組み立てる（実行・--dry-run 共用）。
 
     出力指示（リサーチ範囲ではなく作業指示）を明示し、全文を REPORT_FILENAME へ Write させる。
-    🔴 起動形式（#4699 根本原因対策）: 旧形式 `/deep-research {質問}` は CLI v2.1.2xx で
+    🔴 起動形式（下流プロジェクトの実障害を踏まえた根本原因対策）: 旧形式 `/deep-research {質問}` は CLI v2.1.2xx で
     ワークフローとして解釈されなくなり、モデルが素の短文回答（735〜1183字）を返して
-    EXIT=4（本文回収失敗）が恒常化していた（kinako-mocchi 2026-07 の実障害）。
+    EXIT=4（本文回収失敗）が恒常化していた（下流プロジェクトで 2026-07 に観測された実障害）。
     現行 CLI では deep-research は bundled workflow を Workflow ツールで起動する
     （バイナリ内エラー文字列: "Pass it as args: Workflow({name: 'deep-research', args: '<question>'})"）。
     スラッシュコマンド解釈に依存せず、ツール起動を明示指示する形へ変更した。
@@ -338,7 +342,7 @@ def _build_dr_prompt(prompt: str) -> str:
         "あなたはリサーチ実行器。以下の手順を実行せよ。\n"
         "1. Workflow ツールを `Workflow({name: 'deep-research', args: <質問文>})` の形で呼び出し、"
         "下記の【質問文】全文を args に渡してディープリサーチを実行する"
-        "（Workflow ツールが無い場合のみ Skill ツールで `Skill(\"deep-research\", args=<質問文>)` を使う）。\n"
+        "（`Skill(\"deep-research\")` は CLI v2.1.218 以降 disable-model-invocation で失敗するため使わない）。\n"
         "2. Workflow ツールは即座に『バックグラウンドで実行中です』という応答を返すことがあるが、"
         "その1文だけで応答を終えてはならない。同一ターン内で TaskOutput / TaskGet ツール等を使い、"
         "ワークフローが完了するまでポーリングを繰り返してから手順3へ進むこと"

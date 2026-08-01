@@ -288,8 +288,8 @@ print(f"  {name} = {mask_if_sensitive(name, value)}")
 
 ## 禁止事項
 
-- `.claude/settings.local.json` に環境変数を書き込む（セッション間で消える）
-- ユーザーに `.claude/settings.local.json` の設定を依頼する
+- `.claude/settings.local.json` に環境変数を書き込む（セッション間で消える） <!-- refcheck:ignore -->
+- ユーザーに `.claude/settings.local.json` の設定を依頼する <!-- refcheck:ignore -->
 - `.env` ファイルを作成して環境変数を管理する
 - 環境変数の値をコードやコミットメッセージに埋め込む
 - `GH_TOKEN` を GitHub Variables に保存する（ブートストラップ問題: 読み取りに認証が必要）
@@ -344,5 +344,5 @@ Python スクリプト内での変数取得は `gh_vars.py` に統一するこ�
 
 ## ローカル開発環境（例外）
 
-ユーザーがローカルで Claude Code CLI を実行する場合のみ、`.env` または `.claude/settings.local.json` が有効。
+ユーザーがローカルで Claude Code CLI を実行する場合のみ、`.env` または `.claude/settings.local.json` が有効。 <!-- refcheck:ignore -->
 ただし本プロジェクトの主な実行環境はクラウドのため、基本的に不要。

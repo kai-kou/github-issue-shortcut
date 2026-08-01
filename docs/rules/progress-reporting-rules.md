@@ -54,7 +54,11 @@ Claude が **MCP ツールやスクリプトをループで複数回呼ぶ** 処
 4. 完了/エラーパターンを heartbeat が検出したら自動終了 → 本体の結果を確認
 ```
 
-> `tools/progress_heartbeat.sh`（汎用）と `tools/render_heartbeat.sh`（レンダリング専用・完了パターン内蔵）のどちらでもよい。レンダリングは render_heartbeat、それ以外（音声生成等）は progress_heartbeat を使う。
+> 本ルール（長時間処理の進捗報告）で使う汎用ハートビートは `tools/progress_heartbeat.sh`
+> （`tools/pr_review_heartbeat.sh` は待機系で本ルールの対象外）。長時間処理の種類ごとに専用 heartbeat
+> （完了パターン内蔵）を用意する運用もあるが、それは ⚠️ **出自プロジェクト（動画制作）の実例**
+> （`render_heartbeat.sh` 等）であり汎用ベースには存在しない。自プロジェクトで専用版を作るまでは
+> `progress_heartbeat.sh` を使う。
 
 ### 軸 C: ステップ/フェーズ単位報告（チェックポイント）
 
@@ -148,7 +152,7 @@ python3 tools/slack_notify.py message --text "✅ [進捗 audio] {ID} 音声生�
 | ファイル | 役割 |
 |---------|------|
 | `tools/progress_heartbeat.sh` | 汎用進捗ハートビート（任意の完了/エラーパターン・Slack マイルストーン） |
-| `tools/render_heartbeat.sh` | レンダリング専用ハートビート（レンダリング完了パターン内蔵） |
+| `tools/render_heartbeat.sh` | ⚠️ **出自プロジェクト（動画制作）の実例**（汎用ベースには無い）。処理種別ごとの専用ハートビートを作る場合の例 <!-- refcheck:ignore --> |
 | `tools/pr_review_heartbeat.sh` | PR レビュー待機ハートビート（本ルールの対象外・待機系） |
 | `tools/slack_notify.py` | Slack 通知（`progress` イベント・トークン未設定なら無音） |
 | `tools/pipeline_state.py` | ステップ完了状態の永続化（軸 C と連携） |

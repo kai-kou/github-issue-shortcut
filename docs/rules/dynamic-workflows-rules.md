@@ -26,11 +26,38 @@ Claude が **JavaScript のオーケストレーションスクリプトを自�
 
 `/deep-research` は **バンドル済み Dynamic Workflow** であり、`research-runner` の主エンジンとして既に実稼働している（`tools/run_deep_research_workflow.py`・V167 で adversarial 検証付きリサーチを実証）。**ゼロからの新機能導入ではなく、実績の延長** として段階導入する。
 
-### 実機検証で確定した実行モデル（2026-06-06 初版・2026-07-03 更新）
+### 実機検証で確定した実行モデル（2026-06-06 初版・2026-07-03 更新・2026-07-29 更新）
+
+- **2026-07-29 更新（`/deep-research` の起動経路が変わった・実機検証 + 公式ドキュメント再確認・CLI v2.1.220 / クラウド実行環境・#370）**:
+  - 🔴 **`Skill` ツール経由の起動は不可になった**。`Skill(skill="deep-research", args=...)` は
+    `Skill deep-research cannot be used with Skill tool due to disable-model-invocation` で即失敗する
+    （2026-07-03 時点の「`Skill` ツールから直接 invoke 可能」という記録は **現行仕様では成立しない**）。
+  - 🔴 **`Workflow` ツール経由は現在も可能**。`Workflow({name: "deep-research", args: "<質問文>"})` で
+    run が起動し、複数エージェントが phase 進行することを実機で確認した。**これが対話起動の正しい経路**。
+  - 公式の根拠（`code.claude.com/docs/en/workflows` bundled workflows・min-version 注記）:
+    *"`/deep-research` runs only when you invoke it. Before v2.1.218, Claude could also start it on its own."*
+    → **v2.1.218 でモデル側の自律起動が廃止** された。`code.claude.com/docs/en/skills` の
+    `disable-model-invocation` は「Claude がそのスキルを自動ロードするのを防ぐ」設定で、エラー文言と整合する。
+  - 公式 CHANGELOG（`anthropics/claude-code` の `CHANGELOG.md` / リリースタグ `v2.1.218`・2026-07-22）の逐語:
+    *"Changed `/deep-research` to start only when invoked manually; Claude no longer launches it on its own"*。
+    区分は **Removed / Deprecated ではなく Changed** で、廃止されたのは **起動トリガー（自律起動）だけ**。
+    コマンド自体は存続し手動呼び出しは有効（本セッションのネイティブ `/deep-research` 実走 97 エージェントで
+    end-to-end 動作を確認済み）。2.1.219 / 2.1.220 に撤回・巻き戻しの記載はない。
+  - ⚠️ 交絡要因（同バージョンの別変更・切り分け時に見る）: *"Changed skills with `context: fork` to run in the
+    background by default; opt out per skill with `background: false`"*。また Desktop の Code タブで
+    `/deep-research` が起動しない事象が別途 Issue 報告されており、**「手動呼び出しは常に動く」はサーフェス
+    依存で普遍的に真ではない**（仕様変更ではなく個別バグ）。
+  - 📌 バージョン帰属の注意: 調査中、WebFetch の要約器が同一 CHANGELOG エントリを 2.1.212 / 2.1.216 / 2.1.217 へ
+    誤帰属する事例が複数発生した。**要約経由のバージョン帰属を信用せず、raw `CHANGELOG.md` の行順で照合する**。
+  - `claude -p "/deep-research ..."` は内部で `Workflow({name: 'deep-research', args: ...})` に展開されるが、
+    **`--allowedTools` 未指定だと `Error: Review dynamic workflow before running`（`user-rejected`）で拒否される**
+    （非対話モードでは承認プロンプトを出せないため）。`tools/run_deep_research_workflow.py` が
+    `SEARCH_ALLOWED_TOOLS` に `Workflow` を含めているのはこのため。
+  - `ListSkills` / `SearchSkills`（claude.ai 側スキル）には `deep-research` は存在しない（0 件）。
 
 - **2026-07-03 更新（公式ドキュメント `code.claude.com/docs/en/workflows` + `/en/commands` を Fetch して事実確認・ユーザー指示による再調査）**:
   - `/deep-research` は `/en/commands` の一覧表で **`[Workflow]`** に分類される（Skill ではない）。「Claude Code includes `/deep-research` as a built-in workflow」が公式の文言。
-  - 公式に **「Workflows are available in the CLI, the Desktop app, the IDE extensions, non-interactive mode (`claude -p`), and the Agent SDK」** と明記。クラウド実行環境（本ハーネス・claude-code-remote）は Agent SDK 系統に相当し、**`/deep-research` はメインセッションから `claude -p` サブプロセスを介さず直接呼び出せる**（本セッションでは `Skill` ツールの一覧に `deep-research` が実在し、直接 invoke 可能なことを実機確認済み）。`claude -p` サブプロセス経由も引き続き公式サポート対象であり「誤り」ではないが、**唯一の経路ではなくなった**。
+  - 公式に **「Workflows are available in the CLI, the Desktop app, the IDE extensions, non-interactive mode (`claude -p`), and the Agent SDK」** と明記。クラウド実行環境（本ハーネス・claude-code-remote）は Agent SDK 系統に相当し、**`/deep-research` はメインセッションから `claude -p` サブプロセスを介さず直接呼び出せる**（当時は `Skill` ツールから直接 invoke 可能なことを実機確認していた。**⚠️ この `Skill` 経路は v2.1.218 で廃止され、現在は `Workflow` ツール経由が正しい**（上記 2026-07-29 更新））。`claude -p` サブプロセス経由も引き続き公式サポート対象であり「誤り」ではないが、**唯一の経路ではなくなった**。
   - **モデルは既定でセッションのモデルを使用**（公式: 「Every agent in a workflow uses your session's model unless the script routes a stage to a different one」）。Anthropic 側が `/deep-research` を Opus に固定しているという確認は取れていない。`tools/run_deep_research_workflow.py` が Opus（エイリアス `opus`・世代交代時の追随修正が不要）を使うのは **本プロジェクトが `--model` で明示指定している選択** であり、ネイティブ `/deep-research` 自体の仕様ではない（過去の「Opus orchestrator」という言い回しは本プロジェクト実装の説明として使うこと。ネイティブ機能一般の性質と誤解しないこと）。
   - **手書き `.js` ワークフローも実際に呼び出し可能** と判明（本セッションの `Workflow` ツールが `agent()`/`parallel()`/`pipeline()`/`phase()` の DSL を受け付け、`.claude/workflows/<name>.js` への保存・`/<name>` 化にも対応）。旧記述「手書き `.js` は不採用」は撤回する。ただし `Workflow` ツール自体の説明に **明示的なユーザーオプトインがある場合のみ使う** 制約がある（`ultracode` キーワード／ユーザーが「専門チームを組成して」等ではなく「ワークフローを使って」と明示的に依頼／スキル・スラッシュコマンドがそう指示／ユーザーが特定の保存済みワークフロー実行を依頼、のいずれか）。要探索的タスクへの先回り適用は禁止（`agent-team-summary.md` の議論型 fan-out 判断基準と同様、明示指示が前提）。
   - 制約の再確認（公式）: 同時 **16 エージェント**（CPU コア数で減少）・総 **1,000/run**・**セッション内のみ resume 可**（セッションを終了すると次セッションでは新規実行になる＝再開不可）・`"disableWorkflows": true`（`settings.json`）または `CLAUDE_CODE_DISABLE_WORKFLOWS=1` で無効化可能・`/deep-research` は **WebSearch ツールが利用可能であること** が前提条件。
@@ -95,7 +122,21 @@ Claude が **JavaScript のオーケストレーションスクリプトを自�
 1. **フォールバック経路**: WF 実行が失敗（EXIT≠0）したら **既存スキル（Agent Teams / 逐次）へ自動退避** する。research-runner の `/deep-research（直接呼び出し）→ claude -p → DIY（ウェブリサーチ）` フォールバックが実証パターン（#2814: ただし `/deep-research` の **レート枠超過 EXIT=6 は DIY に即フォールバックせずスキップ→次スロットで claude -p 再試行** し、連続3回スキップで初めて DIY に降りる＝capacity 制約と真の失敗 EXIT=1/4/5 を区別する。外部 LLM API（Gemini 等）へのフォールバックは Issue #260 で廃止）。フォールバック発動は専用ログに永続記録し発動率を監視可能にする（サイレントフォールバック防止）。
 2. **予算ゲート**: WF は同時 16 × 各エージェントのコンテキスト overhead で **トークンが線形増加** する。実行前に **小スコープ（1動画・1ディレクトリ）で token を実測** し、既存の月次 $50 サーキットブレーカーに WF 実行分を計上する（※サブスクリプション経路利用時は実課金が発生しないため計上対象外・virtual_cost_usd に分離記録）。`/workflows` ビューで各エージェントの token を監視し、暴走時は停止する（完了済み分は失われない）。
 3. **acceptEdits 競合検証**: WF が spawn するサブエージェントは **常に `acceptEdits` モード** で走り、ファイル編集が自動承認される。並列エージェントが台本 JSON・meta.yaml・timed.json を同時編集する **L-066 型 TOCTOU** が新たな形で起きうるため、**read-only でない WF は実機検証必須**。
-4. **仕様変動リスクは「中」のまま扱う**: 2026-07-03 時点の公式ドキュメントには research preview 表記が無くなっているが、GA 昇格の明示アナウンスは未確認（未確認のまま断定しない・L-113）。**既存スキルを常にフォールバックとして残し**、WF を唯一の経路にしない方針は継続する。仕様変更は `claude-code-optimization.md` の定期リサーチで追跡する。
+4. **進捗保存は小粒度 fan-out + artifact パターンで担保する**: WF の resume は **同一セッション内限定** で、停止時に実行中だったエージェントの成果は保存されず再実行になる。したがって **長い 1 体に任せず、多数の小粒度エージェントへ fan-out** し、各エージェントの成果を **1 成果物 = 1 ファイルの atomic write**（`tools/discussion_whiteboard.py` の `entries/` 方式）で外部化する。詳細は下記「進捗保存の設計則」。
+5. **仕様変動リスクは「中」のまま扱う**: 2026-07-03 時点の公式ドキュメントには research preview 表記が無くなっているが、GA 昇格の明示アナウンスは未確認（未確認のまま断定しない・L-113）。**既存スキルを常にフォールバックとして残し**、WF を唯一の経路にしない方針は継続する。仕様変更は `claude-code-optimization.md` の定期リサーチで追跡する。
+
+### 進捗保存の設計則（小粒度 fan-out + artifact パターン・#351）
+
+> 公式の明文（[公式 workflows ドキュメント](https://code.claude.com/docs/en/workflows)）:「An agent that was still running when you stopped isn't saved and starts over on resume, so **a workflow that fans work out across many small agents preserves more progress than one long agent**.」「**Resume works within the same Claude Code session.** If you exit Claude Code while a workflow is running, the next session starts the workflow fresh.」
+
+| 観点 | 内容 |
+|------|------|
+| **設計則** | 1 体の長時間エージェントに任せず、**小粒度に分割して fan-out** する。完了済みエージェントの結果はキャッシュされるため、粒度が細かいほど中断時に失われる作業が減る |
+| **成果物の外部化** | 各エージェントの成果は **1 成果物 = 1 ファイルの atomic write** でリポジトリ側に書き出す（`tools/discussion_whiteboard.py` の `post`＝`entries/` にユニーク名で書き、集約は orchestrator の `render` だけが行う方式）。これにより **プロセス・セッションを跨いでも post 済み分が生存** する |
+| **`checkpoint` スキルの射程と限界** | `.claude/skills/checkpoint/` はフェーズ境界での **手動・粗粒度** スナップショット（Issue コメント末尾 JSON）。セッション境界を跨げる利点はあるが、**分岐/合流を持たず、実行中だったサブエージェントの成果は救えない**（ネイティブ resume と同じ弱点）。「checkpoint があるから中断に強い」と誤認しないこと |
+| **禁止** | 中間成果をメインのコンテキストにだけ持たせる設計（圧縮・中断で消える）。長時間 1 体に全工程を任せる設計 |
+
+> **根拠と経緯**: Graph エンジニアリング適用検討（#348・`docs/proposals/graph-engineering-adoption.md`）で、公式設計則と本ベースの実装（whiteboard の atomic write）が結び付いていないため「checkpoint があるから安全」という誤認が残る、と判定されたため明文化した。
 
 ### 過大評価への注意（誤解しやすいポイント）
 

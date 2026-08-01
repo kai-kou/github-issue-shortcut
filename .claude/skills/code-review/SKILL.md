@@ -81,7 +81,7 @@ mkdir -p "<scratchpad>/code-review-<target>" && echo "<scratchpad>/code-review-<
 - `ReportFindings` ツールは使わない（親セッションに所見が届かない）
 ```
 
-### Step 1.5: 所見の受領検証（空を「指摘なし」と解釈しない・L-121）
+### Step 1.5: 所見の受領検証（空を「指摘なし」と解釈しない・L-124）
 
 ファインダー完了後、**観点ごとに成果物ファイルの存在と非空を確認してから** Step 2 へ進む。
 

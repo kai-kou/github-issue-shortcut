@@ -14,16 +14,11 @@ Slack 通知ユーティリティ（汎用ベース）
 通知タイプとチャンネルの対応:
   SLACK_CHANNEL_ID           → session-start / session-stop / pr / pipeline / message / progress / routine-idle
   SLACK_APPROVAL_CHANNEL_ID  → approval / waiting（ユーザーメンション付き・要アクション）
-  SLACK_PUBLISH_CHANNEL_ID   → publish（動画公開・SNS配信・マーケティングレビュー、@mention付き）
+  SLACK_PUBLISH_CHANNEL_ID   → publish（公開・配信完了、@mention付き）
 
-publish の --event-type 一覧:
-  unlisted        - 動画 限定公開アップロード完了
-  scheduled       - 動画 公開スケジュール設定完了
-  pre-publish     - 動画 公開前日リマインダー
-  public          - 動画 公開完了
-  shorts-public   - Shorts 限定公開アップロード完了
-  sns-complete    - SNS・BLOG 配信完了
-  marketing-review - 週次マーケティングレポート 生成完了
+publish の --event-type: config/publish_events.yaml のキー駆動（既定は `published` のみ）。
+  プロジェクト固有のイベント（動画公開・SNS配信等）は同ファイルに追記する
+  （例は docs/rules/slack-notification-rules.md「project example」参照）。
 
 使い方:
   python3 tools/slack_notify.py session-start --branch main
@@ -34,7 +29,7 @@ publish の --event-type 一覧:
   python3 tools/slack_notify.py pipeline --pipeline "音声" --video-id V006 --result "完了（15分32秒）"
   python3 tools/slack_notify.py message --text "任意のテキスト"
   python3 tools/slack_notify.py approval --summary "台本v1生成完了" --branch content/V007-xxx --issue-url https://github.com/...
-  python3 tools/slack_notify.py publish --event-type public --video-id V007 --title "動画タイトル" --url https://youtu.be/xxx
+  python3 tools/slack_notify.py publish --event-type published --title "コンテンツタイトル" --url https://example.com/xxx
   python3 tools/slack_notify.py daily-progress --summary "進捗サマリー" --action-items "要対応項目"
   python3 tools/slack_notify.py routine-idle --routine-name "改善Issue消化スプリント"
 """
@@ -49,6 +44,8 @@ import urllib.request
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+import yaml
+
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from repo_slug import resolve_repo_slug  # noqa: E402
 
@@ -56,9 +53,46 @@ SLACK_API_BASE = "https://slack.com/api"
 # Slack 通知内の Issue リンク生成用（正本: tools/repo_slug.py・#215）。
 _REPO_SLUG = resolve_repo_slug("kai-kou/github-issue-shortcut")
 
-# publish の FYI イベント（ユーザー操作不要の完了報告）→ @mention しない。
-# unlisted / pre-publish / public / shorts-public は確認・節目アクションのため @mention を維持する。
-_PUBLISH_FYI_EVENTS = {"sns-complete", "scheduled", "marketing-review"}
+# publish のイベント定義は config/publish_events.yaml で管理する（#358・config-driven）。
+# プロジェクト固有のイベント（動画公開・SNS配信等）は config ファイル側に追記し、
+# 本体コードにドメイン固有語を持ち込まない。
+_PUBLISH_EVENTS_CONFIG = Path(__file__).resolve().parent.parent / "config" / "publish_events.yaml"
+
+_DEFAULT_PUBLISH_EVENTS = {
+    "published": {
+        "emoji": "🎉",
+        "header": "公開完了",
+        "message": "{mention}公開が完了しました。",
+        "action_label": None,
+        "action_url": None,
+        "fyi": False,
+    },
+}
+
+
+def _load_publish_events() -> dict:
+    """publish イベント定義を config/publish_events.yaml から読み込む。
+
+    ファイル未配置・読み込み失敗時は汎用の既定イベント（`published` のみ）で動作する。
+    """
+    if not _PUBLISH_EVENTS_CONFIG.exists():
+        return dict(_DEFAULT_PUBLISH_EVENTS)
+    try:
+        with open(_PUBLISH_EVENTS_CONFIG, encoding="utf-8") as f:
+            data = yaml.safe_load(f) or {}
+        events = data.get("events") or {}
+        if not isinstance(events, dict):
+            raise ValueError(f"events は dict である必要があります（実際: {type(events).__name__}）")
+    except (yaml.YAMLError, OSError, AttributeError, ValueError) as e:
+        print(f"WARNING: config/publish_events.yaml の読み込みに失敗（既定イベントで続行）: {e}", file=sys.stderr)
+        return dict(_DEFAULT_PUBLISH_EVENTS)
+    return events if events else dict(_DEFAULT_PUBLISH_EVENTS)
+
+
+_PUBLISH_EVENTS = _load_publish_events()
+# fyi: true のイベント（ユーザー操作不要の完了報告）→ @mention しない。
+# それ以外は確認・節目アクション（A-2 相当）のため @mention を維持する。
+_PUBLISH_FYI_EVENTS = {name for name, cfg in _PUBLISH_EVENTS.items() if cfg.get("fyi")}
 
 
 def _get_mention_text() -> str:
@@ -471,13 +505,13 @@ def build_approval_request_blocks(
 
 
 def build_progress_report_blocks(summary: str, adjustments: str = "", mention_text: str = "") -> list:
-    """動画制作進捗レポート通知（@kaikouメンション付き）"""
+    """日次進捗レポート通知（オーナーメンション付き）"""
     blocks = [
         {
             "type": "header",
             "text": {
                 "type": "plain_text",
-                "text": "📊 動画制作進捗レポート",
+                "text": "📊 日次進捗レポート",
                 "emoji": True,
             },
         },
@@ -485,7 +519,7 @@ def build_progress_report_blocks(summary: str, adjustments: str = "", mention_te
             "type": "section",
             "text": {
                 "type": "mrkdwn",
-                "text": f"{mention_text}本日の動画制作進捗をお知らせしますにゃ。",
+                "text": f"{mention_text}本日の進捗をお知らせします。",
             },
         },
     ]
@@ -539,6 +573,21 @@ def build_pipeline_blocks(
     ]
 
 
+def _resolve_action_url(template, url: str):
+    """action_url テンプレートを解決する。`{url}` を含む場合は --url の値を埋め込む。"""
+    if not template:
+        return None
+    if "{url}" in template:
+        if not url:
+            return None
+        try:
+            return template.format(url=url)
+        except (KeyError, IndexError):
+            # {url} 以外の未知プレースホルダが混在していてもクラッシュせず未展開のまま返す。
+            return template
+    return template
+
+
 def build_publish_blocks(
     event_type: str,
     video_id: str = "",
@@ -546,12 +595,11 @@ def build_publish_blocks(
     url: str = "",
     detail: str = "",
 ) -> list:
-    """動画公開・SNS配信・マーケティングレビュー通知。
+    """公開・配信完了通知（config/publish_events.yaml 駆動・#358）。
 
-    FYI イベント（sns-complete / scheduled / marketing-review）はユーザー操作不要の
-    完了報告のため @mention しない（通知トリアージ・user-notification-triage.md）。
-    unlisted / pre-publish / public / shorts-public は「YouTube Studio で確認」等の
-    ユーザー操作・節目（A-2 相当）のため @mention を維持する。
+    fyi: true のイベントはユーザー操作不要の完了報告のため @mention しない
+    （通知トリアージ・user-notification-triage.md）。それ以外は確認・節目アクション
+    （A-2 相当）のため @mention を維持する。
     """
     mention_user_id = os.environ.get("SLACK_MENTION_USER_ID", "")
     # FYI イベントは @mention を抑制（完了報告のため ping しない）
@@ -560,68 +608,32 @@ def build_publish_blocks(
 
     now_str = _now()
 
-    event_configs = {
-        "unlisted": {
-            "emoji": "📤",
-            "header": "動画 限定公開アップロード完了",
-            "message": f"{mention_text}動画を限定公開でアップロードしました。YouTube Studio で内容を確認してください。",
-            "action_label": "YouTube Studio で確認",
-            "action_url": "https://studio.youtube.com/",
-        },
-        "scheduled": {
-            "emoji": "📅",
-            "header": "動画 公開スケジュール設定完了",
-            "message": f"{mention_text}動画の公開スケジュールを設定しました。",
-            "action_label": None,
-            "action_url": None,
-        },
-        "pre-publish": {
-            "emoji": "⏰",
-            "header": "動画 公開前日リマインダー",
-            "message": f"{mention_text}明日公開予定の動画があります。メタデータ・サムネイルを最終確認してください。",
-            "action_label": "YouTube Studio で確認",
-            "action_url": "https://studio.youtube.com/",
-        },
-        "public": {
-            "emoji": "🎉",
-            "header": "動画 公開完了！",
-            "message": f"{mention_text}動画が公開されました！",
-            "action_label": "YouTube で視聴",
-            "action_url": url or None,
-        },
-        "shorts-public": {
-            "emoji": "🎬",
-            "header": "Shorts 限定公開アップロード完了",
-            "message": f"{mention_text}Shorts 動画を限定公開でアップロードしました。YouTube Studio で内容を確認してください。",
-            "action_label": "YouTube Studio で確認",
-            "action_url": "https://studio.youtube.com/",
-        },
-        "sns-complete": {
-            "emoji": "📣",
-            "header": "SNS・BLOG 配信完了",
-            "message": f"{mention_text}SNS・BLOG への配信が完了しました。",
-            "action_label": None,
-            "action_url": None,
-        },
-        "marketing-review": {
-            "emoji": "📊",
-            "header": "週次マーケティングレポート 生成完了",
-            "message": f"{mention_text}週次マーケティングレポートを生成しました。GitHub Issues でレビューしてください。",
-            "action_label": None,
-            "action_url": None,
-        },
-    }
-
-    cfg = event_configs.get(
-        event_type,
-        {
+    raw_cfg = _PUBLISH_EVENTS.get(event_type)
+    if raw_cfg is None:
+        cfg = {
             "emoji": "🔔",
             "header": f"公開通知: {event_type}",
             "message": f"{mention_text}公開通知: {event_type}",
             "action_label": None,
             "action_url": url or None,
-        },
-    )
+        }
+    else:
+        # `raw_cfg.get(k, default)` は config 側で明示的に `null` が書かれた場合は
+        # default を素通りしてしまう（get の default はキー欠落時のみ効く）ため `or` で補う。
+        message_tmpl = raw_cfg.get("message") or ("{mention}公開通知: " + event_type)
+        try:
+            message = message_tmpl.format(mention=mention_text)
+        except (KeyError, IndexError):
+            # config 側が {mention} 以外の未知プレースホルダを書いた場合はクラッシュせず
+            # 未展開のまま表示する（通知欠落よりは崩れた表示の方が実害が小さい）。
+            message = message_tmpl
+        cfg = {
+            "emoji": raw_cfg.get("emoji") or "🔔",
+            "header": raw_cfg.get("header") or event_type,
+            "message": message,
+            "action_label": raw_cfg.get("action_label"),
+            "action_url": _resolve_action_url(raw_cfg.get("action_url"), url),
+        }
 
     blocks = [
         {
@@ -636,10 +648,10 @@ def build_publish_blocks(
 
     fields = []
     if video_id:
-        fields.append({"type": "mrkdwn", "text": f"*動画ID:* `{video_id}`"})
+        fields.append({"type": "mrkdwn", "text": f"*ID:* `{video_id}`"})
     if title:
         fields.append({"type": "mrkdwn", "text": f"*タイトル:* {title}"})
-    if url and event_type != "public":
+    if url and url != cfg.get("action_url"):
         fields.append({"type": "mrkdwn", "text": f"*URL:* {url}"})
     fields.append({"type": "mrkdwn", "text": f"*実行時刻:* {now_str}"})
     if fields:
@@ -675,16 +687,16 @@ def build_daily_progress_blocks(summary: str, action_items: str = "", analytics:
     Args:
         summary: 制作中の動画一覧テキスト
         action_items: 要対応項目テキスト（A-1〜A-6 該当の真の要対応のみ）
-        analytics: YouTube/SNS KPI サマリーテキスト（省略可）
+        analytics: KPI サマリーテキスト（省略可・プロジェクト定義）
         youtube_status: meta.yaml 由来の YouTube 公開状況テキスト（省略可）
         no_mention: True の場合 @mention を付けない（真の要対応がゼロのとき・情報提供のみ）
     """
     mention_user_id = os.environ.get("SLACK_MENTION_USER_ID", "")
     if no_mention:
-        lead = "本日の動画制作進捗をお知らせしますにゃ。（要対応はありません・情報提供のみ）"
+        lead = "本日の進捗をお知らせします。（要対応はありません・情報提供のみ）"
     else:
         mention_text = f"<@{mention_user_id}> " if mention_user_id else ""
-        lead = f"{mention_text}本日の動画制作進捗です。下記に *要対応* があります。"
+        lead = f"{mention_text}本日の進捗です。下記に *要対応* があります。"
 
     blocks = [
         {
@@ -702,7 +714,7 @@ def build_daily_progress_blocks(summary: str, action_items: str = "", analytics:
         blocks.append({"type": "divider"})
         blocks.append({
             "type": "section",
-            "text": {"type": "mrkdwn", "text": f"*📈 チャンネル KPI:*\n{analytics_text}"},
+            "text": {"type": "mrkdwn", "text": f"*📈 KPI:*\n{analytics_text}"},
         })
 
     # YouTube 公開状況（meta.yaml より取得・--sync-published 後の正確な状態）
@@ -720,7 +732,7 @@ def build_daily_progress_blocks(summary: str, action_items: str = "", analytics:
         blocks.append({"type": "divider"})
         blocks.append({
             "type": "section",
-            "text": {"type": "mrkdwn", "text": f"*📹 制作パイプライン進捗:*\n{summary_text}"},
+            "text": {"type": "mrkdwn", "text": f"*📹 パイプライン進捗:*\n{summary_text}"},
         })
 
     if action_items:
@@ -820,7 +832,7 @@ def build_routine_idle_blocks(routine_name: str = "", detail: str = "") -> list:
                 "text": (
                     f"*{label}* が起動しましたが、消化すべき Issue がありませんでした"
                     "（バックログが空・オープン PR も対応不要）。\n"
-                    "ルーティンを *このまま維持* するか *停止* するかをご判断くださいにゃ。"
+                    "ルーティンを *このまま維持* するか *停止* するかをご判断ください。"
                 ),
             },
         },
@@ -883,8 +895,7 @@ def main():
     parser.add_argument(
         "--event-type",
         dest="event_type",
-        choices=["unlisted", "scheduled", "pre-publish", "public", "shorts-public", "sns-complete", "marketing-review"],
-        help="publish タイプ用: 公開イベント種別",
+        help="publish タイプ用: 公開イベント種別（config/publish_events.yaml のキー。未設定時は 'published' のみ利用可）",
     )
     parser.add_argument("--title", default="")   # publish タイプ用: 動画タイトル
     parser.add_argument("--url", default="")     # publish タイプ用: 公開URL
@@ -913,9 +924,15 @@ def main():
     parser.add_argument("--force", action="store_true", help="routine-idle タイプ用: JST スロット判定を無視して強制送信する")
     args = parser.parse_args()
 
-    # publish タイプでは --event-type を必須とする
+    # publish タイプでは --event-type を必須とする（値は config/publish_events.yaml のキー駆動）
     if args.type == "publish" and not args.event_type:
         parser.error("--event-type is required when type is 'publish'")
+    if args.type == "publish" and args.event_type not in _PUBLISH_EVENTS:
+        available = ", ".join(sorted(_PUBLISH_EVENTS)) or "(なし)"
+        parser.error(
+            f"--event-type '{args.event_type}' は config/publish_events.yaml に未定義です。"
+            f"利用可能: {available}"
+        )
 
     # --channel 未指定の場合、通知タイプに応じてチャンネルを自動選択
     # approval / waiting は SLACK_APPROVAL_CHANNEL_ID を優先（未設定時は SLACK_CHANNEL_ID にフォールバック）
@@ -1031,7 +1048,7 @@ def main():
         mention_user_id = os.environ.get("SLACK_MENTION_USER_ID", "")
         mention = f"<@{mention_user_id}> " if mention_user_id else ""
         blocks = build_progress_report_blocks(args.summary, args.adjustments, mention_text=mention)
-        text = f"{mention}📊 動画制作進捗レポート"
+        text = f"{mention}📊 日次進捗レポート"
 
     elif args.type == "publish":
         blocks = build_publish_blocks(
@@ -1045,16 +1062,7 @@ def main():
         # FYI イベント（完了報告）は通知本文の先頭でも @mention しない
         mention = "" if args.event_type in _PUBLISH_FYI_EVENTS \
             else (f"<@{mention_user_id}> " if mention_user_id else "")
-        event_labels = {
-            "unlisted": "動画 限定公開アップロード完了",
-            "scheduled": "動画 公開スケジュール設定完了",
-            "pre-publish": "動画 公開前日リマインダー",
-            "public": "動画 公開完了",
-            "shorts-public": "Shorts 限定公開アップロード完了",
-            "sns-complete": "SNS・BLOG 配信完了",
-            "marketing-review": "週次マーケティングレポート 生成完了",
-        }
-        label = event_labels.get(args.event_type, f"公開通知: {args.event_type}")
+        label = _PUBLISH_EVENTS.get(args.event_type, {}).get("header", f"公開通知: {args.event_type}")
         id_suffix = f" ({args.video_id})" if args.video_id else ""
         text = f"{mention}🔔 {label}{id_suffix}"
 

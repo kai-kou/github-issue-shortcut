@@ -111,26 +111,31 @@ bash / sh ラッパースクリプトを Bash ツールから呼ぶ場合は、
 
 ## 対象スクリプト一覧（主要なもの）
 
+> ⚠️ 下表は **汎用ベースに実在するもの（`slack_notify.py` / `github_push_helper.py` /
+> `check_pending_pr_reviews.py`）と、出自プロジェクト（動画制作）の実例が混在** している。
+> 後者は汎用ベースには存在しないため自分のプロジェクトのスクリプト名に読み替えること
+> （「外部接続するスクリプトを洗い出して許可リストに載せる」という運用が本体）。
+
 | スクリプト | 接続先 | 備考 |
 |-----------|--------|------|
 | `tools/slack_notify.py` | `api.slack.com` | セッション通知 |
 | `tools/github_push_helper.py` | `api.github.com` | git push 403 時の Contents API フォールバック（L-079） |
-| `tools/youtube_scheduler.py` | YouTube API / OAuth | YouTube スケジュール管理 |
-| `tools/youtube_comment_monitor.py` | YouTube API / OAuth | コメント監視 |
-| `tools/youtube_delete_video.py` | YouTube API / OAuth | 動画削除 |
-| `tools/generate_audio.py` | `localhost:50021`（VOICEVOX） | 音声生成 |
-| `tools/generate_images_gemini.py` | `gemini-image-mcp-server.*` | 画像生成 |
-| `tools/generate_bgm.py` | `{region}-aiplatform.googleapis.com` | BGM 生成 |
-| `tools/post_qiita_article.py` | `qiita.com` | Qiita 投稿 |
-| `tools/fetch_x_posts.py` | `api.twitter.com` | X 投稿取得（theme-discovery の Step 1.5） |
-| `tools/post_x_announcement.py` | `api.twitter.com` | X（Twitter）投稿 |
-| `tools/post_bluesky.py` | `bsky.social` | Bluesky 投稿 |
-| `tools/backup_video_r2.py` | `r2.cloudflarestorage.com` | Cloudflare R2 動画バックアップ |
-| `tools/generate_comment_reply.py` | `claude -p` サブプロセス（Anthropic API 直接呼び出しなし） | コメント返信生成 |
-| `tools/adjust_subtitle_lines.py` | `claude -p` サブプロセス（Anthropic API 直接呼び出しなし） | 字幕調整 |
+| `tools/youtube_scheduler.py` | YouTube API / OAuth | YouTube スケジュール管理 <!-- refcheck:ignore --> |
+| `tools/youtube_comment_monitor.py` | YouTube API / OAuth | コメント監視 <!-- refcheck:ignore --> |
+| `tools/youtube_delete_video.py` | YouTube API / OAuth | 動画削除 <!-- refcheck:ignore --> |
+| `tools/generate_audio.py` | `localhost:50021`（VOICEVOX） | 音声生成 <!-- refcheck:ignore --> |
+| `tools/generate_images_gemini.py` | `gemini-image-mcp-server.*` | 画像生成 <!-- refcheck:ignore --> |
+| `tools/generate_bgm.py` | `{region}-aiplatform.googleapis.com` | BGM 生成 <!-- refcheck:ignore --> |
+| `tools/post_qiita_article.py` | `qiita.com` | Qiita 投稿 <!-- refcheck:ignore --> |
+| `tools/fetch_x_posts.py` | `api.twitter.com` | X 投稿取得（theme-discovery の Step 1.5） <!-- refcheck:ignore --> |
+| `tools/post_x_announcement.py` | `api.twitter.com` | X（Twitter）投稿 <!-- refcheck:ignore --> |
+| `tools/post_bluesky.py` | `bsky.social` | Bluesky 投稿 <!-- refcheck:ignore --> |
+| `tools/backup_video_r2.py` | `r2.cloudflarestorage.com` | Cloudflare R2 動画バックアップ <!-- refcheck:ignore --> |
+| `tools/generate_comment_reply.py` | `claude -p` サブプロセス（Anthropic API 直接呼び出しなし） | コメント返信生成 <!-- refcheck:ignore --> |
+| `tools/adjust_subtitle_lines.py` | `claude -p` サブプロセス（Anthropic API 直接呼び出しなし） | 字幕調整 <!-- refcheck:ignore --> |
 | `tools/check_pending_pr_reviews.py` | `api.github.com`（gh 経由） | PR レビュー確認 |
-| `tools/discover_pending_audio.py` | `api.github.com`（gh 経由） | 音声生成対象検出 |
-| `tools/discover_pending_phase.py` | `api.github.com`（gh 経由） | フェーズ対象検出 |
+| `tools/discover_pending_audio.py` | `api.github.com`（gh 経由） | 音声生成対象検出 <!-- refcheck:ignore --> |
+| `tools/discover_pending_phase.py` | `api.github.com`（gh 経由） | フェーズ対象検出 <!-- refcheck:ignore --> |
 
 ---
 

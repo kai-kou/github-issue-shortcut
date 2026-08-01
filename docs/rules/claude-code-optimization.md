@@ -1190,14 +1190,14 @@ timeout 120 claude -p "List open issues as JSON" \
 
 | 機能 | 公式記載 | 概要 |
 |------|---------|------|
-| SKILL.md frontmatter 全フィールド | [skills](https://code.claude.com/docs/en/skills) | `when_to_use` / `disallowed-tools` / `disable-model-invocation` / `user-invocable` / `paths` / `hooks` / `context:fork` / `agent` / `shell` 等が公式サポート。一覧は `docs/skills-guide.md` の frontmatter 表が正本。`license`/`metadata` は非対応 |
+| SKILL.md frontmatter 全フィールド | [skills](https://code.claude.com/docs/en/skills) | `when_to_use` / `disallowed-tools` / `disable-model-invocation` / `user-invocable` / `paths` / `hooks` / `context:fork` / `agent` / `shell` 等が公式サポート。**全フィールドの一覧は左列の公式ドキュメントが正本**（本リポジトリ内に正本ファイルは置かない）。`license`/`metadata` は非対応 |
 | description 文字数 | 同上 | `description` + `when_to_use` 合算 **1,536 文字** で切り詰め（旧 1024 は廃止） |
 | サブエージェント `memory` フィールド | [sub-agents](https://code.claude.com/docs/en/sub-agents) | `memory: project` 等で `~/.claude/agent-memory/<name>/MEMORY.md`（先頭200行/25KB）を次セッション自動ロード |
 | `/fork` コマンド | 同上 | 現会話コンテキストを継承したサブエージェントをバックグラウンド実行（通常サブエージェントは空コンテキスト開始） |
 | `/btw <質問>` | [best-practices](https://code.claude.com/docs/en/best-practices) | 会話履歴を汚さないオーバーレイ回答（コンテキスト非消費） |
 | `/compact <指示>` | 同上 | 指示付き部分圧縮。CLAUDE.md に「圧縮時に保持する内容」を書くと制御可能 |
 | CLAUDE.md `@path` import | 同上 | `@docs/foo.md` で別ファイルをインクルード。肥大化した CLAUDE.md の分割に有効 |
-| `security-guidance` プラグイン | [security-guidance](https://code.claude.com/docs/en/security-guidance) | 公式 Anthropic プラグイン。①編集時正規表現 ②ターン終了時 git diff レビュー ③commit/push 時 深層レビューの3層。`enabledPlugins` で有効化・`.claude/security-patterns.yaml` でカスタム可 |
+| `security-guidance` プラグイン | [security-guidance](https://code.claude.com/docs/en/security-guidance) | 公式 Anthropic プラグイン。①編集時正規表現 ②ターン終了時 git diff レビュー ③commit/push 時 深層レビューの3層。`enabledPlugins` で有効化・`.claude/security-patterns.yaml` でカスタム可 | <!-- refcheck:ignore -->
 | `/security-review` スキル | 同上 | ブランチ全体のオンデマンドセキュリティレビュー（self-reviewer 後段の Lv2 強化候補） |
 | OTEL テレメトリ | [observability](https://code.claude.com/docs/en/agent-sdk/observability) | `CLAUDE_CODE_ENABLE_TELEMETRY=1` でコスト・ツール実行を収集（コレクター別途必要） |
 

@@ -107,10 +107,14 @@ env = {k: v for k, v in os.environ.items() if k != "CLAUDECODE"}
 
 ## 参照実装
 
+> ⚠️ 以下の `tools/*.py` は **出自プロジェクト（動画制作）の実例**。汎用ベースには存在しないため、
+> 自分のプロジェクトで `import anthropic` している箇所に読み替えること（`_call_claude()` ヘルパーに
+> 集約する原則が本体）。
+
 以下のファイルに正しい実装例がある:
 
-- `tools/generate_comment_reply.py` — `_call_claude()` ヘルパー + システムプロンプト統合
-- `tools/adjust_subtitle_lines.py` — バッチ処理での `_call_claude()` 使用例
+- `tools/generate_comment_reply.py` — `_call_claude()` ヘルパー + システムプロンプト統合 <!-- refcheck:ignore -->
+- `tools/adjust_subtitle_lines.py` — バッチ処理での `_call_claude()` 使用例 <!-- refcheck:ignore -->
 - `.claude/skills/skill-creator/scripts/improve_description.py` — 最初期の実装例
 
 ## 禁止事項

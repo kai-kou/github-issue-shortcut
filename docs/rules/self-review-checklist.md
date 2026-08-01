@@ -10,8 +10,8 @@
 >
 > - **機械チェック**: `python3 tools/self_review_check.py` が一括実行する（フック `pre-pr-create-check.sh` からも自動実行）
 > - **目視チェック**: 機械化できない項目。変更カテゴリに該当する行だけ確認すればよい
-> - 詳細な検出手順・修正候補は `.claude/skills/self-reviewer/SKILL.md`、個別パターンの経緯は プロジェクト定義の自己レビュー教訓ファイル（出自プロジェクトでは `docs/rules/self-review-learnings.md`（P-XX）等）を参照
-> - 分析レポート（データの根拠）: `docs/analysis/pr-review-comments-analysis-2026-06.md`
+> - 詳細な検出手順・修正候補は `.claude/skills/self-reviewer/SKILL.md`、個別パターンの経緯は プロジェクト定義の自己レビュー教訓ファイル（出自プロジェクトでは `docs/rules/self-review-learnings.md`（P-XX）等）を参照 <!-- refcheck:ignore -->
+> - 分析レポート（データの根拠）: `docs/analysis/pr-review-comments-analysis-2026-06.md` <!-- refcheck:ignore -->
 > - **運用ルール**: 新しい頻出パターン（同種指摘 2 回以上）を発見したら、本シート + `self_review_check.py`（機械化可能な場合）を **同一 PR で** 更新する（L-094 desync 防止）
 >
 > ### 分析ツールの責務境界（混同しない・Issue #2905）

@@ -9,6 +9,11 @@ SSOT ルール: docs/rules/native-fallback-rules.md（Issue #198）
       ネイティブ機能の可用性を機械判定する。
       exit 0 = native 利用可 / 3 = セッション内プローブが必要（probes[].detail の指示に従う）/
       4 = native 不可（フォールバックへ）/ 2 = 引数・レジストリ異常
+  routes [<capability-id>] [--json]
+      起動経路 ladder（Skill → Workflow → セッションツール → claude -p → 最終手段）を
+      試す順に表示する。ネイティブ機能は「どのツールから呼ぶか」がバージョンで移動するため
+      （#370: /deep-research が v2.1.218 で Skill 経由 → Workflow 経由へ）、単一経路を
+      前提にせず本コマンドで現行の試行順と降格シグネチャを確認してから実行する。
   headless [オプション]
       claude -p を安全に実行する共通ラッパー（cwd=一時ディレクトリ隔離・CLAUDECODE 除去・
       サブスク認証・タイムアウト・退避ログ 1 行の強制出力）。
@@ -40,6 +45,35 @@ SESSION_PROBES = {"session-tool", "builtin-command"}
 # probe type ごとの必須キー（欠落を validate 時に検出し run_probe の KeyError を防ぐ）
 REQUIRED_PROBE_KEY = {"cli-flag": "flag", "project-skill": "skill", "file": "path",
                       "env": "name", "session-tool": "tool", "builtin-command": "command"}
+
+# 起動経路 ladder（native.routes）。ネイティブ機能は「どのツールから呼ぶか」がバージョンで
+# 移動するため（例: /deep-research が v2.1.218 で Skill 経由 → Workflow 経由へ）、単一の
+# how 文字列に固定せず順序付きの経路として台帳化する（#372）。
+VALID_ROUTE_KINDS = {"skill", "workflow", "session-tool", "builtin-command", "cli"}
+# preferred=既定で最初に試す / available=使えるが既定でない / unavailable=既知の不可（記録として残す）
+# / unknown=未検証（試して確かめる）
+VALID_ROUTE_STATUS = {"preferred", "available", "unavailable", "unknown"}
+REQUIRED_ROUTE_KEYS = ("kind", "how")
+
+# 経路降格シグネチャ: 実行時にこの文字列が返ったら「その経路は死んでいる」と判定し次段へ進む。
+# 台帳の route.detail に個別事情を書き、ここには経路種別に共通する汎用シグネチャだけを持つ。
+ROUTE_DEMOTION_SIGNATURES = [
+    {"pattern": "disable-model-invocation",
+     "meaning": "その機能がモデル起動禁止に変更された（bundled 側の仕様変更）",
+     "next": "同名の workflow 経路 → セッションツール直呼び → claude -p の順に降格する"},
+    {"pattern": "cannot be used with Skill tool",
+     "meaning": "Skill ツールからは起動できない（skill 経路が閉じた）",
+     "next": "workflow 経路（Workflow({name: ...})）を試す"},
+    {"pattern": "Review dynamic workflow before running",
+     "meaning": "Workflow 実行が承認ゲートで止められた（非対話セッションでは承認できない）",
+     "next": "claude -p 経路へ降格し --allowedTools に Workflow を含める"},
+    {"pattern": "No such command",
+     "meaning": "スラッシュコマンド／ワークフロー名が現行 CLI に存在しない（改名・撤去）",
+     "next": "公式 changelog を claude-code-spec-sync レーンで確認し、台帳の routes を更新する"},
+    {"pattern": "not found",
+     "meaning": "経路の名前解決に失敗した（改名・未提供の可能性）",
+     "next": "次段の経路を試し、恒常的なら台帳の status を unavailable にして記録する"},
+]
 
 # claude -p の子セッションをネスト起動するために除去する env（対話端末ガード用のため
 # プログラム的サブプロセスでは安全に外せる。skill-creator scripts と同一パターン）
@@ -97,6 +131,18 @@ def validate_registry(registry: dict) -> list[str]:
             errors.append(f"{cid}: 不正 category {cap.get('category')!r}")
         native = cap.get("native")
         if native is not None:
+            routes = native.get("routes", [])
+            if routes and not any(r.get("status") == "preferred" for r in routes):
+                errors.append(f"{cid}: routes に status=preferred の経路がない"
+                              "（最初に試す経路を 1 つ決めること）")
+            for route in routes:
+                missing = [k for k in REQUIRED_ROUTE_KEYS if k not in route]
+                if missing:
+                    errors.append(f"{cid}: route に必須キーがない: {', '.join(missing)}")
+                if route.get("kind") not in VALID_ROUTE_KINDS:
+                    errors.append(f"{cid}: 不正 route kind {route.get('kind')!r}")
+                if route.get("status", "unknown") not in VALID_ROUTE_STATUS:
+                    errors.append(f"{cid}: 不正 route status {route.get('status')!r}")
             for probe in native.get("probes", []):
                 ptype = probe.get("type")
                 if ptype not in MECHANICAL_PROBES | SESSION_PROBES:
@@ -172,7 +218,7 @@ def probe_capability(cap: dict, help_cache: dict) -> dict:
     native = cap.get("native")
     if native is None:
         return {"id": cap["id"], "category": cap["category"], "verdict": "by-design",
-                "native": None, "probes": [], "fallback": cap.get("fallback"),
+                "native": None, "routes": [], "probes": [], "fallback": cap.get("fallback"),
                 "notes": cap.get("notes", "")}
     results = [run_probe(p, help_cache) for p in native.get("probes", [])]
     if any(r["result"] == "fail" for r in results):
@@ -182,8 +228,9 @@ def probe_capability(cap: dict, help_cache: dict) -> dict:
     else:
         verdict = "native"
     return {"id": cap["id"], "category": cap["category"], "verdict": verdict,
-            "native": native.get("how"), "probes": results,
-            "fallback": cap.get("fallback"), "notes": cap.get("notes", "")}
+            "native": native.get("how"), "routes": native.get("routes", []),
+            "probes": results, "fallback": cap.get("fallback"),
+            "notes": cap.get("notes", "")}
 
 
 def cmd_probe(args: argparse.Namespace) -> int:
@@ -213,6 +260,87 @@ def cmd_probe(args: argparse.Namespace) -> int:
     print(json.dumps(report, ensure_ascii=False, indent=2))
     return {"native": EXIT_NATIVE, "session": EXIT_SESSION_PROBE,
             "fallback": EXIT_FALLBACK, "by-design": EXIT_NATIVE}[report["verdict"]]
+
+
+# ---------------------------------------------------------------- routes
+
+_STATUS_ORDER = {"preferred": 0, "available": 1, "unknown": 2, "unavailable": 3}
+
+
+def route_ladder(cap: dict) -> list[dict]:
+    """capability の起動経路 ladder（試す順）を組み立てる。
+
+    native.routes（status 順）→ claude -p → 最終手段、の段階降格を 1 本のリストで返す。
+    status=unavailable の経路も `skip: True` で残す（「なぜその経路を使わないか」の記録が
+    次にバージョンが動いたときの手掛かりになるため・#372）。
+    """
+    ladder: list[dict] = []
+    native = cap.get("native") or {}
+    routes = sorted(native.get("routes", []),
+                    key=lambda r: _STATUS_ORDER.get(r.get("status", "unknown"), 2))
+    for route in routes:
+        status = route.get("status", "unknown")
+        ladder.append({"stage": "native", "kind": route["kind"], "name": route.get("name"),
+                       "how": route["how"], "status": status,
+                       "skip": status == "unavailable", "detail": route.get("detail", "")})
+    if not routes and native.get("how"):
+        # routes 未記載の capability は既存の how を単一経路として扱う（後方互換）
+        ladder.append({"stage": "native", "kind": "unspecified", "name": cap["id"],
+                       "how": native["how"], "status": "unknown", "skip": False,
+                       "detail": "routes 未記載（native.how からの後方互換フォールバック）"})
+    fallback = cap.get("fallback") or {}
+    if fallback.get("how"):
+        ladder.append({"stage": "claude-p", "kind": fallback.get("kind", "claude-p"),
+                       "name": None, "how": fallback["how"], "status": "available",
+                       "skip": False, "detail": "ネイティブ経路が全滅したときの隔離サブプロセス経路"})
+    if fallback.get("final"):
+        ladder.append({"stage": "final", "kind": "skill-specific", "name": None,
+                       "how": fallback["final"], "status": "available", "skip": False,
+                       "detail": "claude -p も失敗したときのスキル固有の最終手段"})
+    return ladder
+
+
+def cmd_routes(args: argparse.Namespace) -> int:
+    registry = load_registry()
+    errors = validate_registry(registry)
+    if errors:
+        print("レジストリ異常:\n  " + "\n  ".join(errors), file=sys.stderr)
+        return EXIT_USAGE
+    caps = registry["capabilities"]
+    if args.capability:
+        target = next((c for c in caps if c["id"] == args.capability), None)
+        if target is None:
+            known = ", ".join(c["id"] for c in caps)
+            print(f"未知の capability: {args.capability}（既知: {known}）", file=sys.stderr)
+            return EXIT_USAGE
+        targets = [target]
+    else:
+        targets = caps
+    reports = [{"id": c["id"], "category": c["category"], "ladder": route_ladder(c)}
+               for c in targets]
+    if args.json:
+        print(json.dumps({"ladders": reports, "demotion_signatures": ROUTE_DEMOTION_SIGNATURES},
+                         ensure_ascii=False, indent=2))
+        return EXIT_NATIVE
+    for rep in reports:
+        print(f"# {rep['id']} ({rep['category']})")
+        step = 0
+        for entry in rep["ladder"]:
+            if entry["skip"]:
+                print(f"    -  [skip] {entry['kind']}: {entry['how']}")
+                print(f"              理由: {entry['detail']}")
+                continue
+            step += 1
+            print(f"    {step}. [{entry['stage']}] {entry['kind']}: {entry['how']}")
+            if entry["detail"]:
+                print(f"       {entry['detail']}")
+        if not rep["ladder"]:
+            print("    （経路未登録: native も fallback も記載がない）")
+        print()
+    print("降格シグネチャ（実行結果にこの文字列が出たら次段へ）:")
+    for sig in ROUTE_DEMOTION_SIGNATURES:
+        print(f"  - {sig['pattern']!r}: {sig['meaning']} → {sig['next']}")
+    return EXIT_NATIVE
 
 
 # ---------------------------------------------------------------- headless
@@ -380,6 +508,23 @@ def cmd_self_test() -> int:
         failures.append(f"probe: {exc}")
 
     try:
+        registry = load_registry()
+        for cap in registry["capabilities"]:
+            ladder = route_ladder(cap)
+            usable = [e for e in ladder if not e["skip"]]
+            if not usable:
+                failures.append(f"routes {cap['id']}: 実行可能な経路が 1 つもない")
+                continue
+            # native-first の機械検査: native を持つ capability で claude -p が先頭に来たら
+            # ladder の順序が壊れている（isolation-by-design は native なしなので対象外）
+            if cap.get("native") is not None and usable[0]["stage"] != "native":
+                failures.append(f"routes {cap['id']}: native があるのに先頭段が "
+                                f"{usable[0]['stage']}（native-first 違反）")
+        print(f"✓ routes ladder 検証 OK（{len(registry['capabilities'])} capability）")
+    except Exception as exc:  # noqa: BLE001 - 煙テストは全例外を失敗として報告
+        failures.append(f"routes: {exc}")
+
+    try:
         eq_failures = check_runner_equivalence()
         if eq_failures:
             failures.extend(eq_failures)
@@ -422,6 +567,11 @@ def main(argv: list[str] | None = None) -> int:
     p_probe.add_argument("--all", action="store_true", help="全 capability を一覧判定")
     p_probe.add_argument("--json", action="store_true", help="一覧を JSON で出力")
 
+    p_routes = sub.add_parser("routes",
+                              help="起動経路 ladder（試す順）と降格シグネチャを表示")
+    p_routes.add_argument("capability", nargs="?", help="capability id（省略時は全件）")
+    p_routes.add_argument("--json", action="store_true", help="JSON で出力")
+
     default_sub = os.getenv("NATIVE_FALLBACK_USE_SUBSCRIPTION", "1") != "0"
     p_head = sub.add_parser("headless", help="claude -p 安全実行ラッパー")
     p_head.add_argument("--prompt", help="プロンプト本文（短文向け）")
@@ -448,6 +598,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_self_test()
     if args.command == "probe":
         return cmd_probe(args)
+    if args.command == "routes":
+        return cmd_routes(args)
     if args.command == "headless":
         return cmd_headless(args)
     parser.print_help()

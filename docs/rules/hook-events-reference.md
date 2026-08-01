@@ -165,6 +165,42 @@ UserPromptSubmit には 3 フックを配線する（settings.json で guard →
 | `StopFailure` | 出力・exit code が無視されるため副作用フックを置けない（API エラー時のログは別経路で取得） |
 | `PostToolBatch` / `InstructionsLoaded` 他 | 現行ハーネスの守備範囲（main 直 push 防止・PR フロー・圧縮保全）に必要十分。将来要件が出たら本表の採否を更新する |
 
+## 4.5 フック入力 JSON のフィールド名は公式スキーマで検証する（#367）
+
+フックが **公式スキーマに存在しないフィールド** を読むと、`jq` も `.get()` も既定値を返すだけでエラーにならず、
+**フックが静かに壊れる**。しかもフックの出力（`additionalContext`）は Claude の観測になるため、壊れたフックは
+「偽の観測」をオーケストレータに注入する。実害例（#367）: `subagent-stop.sh` が非実在の `is_error` / `result`
+を読んでいたため、サブエージェントの異常終了時に **中身が空の異常報告**（`最終出力（末尾）: ` が常に空）を
+注入し、成果が失われたかのような誤解を招いていた。
+
+**必須手順**: フックを新規作成・改修するときは、読むフィールド名を
+[公式 hooks ドキュメント](https://code.claude.com/docs/en/hooks) の該当イベントの **JSON 例（逐語）** と
+突き合わせる。要約や記憶で書かない（要約経路はフィールド名を取り違えることがある・L-113 の姉妹則）。
+
+### Stop / SubagentStop の入力 JSON（2026-07-29 逐語確認・v2.1.220）
+
+```json
+{
+  "session_id": "abc123",
+  "prompt_id": "550e8400-e29b-41d4-a716-446655440000",
+  "transcript_path": "/home/user/.claude/projects/.../transcript.jsonl",
+  "cwd": "/home/user/my-project",
+  "permission_mode": "default",
+  "hook_event_name": "SubagentStop",
+  "agent_id": "subagent-123",
+  "agent_type": "Explore",
+  "last_assistant_message": "I've completed the exploration...",
+  "stop_reason": "end_turn"
+}
+```
+
+- `Stop` は `agent_id` / `agent_type` を持たない（それ以外は同形）。
+- **`is_error` / `result` / `exit_reason` は存在しない**。最終出力は必ず `last_assistant_message` から取る。
+- `transcript_path` は非同期書き込みで **現在ターンの最新メッセージを含まないことがある**。
+  ターンの最終テキストが要るときは transcript を読まず `last_assistant_message` を使う（公式明記）。
+- `stop_reason` の値域は公式に列挙がない。**判定は fail-safe に倒す**
+  （既知の異常語を含むときだけ発話し、空・未知は無音にする。誤検知で Claude の観測を汚さないことを優先する）。
+
 ## 5. サブエージェント persistent memory の frontmatter キー（#23 検証）
 
 公式（[sub-agents docs](https://code.claude.com/docs/en/sub-agents)）で確認した正しいキーは **`memory`**（`persistent_memory` ではない）。

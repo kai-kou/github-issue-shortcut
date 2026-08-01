@@ -36,7 +36,7 @@ Deep Research の完全自動化スキル。ユーザーの手動ディープリ
 
 | 候補 | 実体 | いつ使うか |
 |------|------|-----------|
-| **`research-runner`（本スキル）** | ネイティブ `/deep-research`（公式分類は **Workflow**・adversarial 多票検証）を、対話起動時は **`Skill` ツールで直接呼び出し**（Step 3a）、自律・バッチ起動時は `tools/run_deep_research_workflow.py`（`claude -p` サブプロセス経由・Step 3b）で実行 | **既定**。ユーザーが「ディープリサーチ」を求めたら必ずこれを最初に起動する |
+| **`research-runner`（本スキル）** | ネイティブ `/deep-research`（公式分類は **Workflow**・adversarial 多票検証）を、対話起動時は **`Workflow` ツールで直接呼び出し**（Step 3a・`Skill` ツール経由は v2.1.218 以降不可）、自律・バッチ起動時は `tools/run_deep_research_workflow.py`（`claude -p` サブプロセス経由・Step 3b）で実行 | **既定**。ユーザーが「ディープリサーチ」を求めたら必ずこれを最初に起動する |
 | 素の `WebSearch` / `WebFetch` | メインセッションの単発検索 | ディープリサーチの **既定にしない**。軽い事実確認のみ |
 
 > **注意**: ツール一覧の `deep-research` は本スキルの DIY フォールバックではなく、**ネイティブ `/deep-research`（Workflow）そのもの**（`code.claude.com/docs/en/commands` で `[Workflow]` 分類・§0 の実体列を参照）。DIY フォールバック（Step 4）は名称のみで専用ツールは存在しない。
@@ -50,7 +50,7 @@ Deep Research の完全自動化スキル。ユーザーの手動ディープリ
 
 | 項目 | 内容 |
 |---|---|
-| **主エンジン** | **ネイティブ `/deep-research`（公式分類=Workflow・adversarial 多票検証）**。対話起動（Step 3a）は本セッションから `Skill` ツールで直接呼び出す（`claude -p` 不要・2026-07-03 公式ドキュメント確認済み・`docs/rules/dynamic-workflows-rules.md` 参照）。正確性が最高で **必ず最初に実行する** |
+| **主エンジン** | **ネイティブ `/deep-research`（公式分類=Workflow・adversarial 多票検証）**。対話起動（Step 3a）は本セッションから **`Workflow` ツール**（`Workflow({name: 'deep-research', args: ...})`）で直接呼び出す（`claude -p` 不要・実機検証 2026-07-29 / CLI v2.1.220・`docs/rules/dynamic-workflows-rules.md` 参照）。**`Skill` ツール経由は v2.1.218 以降 `disable-model-invocation` で不可**。正確性が最高で **必ず最初に実行する** |
 | 第2エンジン | **`claude -p` サブプロセス経由の `/deep-research`** — `tools/run_deep_research_workflow.py`（`claude -p` サブプロセス + Opus 明示指定）。自律・バッチ起動（Step 3b）ではこちらが最初の経路。対話起動では Step 3a（直接呼び出し）が失敗したときのフォールバック |
 | フォールバック | **DIY（ウェブリサーチ）**（Sonnet 5 + WebSearch + WebFetch）（上記2つが失敗時の最終手段） |
 | 禁止 | **外部 LLM API（Gemini 等）によるディープリサーチは行わない**（飼い主決定・2026-07-16・Issue #260）。旧 Gemini Deep Research Max 経路は廃止済み |
@@ -151,15 +151,30 @@ EOF
 | 対話起動（起動条件 3・ユーザーが今この対話でディープリサーチを依頼） | **Step 3a（直接呼び出し）** |
 | 自律起動（起動条件 1・2・Issue ラベル駆動 / 他セッションからの再開） | **Step 3b（`tools/run_deep_research_workflow.py`）** |
 
-#### Step 3a: 対話起動時 — `Skill` ツールで直接呼び出し（`claude -p` 不要）
+#### Step 3a: 対話起動時 — `Workflow` ツールで直接呼び出し（`claude -p` 不要）
 
-> 2026-07-03 公式ドキュメント確認済み（`docs/rules/dynamic-workflows-rules.md` 参照）: `/deep-research` は
-> CLI・Desktop・IDE拡張・`claude -p`・Agent SDK のいずれでも同一に動作し、**本セッションからサブプロセスを
-> 挟まず直接 invoke できる**。今この対話で研究依頼を受けたとき（起動条件 3）はこちらを使う。
+> 🔴 **起動手段は `Workflow` ツール。`Skill` ツール経由は使えない**（実機検証 2026-07-29・CLI v2.1.220）。
+> `/deep-research` は **bundled workflow** であり、**v2.1.218 で `disable-model-invocation` 相当が適用され
+> モデル側からの Skill 起動が塞がれた**（公式: *"`/deep-research` runs only when you invoke it.
+> Before v2.1.218, Claude could also start it on its own."*）。`Skill(skill="deep-research")` は
+> `cannot be used with Skill tool due to disable-model-invocation` で即失敗する。
+> 一方 **`Workflow` ツールの `name` 指定は現在も通る**（実測で run 起動を確認）。
+> 検証記録は `docs/rules/dynamic-workflows-rules.md`。
 
 ```
-Skill(skill="deep-research", args="{Step 2 で生成したプロンプトの調査テーマ本文}")
+Workflow({name: "deep-research", args: "{Step 2 で生成したプロンプトの調査テーマ本文}"})
 ```
+
+> **起動経路は固定せず ladder で降格する**（`native-fallback-rules.md` §2.5）。上の実行形は
+> 現時点の `preferred` 経路であり、CLI のバージョンで移動しうる。**実行前に現行の試行順を台帳から確認する**:
+>
+> ```bash
+> python3 tools/native_fallback.py routes deep-research-interactive
+> ```
+>
+> ladder: `skill`（**v2.1.218 以降 unavailable**）→ **`workflow`（現行 preferred）** → `claude -p`（Step 3b）
+> → DIY（Step 4）。降格シグネチャ（`disable-model-invocation` / `Review dynamic workflow before running` 等）に
+> 一致するエラーが返ったら次段へ進み、**経路が動いていたら台帳の `routes` を更新する**（§2.5 の後始末）。
 
 - 呼び出しは Workflow ランタイム経由でバックグラウンド実行される。ターン終了を焦らず、完了通知
   （タスク完了 / レポート到着）を待つ。**モデルはそのときのセッションモデルに従う**（Opus 品質が
@@ -194,7 +209,7 @@ python3 tools/run_deep_research_workflow.py {ID}
 - **🔴 喪失防止チェックポイント（必須運用）**: 検索成功直後、normalize の前に生レポートが `content/research/{ID}_research_raw.md` に保存される（stdout に `[1.5/3] 喪失防止:` と出る）。**この `_research_raw.md` が存在したら、後続処理の前に必ず即コミット＆push する**（L-100: 未コミットは SessionStart で消える）。normalize が落ちて **EXIT=1** でも、生レポートは git に残り `--normalize-only --report content/research/{ID}_research_raw.md` で再検索なし（$0）に再正規化できる。EXIT=0（成功）時はツールが `_research_raw.md` を自動削除する。
 - セキュリティ/動作: `--allowedTools` で事前許可（`tools/run_deep_research_workflow.py` 経由時）。**Bash/Write は Workflow のオーケストレーション実行に必須**。インジェクション対策は work_dir をリポジトリ外へ隔離 + 実行後に必ず破棄 + `--max-budget-usd` 上限で緩和（git commit はサブプロセスにさせず親＝本スキルが行う。root では `--dangerously-skip-permissions` 不可）。
 - **EXIT=1/4/5（真の失敗）→ Step 4（DIY）へ**。ただし EXIT=1 で `_research_raw.md` が存在する場合は、DIY へ行く前に **まず `--normalize-only` 再試行**（再検索コストを払わず復旧できるため）。
-- **🔴 EXIT=4/5 の反復検知（#4699 再発防止）**: `content/pipeline-state/research_fallback_log.jsonl`（ツールが EXIT=1/4/5/6 で自動記録）の直近エントリを確認し、**EXIT=4/5 が異なるリサーチ ID で 2 連続以上記録されていたら、DIY 消化と並行して `type:bug` Issue を起票** する（Claude Code CLI 更新による `/deep-research` 起動インターフェース変化を疑う。旧形式 `/deep-research {質問}` がワークフローとして解釈されなくなり EXIT=4 が恒常化した kinako-mocchi #4699 と同型）。エラー出力に `DEEP_RESEARCH_UNAVAILABLE` が含まれる場合は確定（`dr_prompt` / `SEARCH_ALLOWED_TOOLS` の現行 CLI 追従が必要）。
+- **🔴 EXIT=4/5 の反復検知（#4699 再発防止）**: `content/pipeline-state/research_fallback_log.jsonl`（ツールが EXIT=1/4/5/6 で自動記録）の直近エントリを確認し、**EXIT=4/5 が異なるリサーチ ID で 2 連続以上記録されていたら、DIY 消化と並行して `type:bug` Issue を起票** する（Claude Code CLI 更新による `/deep-research` 起動インターフェース変化を疑う。旧形式 `/deep-research {質問}` がワークフローとして解釈されなくなり EXIT=4 が恒常化した下流プロジェクトの実障害（#4699）と同型）。エラー出力に `DEEP_RESEARCH_UNAVAILABLE` が含まれる場合は確定（`dr_prompt` / `SEARCH_ALLOWED_TOOLS` の現行 CLI 追従が必要）。
 - **EXIT=6（レート枠超過）→ Step 3.6（スキップ判定）へ**。**DIY に即落とさない**。
 - **EXIT=2（入力不足）→ ユーザー報告**（プロンプト未生成）。
 
@@ -273,7 +288,7 @@ PR 作成（`docs/rules/pr-review-flow-summary.md` の標準フローに従う�
 
 ## 関連ファイル
 
-- `tools/run_deep_research_workflow.py` — 第2エンジン Step 3b（自律・バッチ起動の一次経路。ネイティブ `/deep-research` を `claude -p` サブプロセス経由で実行 + 正規化。対話起動は Step 3a で `Skill` ツールから直接呼ぶため本ファイルを経由しない）
+- `tools/run_deep_research_workflow.py` — 第2エンジン Step 3b（自律・バッチ起動の一次経路。ネイティブ `/deep-research` を `claude -p` サブプロセス経由で実行 + 正規化。対話起動は Step 3a で `Workflow` ツールから直接呼ぶため本ファイルを経由しない）
 - `tools/run_deep_research.py` — オーケストレーション・I/O・コスト監視（DIY ランナー）
 - `tools/research_schema.json` — 出力 JSON Schema
 - `content/pipeline-state/research_fallback_log.jsonl` — フォールバック発動の記録（可視化）

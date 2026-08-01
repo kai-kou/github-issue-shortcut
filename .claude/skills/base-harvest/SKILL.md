@@ -25,7 +25,7 @@ description: 下流リポジトリ（`apply-base` でこのベースを導入し
 - 対象ディレクトリは `docs/rules/`・`.claude/`（`rules`/`skills`/`hooks`/`agents`）・`tools/` の
   **ハーネス系資産のみ**。`CLAUDE.md`・`docs/project-mission.md`・`content/` 配下等の
   プロジェクト固有ファイルは対象外（`apply-base` §0 の保護方針と対称）。
-- **差分の基準点は下流の同期マーカー**（`.claude/base-sync-state.json`、下流が前回 `apply-base` を
+- **差分の基準点は下流の同期マーカー**（`.claude/base-sync-state.json`、下流が前回 `apply-base` を <!-- refcheck:ignore -->
   適用したベース側 SHA を記録している）。このマーカーが指す SHA 時点のベース内容と、下流の
   現在の内容を比較することで、「元々ベースにあった内容」と「下流が独自に生み出した改善」を
   区別できる（マーカーが無い下流リポジトリは全文比較にフォールバックし、範囲が広がる分だけ
@@ -47,7 +47,7 @@ description: 下流リポジトリ（`apply-base` でこのベースを導入し
    （A-6 ではなく Anthropic 側の機能制約として報告する）。
 2. ヒットする → mcp__Claude_Code_Remote__add_repo(owner, repo, access:"read") で対象下流リポジトリを追加。
    クローン手順はツール結果が案内する（register_repo_root を忘れずに実行し、CLAUDE.md 等を読み込ませる）。
-3. 対象リポジトリのルートで .claude/base-sync-state.json を読み、前回適用ベース SHA を取得する
+3. 対象リポジトリのルートで .claude/base-sync-state.json を読み、前回適用ベース SHA を取得する <!-- refcheck:ignore -->
    （無ければ手順4を全文比較モードで行う）。
 ```
 
@@ -111,5 +111,5 @@ fi
 - [ ] プロジェクト固有の記述（ミッション・ドメイン用語・外部サービス名等）が誤って還流されていない
 - [ ] `add_repo` が使えないタスク実行モード（L-117）では非対応と正しく判定し、案内して中断する
 - [ ] 下流リポジトリ側のセッションで発話された場合（役割逆転）を誤って自動続行せず、ベース側セッションでの再実行を案内する
-- [ ] 同期マーカー（`.claude/base-sync-state.json`）がある下流では、それを基準に「下流が独自に
+- [ ] 同期マーカー（`.claude/base-sync-state.json`）がある下流では、それを基準に「下流が独自に <!-- refcheck:ignore -->
       生み出した差分」だけを対象にできている

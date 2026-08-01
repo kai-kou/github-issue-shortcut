@@ -72,6 +72,10 @@ gh issue list --label "lane:claude-code-spec" --state open --json number,title,l
    - `.claude/skills/*/SKILL.md` / `.claude/commands/`（スキル定義）
    - `.claude/hooks/*.sh` / `.claude/settings.json` / `.claude/output-styles/` / `.claude/agents/`（ハーネス・設定）
    - `tools/*.py` の `claude -p` 呼び出し（headless 経路）
+   - 🔴 **起動経路の移動**（`disable-model-invocation` の新規適用・bundled skill ⇄ workflow ⇄ built-in command の
+     再分類）は「これまでのやり方がエラーになる」典型。`tools/native_capabilities.json` の `native.routes` を
+     突き合わせ、`python3 tools/native_fallback.py routes --json` の ladder が現行仕様と一致するか確認する
+     （不一致なら台帳の `status` を更新し、閉じた経路は削除せず経緯を残す・`native-fallback-rules.md` §2.5・L-123）
 4. **対応**:
    - 影響あり → **最小差分で修正**（intent-gate 遵守・要求外リファクタ禁止）→ 検証
      （該当ツールの `--self-test`/`--dry-run`、フックは手動実行、settings は `claude config` 系で確認）

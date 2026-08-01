@@ -240,6 +240,26 @@ def main() -> int:
     if state_warn:
         warnings.append(state_warn)
 
+    # サブエージェント定義の `tools` がフィルタで全滅していないか（#367）
+    # 全滅すると委譲が「空回答」になり、しかも Claude Code は削除をエラー報告しない。
+    if any(f.startswith(".claude/agents/") for f in files):
+        proc = sh([sys.executable, "tools/check_agent_definitions.py"], timeout=30)
+        matched = False
+        for line in (proc.stdout or "").splitlines():
+            if line.startswith("❌"):
+                errors.append(f"サブエージェント定義: {line[2:].strip()}")
+                matched = True
+            elif line.startswith("⚠️"):
+                warnings.append(f"サブエージェント定義: {line[2:].strip()}")
+                matched = True
+        # 検査自体が壊れて無警告で素通りするのを防ぐ（他の補助ツールと同じ方針）
+        if proc.returncode != 0 and not matched:
+            detail = (proc.stderr or proc.stdout or "").strip().splitlines()
+            tail = detail[-1] if detail else "(出力なし)"
+            warnings.append(
+                f"サブエージェント定義チェックが異常終了しました（exit={proc.returncode}）: {tail[:200]}"
+            )
+
     # 月次コストテレメトリの feature PR 混入チェック（#106・#242 回帰検知）
     # cost_monthly は gitignore 対象で、telemetry/cost-data ブランチへのみ永続化する（#242）。
     # 回帰シグナルは 2 種（#243 レビュー）:
