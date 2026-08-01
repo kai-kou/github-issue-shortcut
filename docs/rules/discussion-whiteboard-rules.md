@@ -102,6 +102,12 @@ init（議題作成）
   送達保証と混同しない）。よって議論の永続化は **ホワイトボード（artifact）に寄せ**、SendMessage は
   進行合図に限定する。参加者同士の直接往復は同時稼働中のみ。
 - 共有タスクボード（TaskCreate 等）はサブエージェント側から利用不可（V-6）。設計に使わない。
+- **参加者は lead（メインセッション）だけが起動する**（公式制約・#367）。teammate は teammate を
+  spawn できず（nested team 不可）、in-process teammate からの background サブエージェント起動は
+  **エラー** になる。多段委譲を設計に入れない。
+- **参加者には CLAUDE.md は届くが output style は届かない**（#367 F-2/F-3）。日本語で議論させたいなら
+  投稿プロンプトに明記する。`Explore` / `Plan` を参加者に使う場合は CLAUDE.md すら読まないため、
+  議論のルール（投稿種別・反論義務）を毎回プロンプトに再掲する。
 
 ### 4.2 フォールバック: claude -p 経路（`run_discussion_review.py`）
 

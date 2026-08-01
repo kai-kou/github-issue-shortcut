@@ -11,6 +11,9 @@
 | 症状 | 参照先 |
 |------|--------|
 | `git push` だけが 403/413/502・`gh` が 403・`E2BIG` で Bash 全停止・tool call parse error・スコープ外リポジトリへの clone が 403 | `docs/rules/lessons/cloud-environment.md`（L-079/L-080/L-101/L-106/L-114/L-117） |
+| サブエージェント / Agent Teams の回答が空・期待外の形式で返る・フックが偽の観測を注入する | `docs/rules/lessons/agent-delegation.md`（L-121/L-122） |
+| サブエージェントの所見が相槌で上書きされて消える（成果物をファイル経由で受け渡す規約） | `docs/rules/lessons/agent-teams.md`（L-124・本リポジトリ実測） |
+| これまで `Skill` ツールで呼べていたビルトイン機能が `disable-model-invocation` で失敗する（起動経路の移動） | `docs/rules/lessons/skill-routing.md`（L-123）・`native-fallback-rules.md` §2.5 |
 | PR レビュー・CI 系 | `docs/rules/lessons/pr-review.md` / `ci-cd.md` |
 | その他カテゴリ | `docs/rules/lessons/<category>.md` |
 

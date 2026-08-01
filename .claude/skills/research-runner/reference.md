@@ -11,7 +11,7 @@
 > 主エンジン（ネイティブ `/deep-research`）が成功する大多数のケースでは本ファイルを読む必要はない。
 > `SKILL.md` の Step 3b が **EXIT=1/4/5 → Step 4** / **EXIT=6 → Step 3.6** に分岐したときに Read する。
 >
-> 🔴 フォールバック連鎖は **①ネイティブ `/deep-research`（Step 3a 直接呼び出し）→
+> 🔴 フォールバック連鎖は **①ネイティブ `/deep-research`（Step 3a・`Workflow` ツールで直接呼び出し）→
 > ② `claude -p` サブプロセス経由の `/deep-research`（Step 3b）→ ③ DIY（ウェブリサーチ・Step 4）** の三層のみ。
 > **外部 LLM API（Gemini 等）によるディープリサーチは行わない**（飼い主決定・Issue #260・旧 Step 3.5 は廃止済み）。
 >
@@ -75,7 +75,7 @@ Step 3 のネイティブ `/deep-research`（対話起動なら 3a 直接呼び�
 > **自動記録が失敗した（stderr に `[WARN] fallback log 書き込み失敗` が出た）場合のみ** 使う
 > （二重記録すると反復検知の連続カウントを汚す）。
 > **EXIT=4/5 が異なるリサーチ ID で 2 連続以上続いたら `type:bug` Issue を起票** し、
-> CLI インターフェース変化（kinako-mocchi #4699 と同型）の恒久対応を検討する
+> CLI インターフェース変化（下流プロジェクトの実障害と同型）の恒久対応を検討する
 > （反復検知ルールの SSOT は `SKILL.md` Step 3b。本ファイルの記載は参照）。
 
 このスキル自身が Sonnet 5 として、本セッション内で WebSearch / WebFetch を実行し、
@@ -104,7 +104,7 @@ Step 3 のネイティブ `/deep-research`（対話起動なら 3a 直接呼び�
 
 | 失敗モード | 検出 | 対応 |
 |---|---|---|
-| Step 3a（直接呼び出し）失敗（エラー・本文欠落・WebSearch 未許可） | 呼び出し結果・本文長 | Step 3b（`claude -p` サブプロセス）で再試行 |
+| Step 3a（`Workflow` ツールで直接呼び出し）失敗（エラー・本文欠落・WebSearch 未許可） | 呼び出し結果・本文長 | Step 3b（`claude -p` サブプロセス）で再試行 |
 | Step 3b `claude -p` 実行失敗（EXIT=1/4/5） | `run_deep_research_workflow.py` の終了コード | `research_fallback_log.jsonl` に自動記録 → DIY（Step 4）切替 + 通知。**EXIT=4/5 が異なるリサーチ ID で 2 連続以上なら `type:bug` Issue 起票**（CLI インターフェース変化を疑う・#4699） |
 | ワークフロー起動不能（`DEEP_RESEARCH_UNAVAILABLE` センチネル・EXIT=5） | エラー出力のセンチネル文字列 | CLI の起動インターフェース変化が確定 → `type:bug` Issue 起票（`dr_prompt` / `SEARCH_ALLOWED_TOOLS` の現行 CLI 追従が必要）+ DIY 切替 |
 | Workflow 起動後の早期リターン（EXIT=4・elapsed が timeout より大幅に短い） | `research_fallback_log.jsonl` エントリの `reason` 文字列内 `elapsed=`（EXIT=4/6 のエラーメッセージに埋め込まれる。独立フィールドではない） | サブプロセスがポーリング指示（#4722）を無視した可能性 → 1 回再試行 → 再発なら `type:bug` Issue 起票 |

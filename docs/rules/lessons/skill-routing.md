@@ -4,6 +4,27 @@
 
 ---
 
+## L-123: ビルトイン機能の「起動経路」はバージョンで移動する（Skill → Workflow）（2026-07-29）
+
+**パターン**: これまで `Skill` ツールで呼べていたビルトイン機能が、CLI のバージョンアップで
+`Workflow` ツール経由でしか呼べなくなる。実例: `/deep-research` は **v2.1.218** で
+`disable-model-invocation` 相当が適用され、`Skill(skill="deep-research")` が
+`cannot be used with Skill tool due to disable-model-invocation` で即失敗するようになった
+（公式: *"`/deep-research` runs only when you invoke it. Before v2.1.218, Claude could also start it on its own."*）。
+一方 `Workflow({name: "deep-research", args: ...})` は通る。SSOT（SKILL.md）に単一の起動形が
+固定記述されていたため、**実行不能な手順がルールとして残った**（#370）。
+
+**判定基準**: 「この起動形は台帳（`native.routes`）から来ているか、それとも文書に直書きされた
+1 経路か？」後者なら移動に耐えられない。
+
+**対策**:
+- 起動経路は `tools/native_capabilities.json` の `native.routes` に **順序付きで台帳化** する。
+  実行前に `python3 tools/native_fallback.py routes <id>` で現行の試行順を確認する。
+- ladder（`skill` → `workflow` → `session-tool` → `claude -p` → 最終手段）を上から降格する。
+  降格シグネチャは `ROUTE_DEMOTION_SIGNATURES`（`tools/native_fallback.py`）が正本。
+- 閉じた経路は **削除せず `status: "unavailable"`** + いつ・どのバージョン・どのエラーで閉じたかを残す。
+- SSOT の詳細は `docs/rules/native-fallback-rules.md` §2.5。
+
 ## L-116: ほぼ同名のスキルが共存しルーティング規定が無いと、軽い経路に倒れる（2026-06-21）
 
 **パターン**: ユーザーが「ディープリサーチして」と依頼したのに、`/deep-research` を起動する

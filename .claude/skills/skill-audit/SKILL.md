@@ -27,15 +27,26 @@ wc -l .claude/skills/*/SKILL.md .claude/skills/*/reference.md .claude/commands/*
 python3 tools/check_skill_references.py --json
 ```
 
-SKILL.md / commands 本文中の `tools/*.py`・`docs/rules/*.md`・`.claude/**`・`content/**` への言及を
-正規表現抽出し、リポジトリ上の実在を検証する。exit code 1 = リンク切れ or 肥大化（既定閾値 500 行）検出。
+SKILL.md / commands **および `docs/rules/` のルール本体**（#349 で対象拡張）の本文中の
+`tools/*.py`・`docs/rules/*.md`・`.claude/**`・`content/**` への言及を正規表現抽出し、リポジトリ上の
+実在を検証する。exit code 1 = リンク切れ or 肥大化検出（肥大化判定は SKILL.md / commands のみ・
+既定閾値 500 行。ルール本体は行数の性質が違うため参照検証のみ）。
 
-**既知の制限（誤検知しうるケース）**: ① 下流リポジトリ側にのみ生成される runtime ファイルへの言及
-（例: apply-base が参照する base-sync-state.json は対象リポジトリ側の `.claude/` 配下に生成される）、
-② 文脈上「存在しない」と明示的に注記している言及（例: project-sync が触れる sync_project.py という
-名の `tools/` 配下スクリプトは「相当は存在しない」という否定文脈）。**Step 6 で Issue 化する前に
-該当箇所の文脈を Read で確認し、上記に該当する誤検知は除外する**（機械チェックは候補抽出であり、
-確定判定は人間相当の文脈確認を経る）。
+**除外規約（#350・明示マーカーのみ）**: 誤検知しうる参照は **行単位** で除外する。
+
+| 手段 | 使う場面 |
+|------|---------|
+| 該当行末に `<!-- refcheck:ignore -->`（表なら最終セル内） | 実行時生成物・ローカル専用ファイル・「存在しない」と明示した否定文脈・歴史的言及・出自プロジェクト由来のファイル名 |
+| `<!-- refcheck:ignore-start -->` 〜 `<!-- refcheck:ignore-end -->` | 長い表・一覧をまとめて外すとき（範囲内に実在参照を含めないこと） |
+
+> 🔴 **自然言語の注意書き（「出自プロジェクトの実例」等）を除外根拠にしない**。節スコープの一括除外は
+> 同じ節にある **実在する現役の参照** まで検証対象から外し（実測で 1 ファイルの検証が全滅した）、
+> 本チェックが防ぐべき rename/削除の regression を見逃す。除外は必ず対象行だけに効かせる。
+
+除外規約が過剰になると本チェック自体が無音化するため、`python3 tools/check_skill_references.py --self-test`
+で「検出すべきものを検出し、除外すべきものだけ除外する」ことを機械的に固定している（Step 6 の前に実行する）。
+
+`--skip-rules` でルール本体の検証を外せる（既定は検証する）。
 
 > 上記の例示はあえてバッククォート単独のフルパスにしていない: `tools/check_skill_references.py` の
 > 抽出正規表現（バッククォートで囲まれた `<prefix>/…<ext>` 形式）に一致すると、本節自身が

@@ -12,11 +12,11 @@ Claude Code のフックから Slack チャンネルへ通知を送る仕組み�
 |------|------|
 | メイン通知先 | `#all-yourproject-updates` チャンネル（情報提供系） |
 | 承認依頼通知先 | **承認依頼専用チャンネル**（要アクション系・メンション付き） |
-| 公開通知先 | **公開・マーケティング専用チャンネル**（動画公開・SNS配信・週次レポート・メンション付き） |
+| 公開通知先 | **公開・マーケティング専用チャンネル**（公開・配信完了イベント・メンション付き。既定は `published` のみ。動画公開・SNS配信等のプロジェクト固有イベントは `config/publish_events.yaml` に追記する） |
 | 通知トリガー | 半日アウトカムサマリー（07:00/19:00 自動）、PR 作成・待機・パイプライン完了・公開イベント（スキル内から明示呼び出し）。※セッション開始/終了の自動通知は **#2597 で廃止**（通知氾濫の解消） |
 | 実装 | `tools/slack_notify.py`（Slack Web API / Block Kit） |
 | フック | `.claude/hooks/stop-slack-notify.sh`（WIP 自動コミット・cost_log 追記のみ。Slack 通知は #2597 で廃止）。半日サマリーは `tools/half_day_summary.py` をスケジュールスロットから実行 |
-| 設定方法 | Claude.ai 環境変数（`SLACK_BOT_TOKEN` / `SLACK_CHANNEL_ID` / `SLACK_APPROVAL_CHANNEL_ID` / `SLACK_PUBLISH_CHANNEL_ID`）※ローカル例外用途として `.claude/settings.local.json`（Git 管理外）も利用可 |
+| 設定方法 | Claude.ai 環境変数（`SLACK_BOT_TOKEN` / `SLACK_CHANNEL_ID` / `SLACK_APPROVAL_CHANNEL_ID` / `SLACK_PUBLISH_CHANNEL_ID`）※ローカル例外用途として `.claude/settings.local.json`（Git 管理外）も利用可 | <!-- refcheck:ignore -->
 
 ## チャンネル分離設計
 
@@ -34,17 +34,74 @@ Claude Code のフックから Slack チャンネルへ通知を送る仕組み�
 - `SLACK_APPROVAL_CHANNEL_ID` 未設定 → `SLACK_CHANNEL_ID`
 - `SLACK_PUBLISH_CHANNEL_ID` 未設定 → `SLACK_APPROVAL_CHANNEL_ID` → `SLACK_CHANNEL_ID`
 
-### publish の --event-type 一覧
+### publish の --event-type（config-driven・#358）
 
-| event-type | 説明 | 発火元スキル |
-|-----------|------|------------|
-| `unlisted` | 動画 限定公開アップロード完了 | `video-pipeline` Step 3.6 |
-| `scheduled` | 動画 公開スケジュール設定完了 | `youtube-scheduler` |
-| `pre-publish` | 動画 公開前日リマインダー | `youtube-scheduler` |
-| `public` | 動画 公開完了 | `video-pipeline` / 手動 |
-| `shorts-public` | Shorts 限定公開アップロード完了 | `shorts-pipeline` |
-| `sns-complete` | SNS・BLOG 配信完了 | `sns-publisher` Step 4.5 |
-| `marketing-review` | 週次マーケティングレポート 生成完了 | `youtube-scheduler` |
+`--event-type` の値は **`config/publish_events.yaml` のキー** で決まる（本体コードにはドメイン固有語を持たない）。汎用ベースの既定は `published`（公開完了・汎用）のみ。
+
+| event-type | 説明 |
+|-----------|------|
+| `published` | 公開完了（汎用・既定） |
+
+各イベントの定義項目（`emoji` / `header` / `message` / `action_label` / `action_url` / `fyi`）は `config/publish_events.yaml` 冒頭のコメントを参照。`message` は `{mention}` を、`action_url` は `{url}` を含めると `--url` の値で展開される。`fyi: true` にするとユーザー操作不要の完了報告として `@mention` を抑制する。
+
+#### project example（動画公開プロジェクトの場合）
+
+動画公開・SNS配信のようなドメイン固有イベントを使うプロジェクトは、`config/publish_events.yaml` に以下のようなキーを追記する（本体コードの変更は不要）:
+
+```yaml
+events:
+  unlisted:
+    emoji: "📤"
+    header: "動画 限定公開アップロード完了"
+    message: "{mention}動画を限定公開でアップロードしました。YouTube Studio で内容を確認してください。"
+    action_label: "YouTube Studio で確認"
+    action_url: "https://studio.youtube.com/"
+    fyi: false
+  scheduled:
+    emoji: "📅"
+    header: "動画 公開スケジュール設定完了"
+    message: "{mention}動画の公開スケジュールを設定しました。"
+    action_label: null
+    action_url: null
+    fyi: false
+  pre-publish:
+    emoji: "⏰"
+    header: "動画 公開前日リマインダー"
+    message: "{mention}明日公開予定の動画があります。メタデータ・サムネイルを最終確認してください。"
+    action_label: "YouTube Studio で確認"
+    action_url: "https://studio.youtube.com/"
+    fyi: false
+  public:
+    emoji: "🎉"
+    header: "動画 公開完了！"
+    message: "{mention}動画が公開されました！"
+    action_label: "YouTube で視聴"
+    action_url: "{url}"
+    fyi: false
+  shorts-public:
+    emoji: "🎬"
+    header: "Shorts 限定公開アップロード完了"
+    message: "{mention}Shorts 動画を限定公開でアップロードしました。YouTube Studio で内容を確認してください。"
+    action_label: "YouTube Studio で確認"
+    action_url: "https://studio.youtube.com/"
+    fyi: false
+  sns-complete:
+    emoji: "📣"
+    header: "SNS・BLOG 配信完了"
+    message: "{mention}SNS・BLOG への配信が完了しました。"
+    action_label: null
+    action_url: null
+    fyi: true
+  marketing-review:
+    emoji: "📊"
+    header: "週次マーケティングレポート 生成完了"
+    message: "{mention}週次マーケティングレポートを生成しました。GitHub Issues でレビューしてください。"
+    action_label: null
+    action_url: null
+    fyi: true
+```
+
+`fyi: true`（`sns-complete` / `marketing-review`）はユーザー操作不要の完了報告のため `@mention` を抑制する。それ以外は確認・節目アクション（A-2 相当）のため `@mention` を維持する（`user-notification-triage.md`）。
 
 ### 推奨チャンネル設定
 
@@ -133,7 +190,7 @@ Slack で **2 つの専用チャンネル** を作成する。
 
 ## 3. 環境変数の設定
 
-> ⚠️ **クラウド環境では `.claude/settings.local.json` を使わない**。セッション終了時に消えるため無意味。
+> ⚠️ **クラウド環境では `.claude/settings.local.json` を使わない**。セッション終了時に消えるため無意味。 <!-- refcheck:ignore -->
 > 全環境変数は **Claude.ai スケジュールタスクの環境変数設定** で管理する（`docs/rules/env-vars.md` 参照）。
 
 `claude.ai` → スケジュールタスク設定 → 環境変数セクションに以下を `.env` 形式で追加:
@@ -182,10 +239,9 @@ python3 tools/slack_notify.py approval \
 
 # 公開・マーケティング専用チャンネルへの通知テスト（SLACK_PUBLISH_CHANNEL_ID が設定されている場合）
 python3 tools/slack_notify.py publish \
-  --event-type unlisted \
-  --video-id "V007" \
-  --title "テスト動画タイトル" \
-  --url "https://youtu.be/test"
+  --event-type published \
+  --title "テストタイトル" \
+  --url "https://example.com/test"
 ```
 
 `OK: message sent (ts=...)` と表示されれば成功。
@@ -209,7 +265,7 @@ python3 tools/slack_notify.py publish \
 | `progress` | 動画制作進捗レポート | `SLACK_CHANNEL_ID` | スキル内で明示呼び出し |
 | `approval` | **PR作成前の承認依頼**（ユーザーメンション付き） | **`SLACK_APPROVAL_CHANNEL_ID`** | スキル内で明示呼び出し（必須ステップ） |
 | `waiting` | **ユーザーアクション待ち**（メンション付き） | **`SLACK_APPROVAL_CHANNEL_ID`** | スキル内で明示呼び出し |
-| `publish` | **動画公開・SNS配信・マーケティングレビュー**（メンション付き） | **`SLACK_PUBLISH_CHANNEL_ID`** | スキル内で明示呼び出し（`--event-type` 必須） |
+| `publish` | **公開・配信完了**（`config/publish_events.yaml` 駆動・メンション付き） | **`SLACK_PUBLISH_CHANNEL_ID`** | スキル内で明示呼び出し（`--event-type` 必須。値は同ファイルのキー） |
 | `routine-idle` | **ルーティンのアイドル通知**（消化対象ゼロ＝バックログ空。維持/停止の判断支援 FYI・@mention なし） | `SLACK_CHANNEL_ID` | ルーティンが完全 no-op 時に呼び出し（`docs/routines.md` R-1 手順 8）。JST スロット（既定 08:00〜10:00）で 1 日 1 回に自己抑制・`--force` でバイパス |
 
 > `SLACK_APPROVAL_CHANNEL_ID` が未設定の場合、`approval` / `waiting` も `SLACK_CHANNEL_ID` に送信される（後方互換）。
@@ -244,22 +300,15 @@ python3 "${CLAUDE_PROJECT_DIR}/tools/slack_notify.py" pipeline \
   --result "完了（15分32秒）" \
   --duration "3分21秒"
 
-# 動画 限定公開アップロード完了（SLACK_PUBLISH_CHANNEL_ID に送信・@mention付き）
+# 公開完了（SLACK_PUBLISH_CHANNEL_ID に送信・@mention付き）
 python3 "${CLAUDE_PROJECT_DIR}/tools/slack_notify.py" publish \
-  --event-type unlisted \
-  --video-id "V007" \
-  --title "動画タイトル" \
-  --url "https://youtu.be/xxxxxxxxxxxxx" \
-  --detail "YouTube Studio で内容を確認し、公開スケジュールを設定してください。"
+  --event-type published \
+  --title "コンテンツタイトル" \
+  --url "https://example.com/xxxxxxxxxxxxx" \
+  --detail "内容を確認してください。"
 
-# 動画 公開完了
-python3 "${CLAUDE_PROJECT_DIR}/tools/slack_notify.py" publish \
-  --event-type public \
-  --video-id "V007" \
-  --title "動画タイトル" \
-  --url "https://youtu.be/xxxxxxxxxxxxx"
-
-# SNS・BLOG 配信完了
+# プロジェクト固有イベント（config/publish_events.yaml に追記したキーを使う例。
+# 「project example」節参照）
 python3 "${CLAUDE_PROJECT_DIR}/tools/slack_notify.py" publish \
   --event-type sns-complete \
   --video-id "V007" \
@@ -383,7 +432,7 @@ timeout 15s python3 "${CLAUDE_PROJECT_DIR}/tools/slack_notify.py" session-start 
 
 ### `invalid_auth` エラー
 
-→ `settings.local.json` のトークンが `xoxb-...` 形式か確認。コピーミスに注意
+→ `settings.local.json` のトークンが `xoxb-...` 形式か確認。コピーミスに注意 <!-- refcheck:ignore -->
 
 ### スキルから呼び出した通知が届かない（サンドボックスエラーの可能性）
 
@@ -402,5 +451,5 @@ timeout 15s python3 "${CLAUDE_PROJECT_DIR}/tools/slack_notify.py" session-start 
 ### フックが動いていない（通知が届かない）
 
 1. `echo $SLACK_BOT_TOKEN` で環境変数が読み込まれているか確認
-2. `settings.local.json` の JSON 構文が正しいか確認（`jq . .claude/settings.local.json`）
+2. `settings.local.json` の JSON 構文が正しいか確認（`jq . .claude/settings.local.json`） <!-- refcheck:ignore -->
 3. `bash -x .claude/hooks/session-start-slack.sh` でフックを手動実行してデバッグ

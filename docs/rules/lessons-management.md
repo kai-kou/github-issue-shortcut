@@ -33,7 +33,8 @@
 | **Warm** | `docs/rules/lessons/<category>.md` | カテゴリ別の詳細レッスン | 上限なし（ただし dedup 推奨） | タスク依存 Read（スキル SKILL.md に記載） |
 | **Cold** | git 履歴 | 昇格済み・歴史的エントリ | — | 必要時 `git log` で参照 |
 
-カテゴリ: `pipeline` / `pr-review` / `audio-voice` / `content` / `session` / `sns-youtube` / `agent` / `meta` / `marketing`
+カテゴリ: `pipeline` / `pr-review` / `audio-voice` / `content` / `session` / `sns-youtube` / `agent` /
+`agent-delegation` / `meta` / `marketing`
 
 ---
 
@@ -109,12 +110,12 @@ python3 tools/lessons_guard.py dedup          # タイトル類似の重複候�
 
 | 廃止物 | 理由 | 後継 |
 |--------|------|------|
-| `tools/prune_lessons.py` | ターゲットが空リダイレクター `lessons.md` のまま空振りしていた | `lessons_guard.py prune` |
+| `tools/prune_lessons.py` | ターゲットが空リダイレクター `lessons.md` のまま空振りしていた | `lessons_guard.py prune` | <!-- refcheck:ignore -->
 | `tools/lessons_scorer.py` + `lessons-top15.md` | 形骸化（symlink なしで誰も読まない・生成停止） | `lessons_guard.py stats` |
 | `tools/split_lessons.py` | 一度きりの分割用・役目終了 | （不要） |
-| `docs/rules/lessons.md`（26 行リダイレクター） | Warm 層への単なる案内・案内ハブとして内容更新 | 本ファイル + lessons.md（ハブ） |
+| `docs/rules/lessons.md`（26 行リダイレクター） | Warm 層への単なる案内・案内ハブとして内容更新 | 本ファイル + lessons.md（ハブ） | <!-- refcheck:ignore -->
 
-> アーカイブのファイル/ディレクトリ二重化（`lessons-archive.md` と `lessons-archive/`）の整理は別 Issue で扱う（本 PR のスコープは入口/出口/機械強制）。
+> アーカイブのファイル/ディレクトリ二重化（`lessons-archive.md` と `lessons-archive/`）の整理は別 Issue で扱う（本 PR のスコープは入口/出口/機械強制）。 <!-- refcheck:ignore -->
 > ⚠️ なお `docs/rules/lessons-archive/` 配下の各ファイル先頭ヘッダーは旧 `prune_lessons.py --archive` を前提にした記述のまま残っている（現在は stub 化され実行しても何も起きない）。この古いヘッダー記述の修正も上記の別 Issue で扱う。
 
 ---
@@ -134,6 +135,6 @@ python3 tools/lessons_guard.py dedup          # タイトル類似の重複候�
 |------------|------|
 | `docs/rules/lessons-core.md` | Hot 層の実体（本ルールの収録基準に従う） |
 | `docs/rules/harness-escalation.md` | Lv1→Lv4 昇格の原則（RC-3 の根拠） |
-| `docs/rules/lessons-archive.md` | Cold 層（昇格済みの歴史的記録） |
+| git 履歴（`git log`） | Cold 層（昇格済みの歴史的記録）。**ファイルとしての実体は持たない**（§1 の 3 層構造に一本化済み） |
 | `tools/lessons_guard.py` | 出口・機械強制の統合実装 |
 | `CLAUDE.md`「セルフ改善ループ」 | lesson 追加の入口ルール（本ファイルを参照） |

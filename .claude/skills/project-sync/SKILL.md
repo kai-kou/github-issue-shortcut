@@ -52,7 +52,7 @@ GitHub Issues と Projects V2 の整合性を自動修正し、リポジトリ�
 ## 実行フロー
 
 > **実行モデル（改訂・#127）**: 全ステップを **Claude が GitHub MCP（`mcp__github__*`）で直接実行する**。
-> 中間の Python スクリプト（`tools/sync_project.py` 相当）は存在しない・前提にしない。詳細・gotcha は
+> 中間の Python スクリプト（`tools/sync_project.py` 相当）は存在しない・前提にしない。詳細・gotcha は <!-- refcheck:ignore -->
 > **SSOT: `docs/rules/github-mcp-fallback-patterns.md`**（§0〜2.3）を参照。要点:
 > - repo スコープの `gh`（REST + GraphQL）はクラウドで 403（L-114）。`gh issue list --jq` 等を一次経路にしない
 > - `list_issues(labels=[A,B])` は **OR**（gh の `--label A --label B` は AND）。複数条件は単一ラベルで取得後

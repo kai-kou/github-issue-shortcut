@@ -1,7 +1,7 @@
 # Claude Code 仕様変更追随レーン（claude-code-spec-sync・SSOT）
 
 > **このファイルは「Claude Code 本体のバージョンアップに本プロジェクトの内部資産（ルール・スキル定義・ハーネス・設定）を追随させる仕組み」の唯一の正本（SSOT）である。**
-> ユーザー明示指示（2026-07-17・Issue #264・kai-kou/kinako-mocchi のレーンを汎用化して移植）に基づき新設。
+> ユーザー明示指示（2026-07-17・Issue #264・下流プロジェクトのレーンを汎用化して移植）に基づき新設。
 > タスク依存ルール（`.claude/rules/` symlink なし・`claude-code-spec-sync` スキルが起動時に Read する）。
 
 ## 0. 目的

@@ -43,8 +43,7 @@
 
 ## 5. なぜ 6 スキルを 1 つに統合しないのか
 
-ベースリポジトリ `kai-kou/claude-code-base` の `docs/proposals/improvement-lane-consolidation.md`
-（設計判断の記録・ベース側 Issue #147。本リポジトリには配布されない）を参照。要点は
+`docs/proposals/improvement-lane-consolidation.md`（設計判断の記録・Issue #147）を参照。要点は
 「改善 Issue の世話（起票 → 整理 → 実装）は 1 スキルに統合する。振り返り・監査/衛生は
 frontmatter（`model` / `effort`）と自動起動点が異なるため統合しない」。
 
@@ -52,7 +51,7 @@ frontmatter（`model` / `effort`）と自動起動点が異なるため統合し
 
 | ドキュメント | 関係 |
 |------------|------|
-| ベース側 `docs/proposals/improvement-lane-consolidation.md` | レーン設計の判断記録（統合範囲と却下理由）。本リポジトリには未配布のため `kai-kou/claude-code-base` を参照する |
+| `docs/proposals/improvement-lane-consolidation.md` | レーン設計の判断記録（統合範囲と却下理由） |
 | `docs/rules/session-sprint-rules.md` | SP・priority の基準、@owner（PO）の権限境界 |
 | `docs/rules/user-confirmation-minimization.md` | A-1〜A-6 既約境界外（自律実行の範囲） |
 | `docs/rules/core-principles.md` | CP-3（リポジトリ衛生）・CP-6（ユーザー介入最小化） |

@@ -1,0 +1,32 @@
+{
+  "topic": "Graph エンジニアリングの本ベース（kai-kou/claude-code-base）への適用可否",
+  "brief": "ディープリサーチ成果物 content/research/graph-engineering-20260727_deep_research.md（および補助資料 content/research/graph-engineering-20260727_prompt.md）を必ず Read してから議論を始めること。争点は、2026 年に広まった『Graph エンジニアリング』の 2 レイヤー — ① オーケストレーショングラフ（LangGraph 型の状態機械・org graph / work graph・Anthropic の Dynamic Workflows）と ② コンテキストグラフ（GraphRAG・知識グラフメモリ・コードグラフ・ドキュメント参照グラフ）— のうち、本ベース（単一リポジトリ・1 人 + AI・GitHub Issues/PR 駆動・Markdown ルール 52 本 / Hot 層 13 本 67KB・スキル 18 本・tools 56 本・hooks 18 本）に実利をもたらす要素はどれか。本プロジェクトは前身概念『Loop Engineering』の適用検討を content/discussions/loop-engineering-analysis で既に実施済みであり、Dynamic Workflows の運用ルール（docs/rules/dynamic-workflows-rules.md）と議論型 Agent Teams（.claude/skills/discussion-review/）も稼働済みである点を前提に、二重投資・YAGNI を厳しく排除して合意せよ。バズワードの誇張と再現可能な技術的効果を必ず区別すること。リサーチが確定させた重要前提: (a) 用語の起源・系譜（prompt→context→loop→graph）は一次情報で確定できず棄却された（バズワード性の断定も新規性の否定も出典で支えられない）、(b) Claude Code はオーケストレーション層を公式機構でほぼカバーし、コード化された制御グラフに相当するのは workflows のみ（subagents / skills / agent teams は Claude がターンごとに判断）、(c) 敵対的検証・多角ドラフト比較は公式が明文で推奨する「繰り返し可能な品質パターン」だが精度改善の一次実測値は存在しない、(d) workflows の resume は同一セッション内限定で実行中エージェントは失われるため『小粒度 fan-out ほど進捗が保存される』が公式の設計則、(e) fan-out のコストは桁で効く（マルチエージェント ≒ チャットの 15 倍トークン・BrowseComp の性能分散の 80% がトークン量で説明）、(f) GraphRAG の優位は task-conditional（単純事実検索では Basic RAG 60.92% vs MS-GraphRAG 49.29% でベクトル RAG が優位。マルチホップ/全体要約でのみ優位で、かつオフライン構築コストの償却が前提）、(g) 🔴 重大な証拠不在: 『Markdown ルール/スキル群を参照・依存・SSOT のグラフとして管理する実践例』『Hot/Warm 階層ロードとの定量比較』『リンク切れ・ドリフト検出の自動化事例』については 3 票検証を通った出典が 1 件も無い（=「証拠なし」であり「効果なし」ではない）。この (g) の領域は本ベースにとって最も関心が高い一方で外部証拠が使えないため、既存実装の実測（ファイル数・バイト数・既存ツールの検出能力）に接地して論じ、証拠不在を根拠の代わりにしないこと。",
+  "participants": [
+    {
+      "name": "graph-scout",
+      "model": "sonnet",
+      "lens": "適用可能性の棚卸し役。リサーチ成果物の各要素（オーケストレーショングラフ / コンテキストグラフ / メモリ 3 層 / チェックポイント・resume / 敵対的検証グラフ / ドキュメント参照グラフ）を、本リポジトリの現状実装（CLAUDE.md・docs/rules/*.md 52 本・.claude/skills/ 18 本・.claude/hooks/ 18 本・tools/ 56 本・docs/rules/dynamic-workflows-rules.md・tools/check_rules_sync.sh・tools/check_skill_references.py・tools/lessons_guard.py・tools/discussion_whiteboard.py）と 1 対 1 で照合し『既に実装済み』『部分実装』『完全に欠落』の 3 分類で整理する。主張する前に必ず該当ファイルを Read して現状を正確に把握すること（推測での分類は禁止）。特に、Hot/Warm 層の階層ロードがコンテキストグラフの代替として十分か、ルール間の SSOT/参照関係が機械検証されているか、パイプラインの状態（checkpoint / pipeline_state.py / loop_state_manager.py）がグラフとして再開可能かを重点調査する。"
+    },
+    {
+      "name": "context-graph-analyst",
+      "model": "sonnet",
+      "lens": "コンテキストグラフ（レイヤー ②）専門の評価役。リサーチが示す GraphRAG / 知識グラフメモリ / コードグラフの定量効果（精度・トークン・レイテンシ）が、本リポジトリの規模（Markdown 数十本・単一リポジトリ・grep が数百ミリ秒で終わる）で再現するのかを検証する。グラフ構築の前処理コスト・インデックス鮮度維持コスト（ドリフト）・小規模データでの効果の薄さを一次情報の実測値に接地させて論じ、『grep + 階層ロード + SSOT 明示』という現行方式に対する優位が本当にあるのかを判定する。効果があるとすれば docs 間参照グラフ・Issue/PR グラフ・lessons の依存グラフのどれで、どの指標がどれだけ改善するのかを具体化する。"
+    },
+    {
+      "name": "yagni-skeptic",
+      "model": "sonnet",
+      "lens": "敵対的懐疑の立場。graph-scout と context-graph-analyst の主張に対し『実はすでに実装済み（Dynamic Workflows / discussion-review / Hot-Warm 階層 / check_rules_sync.sh が同じ問題を解いている）』『YAGNI（1 人 + AI・単一リポジトリの規模では効果が出ない）』『用語の言い換えに過ぎない（loop engineering 適用検討との重複投資）』『メンテナンスコストがベースの利用者（下流リポジトリ）に転嫁される』を徹底追及する。誇張・根拠なき楽観・二重実装を具体的に指摘し、採用してはいけない候補を明示的に潰すこと。ただし『何も採らない』という結論に固執せず、証拠で支持された最小構成は認めること。"
+    },
+    {
+      "name": "impl-designer",
+      "model": "haiku",
+      "lens": "実装設計役。他 3 名の議論で合意された採用候補について、具体的な実装案を出す。①新設・改修するファイルパス ②変更するスキル / フック / ルール ③優先順位（今スプリント / 次スプリント / 長期） ④想定 SP（1/2/3/5/8・Dynamic 補正込み） ⑤機械検証の方法（どのツールが完了を検証するか）。YAGNI を守り、1 箇所しか使わない抽象化レイヤーを作らない。既存ツール（tools/check_rules_sync.sh・check_skill_references.py・lessons_guard.py・discussion_whiteboard.py）の拡張で足りるなら新規ファイルを作らない案を優先する。"
+    }
+  ],
+  "synthesizer": {
+    "name": "lead",
+    "model": "sonnet",
+    "instruction": "4 役の議論全文を show で読み、①今すぐ実装すべき採用候補（高優先・具体的）②条件付き採用・要検証（中優先。条件を明示）③不採用（理由を明示。特に『既存機構でカバー済み』『規模が足りず効果なし』『用語の言い換え』のどれに該当するか）の 3 段階に仕分けた提案リストを consensus として post する。各候補に期待効果 / 実装コスト（SP）/ 機械検証手段を必ず添える。verdict は PASS（採用候補あり・現行方式は健全）/ WARN（現行方式に埋めるべき欠落がある）/ FAIL（重大な設計欠落がある）。summary はユーザーがこの 1 ページを読めば全提案を理解できる日本語で書く。バズワード由来の誇張は consensus に含めない。critical には議論を経ても残る真の欠落のみを入れる。"
+  },
+  "verdict_schema": "{\"verdict\":\"PASS|WARN|FAIL\",\"critical\":[],\"adopt_now\":[],\"adopt_conditional\":[],\"reject_reasons\":[],\"consensus\":\"\",\"summary\":\"\"}"
+}

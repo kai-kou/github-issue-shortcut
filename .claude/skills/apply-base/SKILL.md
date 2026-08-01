@@ -58,7 +58,7 @@ rm -rf "$tmp"
 
 ## 2.5 アップデート確認（「アップデートを確認して適用して」の場合）
 
-`apply-to-repo.sh` は実行の冒頭で **前回適用マーカー**（対象リポジトリの `.claude/base-sync-state.json`・
+`apply-to-repo.sh` は実行の冒頭で **前回適用マーカー**（対象リポジトリの `.claude/base-sync-state.json`・ <!-- refcheck:ignore -->
 適用済みベースの SHA と日時）を読み、以下を自動表示する。追加の手作業は不要:
 
 1. **前回適用以降の更新コミット一覧**（ベースの `git log <前回SHA>..HEAD --oneline`）
@@ -107,5 +107,5 @@ rm -rf "$tmp"
 - [ ] ルール（`docs/rules/` + `.claude/rules/` symlink）・スキル・ハーネス・ツールが対象リポジトリに展開された
 - [ ] 既存の `CLAUDE.md` / `docs/project-mission.md` が破壊されていない（保護 or `*.base` 併置）
 - [ ] 再同期の場合、前回適用以降の更新内容と手動手順（base-update-notes 該当分）が確認・実施された
-- [ ] `.claude/base-sync-state.json`（同期マーカー）が更新され、コミットに含まれている
+- [ ] `.claude/base-sync-state.json`（同期マーカー）が更新され、コミットに含まれている <!-- refcheck:ignore -->
 - [ ] 反映差分がコミットされ、アウトカム中心の報告が出された

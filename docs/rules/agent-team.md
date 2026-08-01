@@ -10,7 +10,7 @@
 
 ## 2つの協調モード（fan-out vs 議論型）と用語整理
 
-本ドキュメントが扱う「エージェントチーム」は、歴史的に **役割分担型 fan-out**（各サブエージェントが独立評価 → メインが集計・議論なし）を指してきた。これは Claude Code 公式の **Agent Teams 機能**（`TeamCreate`/`SendMessage` による peer-to-peer・実体は別 Claude Code インスタンス）とは別物である点に注意する。
+本ドキュメントが扱う「エージェントチーム」は、歴史的に **役割分担型 fan-out**（各サブエージェントが独立評価 → メインが集計・議論なし）を指してきた。これは Claude Code 公式の **Agent Teams 機能**（`SendMessage` による peer-to-peer・実体は別 Claude Code インスタンス）とは別物である点に注意する（`TeamCreate` / `TeamDelete` は v2.1.178 で廃止済み・§F-7）。
 
 | モード | 実体 | エージェント間通信 | 用途 | 参照 |
 |--------|------|------------------|------|------|
@@ -22,7 +22,7 @@
 > - 内部の自動調査（`problem-investigation-protocol.md` Step 3 の障害調査）・定型チェックは fan-out が既定（軽量・速い）。
 > - **過剰指摘や誤検知が問題になるレビュー**（画像/台本レビュー等）も議論型を選び、各エージェントに互いの指摘を批判検証させて critical を相互検証済みに絞る。
 >
-> **ツール露出の変遷**: 旧実機検証（#2588）では `Workflow`/`TeamCreate`/`SendMessage` が claude -p サブプロセス内でのみ利用可能だったが、**2026-07 時点でメインセッションに `Workflow`（2026-07-03 確認）・`SendMessage`（deferred ツール・2026-07-11 実測）が露出**。name 付き Agent 起動で暗黙チームが成立するため `TeamCreate` は不要になった。ただしサブエージェント側の共有タスクボード（TaskCreate 等）は利用不可・SendMessage の配達は受信側ターン継続中のみ（実測 V-5・`docs/proposals/native-agent-teams-migration.md` §1）。
+> **ツール露出の変遷**: 旧実機検証（#2588）では `Workflow`/`TeamCreate`/`SendMessage` が claude -p サブプロセス内でのみ利用可能だったが、**2026-07 時点でメインセッションに `Workflow`（2026-07-03 確認）・`SendMessage`（deferred ツール・2026-07-11 実測）が露出**。name 付き Agent 起動で暗黙チームが成立するため `TeamCreate` は不要（v2.1.178 で `TeamCreate` / `TeamDelete` 自体が廃止され、`team_name` は無視される）。ただしサブエージェント側の共有タスクボード（TaskCreate 等）は利用不可・SendMessage の配達は受信側ターン継続中のみ（実測 V-5・`docs/proposals/native-agent-teams-migration.md` §1）。委譲が空回答・期待外になる公式要因は §F-1〜F-7 を必ず確認する。
 
 ## Phase別の並列化パターン
 
@@ -59,6 +59,151 @@
 | 独立した2つ以上の作業 | 並列サブエージェントで同時実行 |
 | 大規模な実装タスク | `Explore` (必要に応じて) → `Plan` → 並列実装エージェント → 検証エージェント |
 | ファイル探索 + 実装が必要 | Explore で調査 → 結果を受けて実装（逐次） |
+
+## 🔴 委譲が「空回答・期待外の回答」になる公式要因（#367・2026-07-29 検証・v2.1.220）
+
+サブエージェント / Agent Teams の回答が空になる・意図しない形式で返る現象は、**モデルの怠慢ではなく
+ハーネスの仕様** で説明できるものが大半である。委譲前に以下を確認する。
+
+### F-1. ツールプールの 2 段フィルタ（空回答の最大要因）
+
+サブエージェントのツールは 2 段のフィルタで削られ、**削除はエラーを報告しない**（silent）。
+`tools` に書いたツールが全滅すると zero tools となり、**空・意味不明な回答** になる
+（v2.1.208 以降は起動拒否のエラー）。
+
+| フィルタ | 対象 | 除去されるもの |
+|---------|------|--------------|
+| 第 1（全サブエージェント） | 常に | `Agent`（深さ上限時）/ `AskUserQuestion` / `EndConversation` / `EnterPlanMode` / `ExitPlanMode`（`permissionMode: plan` 以外）/ `ScheduleWakeup` / `TaskOutput` / `WaitForMcpServers` / `Workflow` |
+| 第 2（background 実行） | **v2.1.198 以降は background が既定** | 下記の許可リスト **以外の組み込みツール全部**（MCP ツールは全て残る） |
+
+background で残る組み込みツール: `Read` `Grep` `Glob` `Bash` `PowerShell` `Edit` `Write` `NotebookEdit`
+`WebFetch` `WebSearch` `TodoWrite` `Skill` `ToolSearch` `EnterWorktree` `ExitWorktree` `Monitor`
+`TaskStop` `SendMessage` `Artifact`。Agent Teams の teammate はこれに加えて `TaskCreate` `TaskGet`
+`TaskList` `TaskUpdate` `CronCreate` `CronDelete` `CronList` を保持する。
+
+- **同じ定義でも foreground と background で解決結果が変わる**（`tools` に書いても background では消える）。
+- `tools` が MCP ツールのみの定義は、MCP 未接続の headless / cron 実行で zero tools になりうる
+  （`Read` 等の組み込みを 1 つ以上足しておく）。
+- 機械検出: `python3 tools/check_agent_definitions.py`（`.claude/agents/*.md` 変更時に
+  `tools/self_review_check.py` が自動実行する）。
+
+### F-2. `Explore` / `Plan` は CLAUDE.md を読まない
+
+組み込みサブエージェントのうち **`Explore` と `Plan` だけが CLAUDE.md と親の git status をスキップ**
+する（速度・コスト優先の公式仕様。frontmatter でも設定でも変更できない）。他の組み込み・カスタム
+サブエージェントは読む。
+
+→ プロジェクトのルール（応答言語・出力フォーマット・除外ディレクトリ等）を守らせたいなら、
+**委譲プロンプトに再掲する**。「CLAUDE.md に書いたから従うはず」は Explore / Plan には通用しない。
+
+### F-3. output style はサブエージェントに継承されない
+
+サブエージェントは自前のシステムプロンプトで動くため、**セッションの output style は返答を規定しない**
+（唯一の例外は fork）。本ベースの `concise-neko`（日本語・ねこ口調・サイレント規律）も **届かない**。
+
+→ 返答の言語・形式に要件があるなら、委譲プロンプトに明示する（「日本語で返す」「JSON のみ返す」等）。
+
+### F-4. 「最終テキスト = 親への返り値」であることを明示する
+
+サブエージェントの最終テキストがそのまま親への返り値になる。本ベースは「内部作業はサイレントに・
+実況を出さない」（L-111）を全体規律にしているため、**この規律を委譲先が過剰適用すると返り値そのものが
+痩せる**。委譲プロンプトには「最終テキストは親への返り値なので、結論・根拠・該当箇所を必ず含める」
+（= サイレント規律の適用外）を書く。
+
+### F-5. 空回答を観測したら API エラーを疑う
+
+- **foreground**: レート制限・過負荷・サーバエラーに切られた場合、テキスト出力済みなら **部分出力 + 打ち切り注記** が返る。
+  **何も出力していない / ツール呼び出しだけだった場合は `Agent terminated early due to an API error`**（v2.1.200 以降）。
+  v2.1.199 では打ち切り注記だけの **空の partial result** が返っていた。
+- **background**（既定）: サブエージェントが **failed とマークされ**、終了時のメッセージに API エラー名と
+  最後の出力が含まれる（部分作業は失われない）。
+
+→ 空回答は「サブエージェントが何もしなかった」ではなく API 側の打ち切りであることが多い。再委譲で回復する。
+
+### F-6. `Explore` のモデルは main 会話を継承する（v2.1.198 以降）
+
+`Explore` は以前「常に Haiku」だったが、**現在はメイン会話のモデルを継承** する（Claude API では Opus 上限）。
+「Explore に投げれば安い」という前提は成り立たず、`Agent` ツールの `model` 指定でも組み込みの継承は変わらない。
+
+→ 安く保ちたいなら **`.claude/agents/` に `Explore` という名前のサブエージェント定義を置き、
+`model: haiku` を指定して組み込みを上書きする**（公式明記: user / project スコープの `Explore` は
+組み込みを上書きし、自分の `model` フィールドを保つ）。
+上書きしない場合はメイン側の model / effort を下げる。なお **上書き版が CLAUDE.md を読むかは公式に記載がない**
+ため、F-2 のとおり必要なルールはプロンプトに再掲する前提で設計する。
+
+### F-7. Agent Teams（v2.1.178 以降）の制約
+
+- `TeamCreate` / `TeamDelete` は **廃止**。`Agent` の `team_name` は受理されるが **無視** される
+  （name 付き Agent の起動で暗黙チームが成立する）。
+- **in-process teammate は background サブエージェントを起動できない**（`run_in_background` や
+  `background: true` は **エラー**）。teammate の子作業は foreground で走る。
+- **nested team 不可**（teammate は teammate を spawn できない。チーム管理は lead のみ）。
+- `/resume` / `/rewind` で in-process teammate は復元されない（lead が存在しない teammate に話しかける）。
+- サブエージェント定義を teammate として使うと、`skills` / `mcpServers` frontmatter は **適用されない**。
+- teammate の mailbox は `~/.claude/teams/{team}/inboxes/{agent}.json`。不正エントリがあると
+  v2.1.207 未満では配達がブロックされる（現在は不正エントリのみ除去される）。
+- `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` が **必須**（未設定ならチームは組成されず、Claude は
+  黙って通常のサブエージェントにフォールバックする）。本ベースは `.claude/settings.json` の `env` で設定済み。
+
+> **深度の履歴（一般サブエージェント・#375）**: `Agent` を teammate 以外のサブエージェントから使う場合の
+> ネスト可否は §F-9 の深度上限に従う（v2.1.172〜216 は 5 層固定 → v2.1.217〜218 は 1 層 → **v2.1.219 以降は 3 層が既定**）。
+> 上記の「nested team 不可」は Agent Teams（teammate）固有の制約であり、通常のサブエージェントのネストとは別軸。
+
+### F-8. 完了報告が出ない最大要因は「完了通知が後のターンに届く」こと（v2.1.211・#375）
+
+background 実行（v2.1.198 以降の既定）では、**サブエージェントの結果は完了通知として後のターンに届く**。
+公式逐語（`sub-agents` / Run subagents in foreground or background）:
+
+> A background subagent's results reach Claude as a completion notification in a later turn.
+> Claude waits for that notification before reporting the subagent's results, and if you ask about
+> progress first, it reports that the subagent is still running.
+
+→ **「サブエージェント側が完了している」ことと「親が報告できる」ことは同期しない**。委譲した直後のターンで
+結果を語れないのは仕様であり、モデルの怠慢でも取りこぼしでもない（v2.1.211 より前は未完了の結果を
+報告してしまうことがあり、その捏造を止めるために待つ設計に変わった）。
+
+**使い分け（委譲時に必ず選ぶ）**:
+
+| 必要なもの | 指定 |
+|-----------|------|
+| そのターン内で結果を使って続きを書く（要約・判断・実装の前提） | `run_in_background: false`（同期実行） |
+| 並列に走らせて後で回収する（独立調査・長時間タスク） | 既定（background）。通知が届くまで結果を断定しない |
+| 定義として常に background にしたい | サブエージェント frontmatter `background: true`（未設定なら Claude が選び、既定は background） |
+| セッション全体で同期実行に固定したい | `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1`（fork モードにも優先する） |
+| スキル（`context: fork`）を同期に戻したい | スキル frontmatter `background: false`（v2.1.218 で fork スキルが background 既定になった） |
+
+> ⚠️ **サブエージェント frontmatter の `background` は「`true` で常に background」だけが公式に定義されている**。
+> 同期化の手段として `background: false` を当てにしない（同期にしたいなら `run_in_background: false` か
+> `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS`）。`background: false` が明記されているのは **スキル** の frontmatter。
+
+- 完了済みサブエージェントは **`/tasks` に done として残る**（v2.1.208 以降。以前は完了と同時に消えた）。
+  「終わったはずなのに見当たらない」ときの一次確認先。
+- **`SendMessage` で完了済みサブエージェントは再開できる**（`Agent` の再起動不要・background で auto-resume）。
+- 通知を待たずに「完了しました」と書くのは L-113（confabulation）そのもの。**実結果でのみ断定する**。
+- **報告そのものはサイレント規律（L-111）の対象外**。委譲結果の統合報告は「作業ログ」ではなく
+  ユーザー向けアウトカムであり、抑制してはならない（`output-verbosity-rules.md` §3.1）。
+
+### F-9. 3 種類の上限（超過は spawn 失敗として返る・#375）
+
+| 上限 | 既定 | 環境変数 | 超過時のエラー |
+|------|------|---------|--------------|
+| 同時実行数 | 20（v2.1.217〜） | `CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS` | `Concurrent subagent limit reached`（再試行しないよう指示される） |
+| セッション合計 | 200（v2.1.212〜） | `CLAUDE_CODE_MAX_SUBAGENTS_PER_SESSION` | `Subagent spawn limit reached`（残作業は自分のツールで完了せよと指示される） |
+| ネスト深度 | 3 層（v2.1.219〜） | `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH` | 深度上限のサブエージェントから `Agent` ツールが除去される（fork はツールは残りエラーを返す） |
+
+- 深度既定は **v2.1.217〜218 のあいだだけ 1**（ネスト不可）だった。この時期に「サブエージェントが子を
+  起動できず期待外の結果を返す」現象が集中しうる。現行 v2.1.220 では 3 層に復帰している。
+- 同時実行の枠は `/subtask` のフォークや **完了済みサブエージェントの再開** も消費する（再開は上限チェックを
+  経ずに枠を取るため、実行数が上限を超えることがある）。
+- `/clear` でセッション合計はリセットされる。ultracode 有効セッションは同時実行上限の対象外。
+- workflow の `agent()` と Agent Teams の teammate は **別枠**（それぞれ独自の上限に従う）。
+
+### F-10. 既に修正済みの関連バグ（v2.1.216・履歴として保持）
+
+- background サブエージェントが **起動直後に高優先メッセージが来るとキャンセルされる**（→ 完了報告が来ない）
+- **再開した background エージェントが既定エージェントに戻る**（→ 人格・出力形式が意図と変わる）
+
+いずれも v2.1.216 で修正済み。**v2.1.215 以前で観測した症状を現行仕様と混同しない**。
 
 ## モデル選択ルール（コスト最適化）
 
@@ -107,7 +252,7 @@
 | Opus 4.7（legacy） | `claude-opus-4-7` | 1M トークン | $5 / $25 | Adaptive Thinking | `xhigh` | さらに旧世代。SWE-bench Pro 64.3%（2026-04-16 リリース） |
 | Opus 4.6（legacy） | `claude-opus-4-6` | 1M トークン | $5 / $25 | Adaptive Thinking | `max` | さらに旧世代。新規利用は非推奨 |
 | **Sonnet 5** | `claude-sonnet-5` | 1M トークン | $3 / $15 | Adaptive Thinking | `medium` | メインセッションのデフォルト、実装エージェント、PR作成・レビュー対応 |
-| **Haiku 4.5** | `claude-haiku-4-5` | 200K トークン | $1 / $5 | Extended Thinking | — | Explore エージェント、ファイル探索、パターン検索、セルフレビューの個別チェック |
+| **Haiku 4.5** | `claude-haiku-4-5` | 200K トークン | $1 / $5 | Extended Thinking | — | ファイル探索、パターン検索、セルフレビューの個別チェック（組み込み `Explore` はメイン継承のため §F-6 の上書き定義が必要） |
 
 > **Opus 5（`claude-opus-5`・現行 Opus）**: Opus 4.8 の後継で、深い推論・長期エージェント作業・コーディングが大幅強化。**Opus 4.8 と同価格（$5 / $25）のドロップイン更新** で、1M コンテキスト・128K 出力・adaptive thinking・prompt caching は据え置き。API 面の変更点は 2 つ: ① **thinking が既定 ON**（`thinking` 未指定でも adaptive で動く。Opus 4.8/4.7 は未指定＝思考なしだった。`max_tokens` は thinking + 応答の合計上限なので余裕を持たせる） ② **thinking 無効化は effort `high` 以下でのみ可能**（`xhigh`/`max` と併用すると HTTP 400）。Opus 4.8 から引き続き `budget_tokens` / `temperature` / `top_p` / `top_k` は **HTTP 400 で拒否** される。**デフォルト effort は `high`**（Opus 4.8 と同じ）。公式推奨は「コーディング/エージェントは `xhigh`、それ以外の知能重視は `high` を基準に eval で per-route 調整」。加えて Opus 5 は `low`/`medium` でも高品質なため、**コスト削減はモデル変更より先に effort を下げて評価する**。prompt cache の最小長は 512 トークン（Opus 4.8 は 1024）で、短いプロンプトもキャッシュ対象になる。レート枠は Opus 4.x プールとは **別枠**。
 > **Opus 5 の挙動の癖（プロンプトで調整）**: ① ユーザー向け応答・生成ファイルが長くなりがち（簡潔さの明示指示が有効。effort を下げても表示出力長は縮まない） ② 指示しなくても自己検証するため、旧モデル向けの「必ず検証ステップを入れよ」系の指示は **削除** した方がよい（過剰検証になる） ③ 依頼スコープを勝手に広げることがある（スコープ規律の明示で抑制） ④ サブエージェント委譲に積極的（Opus 4.8 とは逆。コスト重視なら上限を明示する）。
@@ -150,7 +295,8 @@ Claude 4 モデル全般で対応。ツール結果を受け取った後に内�
 - 現行の Opus / Sonnet はともに **1M トークン** のコンテキストウィンドウを持つため、長時間パイプラインでも圧縮が発生しにくい（Claude Code では Max/Team/Enterprise プランで 1M に自動アップグレード）
 
 **サブエージェント** （Agent tool の `model` パラメータで指定）:
-- `subagent_type=Explore` → `model="haiku"` （コードベース調査・ファイル探索）
+- `subagent_type=Explore` → **モデルはメイン会話を継承する**（v2.1.198〜。`model` 指定では下げられない。
+  安く保つなら §F-6 のとおり `Explore` という名前の project サブエージェント定義で上書きする）
 - `subagent_type=Plan` → `model="sonnet"` （実装計画・設計）
 - `subagent_type=general-purpose` （実装） → `model="sonnet"`
 - `subagent_type=general-purpose` （検証・チェック） → `model="haiku"`
@@ -270,25 +416,6 @@ Opus / Sonnet の 1M コンテキストウィンドウを効果的に活用す�
 }
 ```
 
-### サブエージェント成果物の受け渡し規約（揮発チャネル禁止・L-121）
-
-**親が受け取れるのはサブエージェントの「最後の」assistant テキストだけ** で、途中のターンで出した
-本文は届かない。報告後に system-reminder 等の継続プロンプトが注入されると、エージェントは相槌
-（`完了。` → `End.`）を返し、それが最終テキストとして成果物を上書きする（実測・Issue #140）。
-
-したがって **失うと作業がやり直しになる成果物は、必ず永続媒体に書かせる**:
-
-| 成果物 | 媒体 |
-|--------|------|
-| レビュー所見・調査結果・分析レポート | ファイル（絶対パスを起動プロンプトで渡す）。最終メッセージは `WROTE: {パス} ({N}件)` の 1 行 |
-| 議論型レビューの主張・反論・合意 | ホワイトボード（`tools/discussion_whiteboard.py post`） |
-| 短い判定値（可否・件数など） | 最終テキストでも可。ただし空・一言で返ったら「否定的な結果」と解釈せず未回収として扱う |
-
-- **空・一言の戻り値を「異常なし」「指摘なし」と解釈しない**（未実施を成果ゼロと報告する捏造になる・L-113）
-- 回収漏れ時は生トランスクリプト（`tasks/<agentId>.output` → `~/.claude/projects/<プロジェクト>/<セッションID>/subagents/agent-<agentId>.jsonl`）の
-  assistant text ブロックを **全件** 確認して回収する（最終テキストだけを見ない）
-- サブエージェントに `ReportFindings` を使わせない（ホスト UI 向けの報告経路で、親セッションには届かない）
-
 ### 長期タスクの検証ポイント設計
 
 エラーは **複合的に蓄積する**（ステップごとの精度 95% × 10 ステップ = 全体成功率約 60%）。
@@ -315,7 +442,7 @@ Opus / Sonnet の 1M コンテキストウィンドウを効果的に活用す�
 ```
 
 - 上流の成果物が `content/` に存在し、PR がマージ済みであることを確認してから下流を開始する
-- Phase をまたぐ作業の開始前に `docs/production-flow.md` の「前提条件」を確認する
+- Phase をまたぐ作業の開始前に `docs/production-flow.md` の「前提条件」を確認する <!-- refcheck:ignore -->
 
 ## プロジェクト固有オブザーバーエージェントのオブザーバーモード
 
