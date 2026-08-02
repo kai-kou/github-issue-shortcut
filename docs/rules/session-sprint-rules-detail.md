@@ -1,7 +1,7 @@
 # セッションスプリント運用ルール（Session-Sprint Rules・SSOT）
 
 > **このファイルは「1 セッション = 1 スプリント」運用の唯一の正本（Single Source of Truth）である。**
-> 飼い主の明示決定（2026-06-12・Issue #2946。スクラム提案 `docs/proposals/scrum-workflow-adaptation.md` への回答）に基づき新設。
+> 飼い主の明示決定（2026-06-12・Issue #2946。スクラム提案への回答。提案本文は開発リポジトリの提案記録として保持）に基づき新設。
 > `.claude/rules/` に symlink され、全セッションで自動読み込みされる。
 >
 > **飼い主決定の記録（2026-06-12）**:
@@ -50,7 +50,7 @@
 
 > 本プロジェクトは **リサーチ・判断・実装・レビューをすべて Claude Code（AI Agent）が実行** する。
 > 人間チームの SP（認知的工数）とギャップが出るため、AI 実行特有の **不確実性** を補正因子として明示する。
-> 専門チーム議論（claude -p 議論型・PASS）の経緯と合意は `content/discussions/sp-estimation-redesign/whiteboard.md` を参照。
+> 専門チーム議論（claude -p 議論型・PASS）の経緯と合意（議題 ID: `sp-estimation-redesign`）は開発リポジトリの議論記録に保持している（公開リポジトリには含まれない）。
 
 **事前見積もり = §3.1 のベーススケール + Dynamic 補正** （ハイブリッド方式）:
 
@@ -146,7 +146,6 @@
 
 | ファイル | 役割 |
 |---------|------|
-| `docs/proposals/scrum-workflow-adaptation.md` | 設計の経緯・全体像（v2 = セッション特化） |
 | `.claude/agents/owner.md` | @owner 定義（PO ロール・ラベルホワイトリスト） |
 | `tools/half_day_summary.py` | 日次スプリントメトリクス集計 |
 | `tools/sprint_session_metrics.py` | セッション単位の SP×トークン×時間ベロシティ算出（`current` で現セッションのトークン即答・#3024） |

@@ -288,6 +288,10 @@ PR_FIELDS = {
     "baseRefName": lambda p: (p.get("base") or {}).get("ref", ""),
     "headRefOid": lambda p: (p.get("head") or {}).get("sha", ""),
     "author": lambda p: _actor(p.get("user")),
+    # PR 著者の GitHub 上の立場（OWNER/MEMBER/COLLABORATOR/CONTRIBUTOR/NONE 等）。
+    # REST の一覧・単体取得応答どちらにも author_association が含まれる（#379・
+    # check_pending_pr_reviews.py の _is_claude_branch 著者検証が依存する）。
+    "authorAssociation": lambda p: p.get("author_association") or "",
     "labels": _labels,
     "assignees": lambda p: [_actor(a) for a in p.get("assignees", [])],
     "milestone": _milestone,
@@ -756,16 +760,25 @@ TRANSLATORS: dict[tuple[str, str], object] = {
 # ---------------------------------------------------------------- 診断
 
 def doctor(real_gh: str) -> None:
-    slug = repo_slug(None) or "kai-kou/claude-code-base"
+    slug = repo_slug(None)
     probes = [
         ("gh api user（生存確認）", ["api", "user", "--jq", ".login"]),
-        (f"repo REST read（repos/{slug}）", ["api", f"repos/{slug}", "--jq", ".full_name"]),
-        (f"repo REST issues（repos/{slug}/issues）", ["api", f"repos/{slug}/issues?per_page=1", "--jq", "length"]),
         ("GraphQL（想定: 403）", ["api", "graphql", "-f", "query=query{viewer{login}}"]),
         ("search REST（想定: 403）", ["api", "search/issues?q=test&per_page=1"]),
-        ("Actions variables（想定: 403）", ["api", f"repos/{slug}/actions/variables"]),
     ]
-    print(f"gh-shim doctor（cloud={is_cloud()}・repo={slug}）")
+    if slug:
+        probes[1:1] = [
+            (f"repo REST read（repos/{slug}）", ["api", f"repos/{slug}", "--jq", ".full_name"]),
+            (f"repo REST issues（repos/{slug}/issues）", ["api", f"repos/{slug}/issues?per_page=1", "--jq", "length"]),
+        ]
+        probes.append(("Actions variables（想定: 403）", ["api", f"repos/{slug}/actions/variables"]))
+    print(f"gh-shim doctor（cloud={is_cloud()}・repo={slug or '未解決'}）")
+    if not slug:
+        print(
+            "  ⚠ repo slug を解決できませんでした（PROJECT_REPO/GITHUB_REPOSITORY 未設定・"
+            "git remote からも解決不可）。repo スコープのプローブはスキップします。"
+            "PROJECT_REPO=owner/repo を設定するか git remote を確認してください。"
+        )
     for label, cmd in probes:
         proc = subprocess.run([real_gh, *cmd], capture_output=True, text=True, timeout=30)
         status = "✅" if proc.returncode == 0 else "❌"
@@ -786,11 +799,17 @@ def self_test() -> None:
           "head": {"ref": "feat/x", "sha": "abc"}, "base": {"ref": "main"},
           "user": {"login": "u", "type": "User"}, "labels": [{"name": "sp:3", "color": "fff"}],
           "requested_reviewers": [{"login": "r"}], "draft": False,
+          "author_association": "OWNER",
           "created_at": "c", "html_url": "https://x"}
-    m = map_fields(pr, ["number", "state", "headRefName", "author", "reviewRequests", "labels", "createdAt"], PR_FIELDS)
+    m = map_fields(pr, ["number", "state", "headRefName", "author", "authorAssociation", "reviewRequests", "labels", "createdAt"], PR_FIELDS)
     check("pr.state=MERGED", m["state"] == "MERGED")
     check("pr.headRefName", m["headRefName"] == "feat/x")
     check("pr.author.login", m["author"]["login"] == "u")
+    # #379: check_pending_pr_reviews.py の著者検証が依存するフィールド。REST の
+    # author_association 欠落時は空文字（fail closed。None ではなく "" にして
+    # 呼び出し側の `not author_association` 判定と一致させる）
+    check("pr.authorAssociation", m["authorAssociation"] == "OWNER")
+    check("pr.authorAssociation missing → ''", map_fields({**pr, "author_association": None}, ["authorAssociation"], PR_FIELDS)["authorAssociation"] == "")
     check("pr.reviewRequests", m["reviewRequests"][0]["login"] == "r")
     check("pr.labels", m["labels"][0]["name"] == "sp:3")
 

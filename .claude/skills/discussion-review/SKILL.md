@@ -1,11 +1,12 @@
 ---
 name: discussion-review
 description: 議論型レビュー（敵対的相互レビュー）をネイティブ Agent Teams（name 付き Agent tool + SendMessage + 共有ホワイトボード）で実行する。「専門チームを組成して」「チームで議論して」「議論型レビューして」「/discussion-review」と依頼された時、および pr-review-watcher の Layer 2 自動起動（discussion_review_trigger.py が対象と判定した時）に使用する。claude -p サブプロセスは起動しない（失敗時のみ tools/run_discussion_review.py へフォールバック）。役割分担型 fan-out（独立評価の集計）で足りる軽微タスクには使わない。
+effort: high
 ---
 
 # discussion-review — ネイティブ議論型レビュー
 
-> **位置付け**: 議論型レビューの **既定経路**（Phase 2 切替済み・`docs/proposals/native-agent-teams-migration.md`）。
+> **位置付け**: 議論型レビューの **既定経路**（Phase 2 切替済み。移行検討の経緯は開発リポジトリの提案記録として保持）。
 > 旧経路 `tools/run_discussion_review.py`（claude -p 駆動）は **フォールバック** として存置。
 > 実行前に `docs/rules/discussion-whiteboard-rules.md` を必ず Read すること（ホワイトボード規約の SSOT）。
 
@@ -119,4 +120,5 @@ verdict JSON を呼び出し元（スキル・ユーザー報告）へ返す。
 | `tools/discussion_whiteboard.py` | ホワイトボード基盤（init/post/render/list/show） |
 | `tools/run_discussion_review.py` | 旧経路（claude -p）・フォールバック |
 | `tools/discussion_review_trigger.py` | Layer 2 自動起動の判定（pr-review-watcher から呼ばれる） |
-| `docs/proposals/native-agent-teams-migration.md` | 移行の経緯・実機検証（V-1〜V-6）・制約の根拠 |
+
+> 移行の経緯・実機検証（V-1〜V-6）・制約の根拠は開発リポジトリの提案記録として保持している。

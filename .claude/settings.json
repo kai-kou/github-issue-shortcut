@@ -64,11 +64,7 @@
       "mcp__github__search_issues",
       "mcp__github__subscribe_pr_activity",
       "mcp__github__unsubscribe_pr_activity",
-      "mcp__github__update_pull_request",
-      "mcp__Cloudflare_API__execute",
-      "mcp__Cloudflare_API__search",
-      "mcp__Cloudflare_Developer_Platform__d1_database_query",
-      "mcp__Cloudflare_Developer_Platform__d1_databases_list"
+      "mcp__github__update_pull_request"
     ],
     "deny": [
       "Read(.env)",
@@ -81,6 +77,8 @@
       "Read(**/id_ed25519)",
       "Read(**/.aws/**)",
       "Read(**/*service-account*.json)",
+      "Read(**/.git-credentials)",
+      "Read(**/.netrc)",
       "Read(**/*.env)",
       "Read(**/broker_secrets.env)",
       "Read(**/github_variables.env)",
@@ -88,32 +86,36 @@
       "Edit(.claude/settings.local.json)"
     ]
   },
-  "autoMode": {
-    "allow": [
-      "$defaults",
-      "`git push --force-with-lease` targeting a working branch (claude/*, feat/*, fix/*, docs/*): this project restarts already-merged working branches each sprint, which requires a force-with-lease push over the merged history. Direct pushes to main remain blocked by the pre-push hook (A-1), so this is safe.",
-      "`mcp__Cloudflare_API__execute` / `mcp__Cloudflare_API__search` and `mcp__Cloudflare_Developer_Platform__d1_database_query` / `d1_databases_list`: Claude autonomously manages this project's own Cloudflare Worker and D1 (Secrets, vars, D1 schema/migrations/queries, deploy verification). Approved by the project owner for hands-off operation.",
-      "`mcp__Cloudflare_API__execute` calling `PATCH /accounts/{account_id}/builds/workers/{script_tag}` to change this project's Workers Builds `production_settings` (e.g. `deploy_command`, `build_command`): explicitly approved by the project owner (2026-07-17, Issue #55 — adding `wrangler d1 migrations apply DB --remote` to the deploy command) for hands-off operation on this repo's own Worker build config. Does not extend to other accounts/projects."
-    ]
-  },
   "sandbox": {
+    "enabled": true,
     "autoAllowBashIfSandboxed": true,
     "network": {
       "allowedDomains": [
         "github.com",
         "api.github.com",
+        "raw.githubusercontent.com",
         "slack.com",
         "api.slack.com",
         "api.anthropic.com",
         "mcp.context7.com",
-        "context7.com"
+        "context7.com",
+        "api.cloudflare.com",
+        "registry.npmjs.org",
+        "pypi.org",
+        "files.pythonhosted.org"
       ]
     },
     "excludedCommands": [
-      "python3 *tools/*.py",
-      "python *tools/*.py",
-      "timeout * python3 *tools/*.py",
-      "timeout * python *tools/*.py"
+      "*tools/fetch_broker_secrets.sh*",
+      "*tools/setup_secrets_broker.sh*",
+      "python3 *tools/verify_broker_migration.py*",
+      "python3 *tools/finalize_broker_migration.py*",
+      "python *tools/verify_broker_migration.py*",
+      "python *tools/finalize_broker_migration.py*",
+      "timeout * python3 *tools/verify_broker_migration.py*",
+      "timeout * python3 *tools/finalize_broker_migration.py*",
+      "timeout * python *tools/verify_broker_migration.py*",
+      "timeout * python *tools/finalize_broker_migration.py*"
     ]
   },
   "hooks": {

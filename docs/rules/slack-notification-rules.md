@@ -266,7 +266,7 @@ python3 tools/slack_notify.py publish \
 | `approval` | **PR作成前の承認依頼**（ユーザーメンション付き） | **`SLACK_APPROVAL_CHANNEL_ID`** | スキル内で明示呼び出し（必須ステップ） |
 | `waiting` | **ユーザーアクション待ち**（メンション付き） | **`SLACK_APPROVAL_CHANNEL_ID`** | スキル内で明示呼び出し |
 | `publish` | **公開・配信完了**（`config/publish_events.yaml` 駆動・メンション付き） | **`SLACK_PUBLISH_CHANNEL_ID`** | スキル内で明示呼び出し（`--event-type` 必須。値は同ファイルのキー） |
-| `routine-idle` | **ルーティンのアイドル通知**（消化対象ゼロ＝バックログ空。維持/停止の判断支援 FYI・@mention なし） | `SLACK_CHANNEL_ID` | ルーティンが完全 no-op 時に呼び出し（`docs/routines.md` R-1 手順 8）。JST スロット（既定 08:00〜10:00）で 1 日 1 回に自己抑制・`--force` でバイパス |
+| `routine-idle` | **ルーティンのアイドル通知**（消化対象ゼロ＝バックログ空。維持/停止の判断支援 FYI・@mention なし） | `SLACK_CHANNEL_ID` | ルーティンが完全 no-op 時に呼び出し（R-1 手順の該当ステップは下流プロジェクトの運用メモが定義）。JST スロット（既定 08:00〜10:00）で 1 日 1 回に自己抑制・`--force` でバイパス |
 
 > `SLACK_APPROVAL_CHANNEL_ID` が未設定の場合、`approval` / `waiting` も `SLACK_CHANNEL_ID` に送信される（後方互換）。
 > `SLACK_PUBLISH_CHANNEL_ID` が未設定の場合、`publish` は `SLACK_APPROVAL_CHANNEL_ID` → `SLACK_CHANNEL_ID` にフォールバック。
@@ -327,33 +327,25 @@ python3 "${CLAUDE_PROJECT_DIR}/tools/slack_notify.py" publish \
 Claude Code が Bash ツール経由でこのスクリプトを呼び出すとき、サンドボックスのネットワーク制御が
 子プロセスの通信を遮断する場合がある。
 
-`allowedDomains` に `slack.com` / `api.slack.com` を登録するだけでは、実装依存で不十分になることがある。
+### 対策: `sandbox.network.allowedDomains` への登録（2026-08-01 見直し後・#379）
 
-### 対策: `sandbox.excludedCommands` への登録（Lv3 仕組み）
-
-`settings.json` の `sandbox.excludedCommands` に登録されたパターンにマッチするコマンドは
-**サンドボックスのネットワーク制限を完全にバイパス** して実行される。
-
-現在は `tools/` 配下の全 Python スクリプトを一括でカバーするパターンが登録されており、
-`slack_notify.py` も自動的にバイパス対象になる。
+> 🔴 旧設定は `sandbox.excludedCommands` に `tools/` 配下の全 Python スクリプトを一括バイパスする
+> ブロードパターンが登録されており、`slack_notify.py` もその副産物としてバイパス対象になっていた。
+> このブロード exclusion は配布テンプレートとして危険な既定値だったため廃止した
+> （`scripts/apply-to-repo.sh` 経由で下流リポジトリへそのまま配布されるため・詳細は
+> `docs/rules/sandbox-rules.md`）。**`slack_notify.py` は接続先が `slack.com` / `api.slack.com` の
+> 静的ドメインのみなので、`allowedDomains` 登録だけで足り、`excludedCommands` は不要になった。**
 
 ```json
 "sandbox": {
-  "excludedCommands": [
-    "python3 *tools/*.py",
-    "python *tools/*.py",
-    "timeout * python3 *tools/*.py",
-    "timeout * python *tools/*.py"
-  ]
+  "network": {
+    "allowedDomains": ["slack.com", "api.slack.com"]
+  }
 }
 ```
 
-| パターン | マッチする呼び出し例 |
-|---------|------------------|
-| `python3 *tools/*.py` | `python3 tools/slack_notify.py approval ...` |
-| `python *tools/*.py` | `python tools/slack_notify.py approval ...` |
-| `timeout * python3 *tools/*.py` | `timeout 15s python3 tools/slack_notify.py session-start ...` |
-| `timeout * python *tools/*.py` | `timeout 15s python tools/slack_notify.py session-start ...` |
+`excludedCommands` は現在、接続先ドメインが実行時まで決まらない一部のスクリプト
+（secrets-broker 移行ツール等）だけに narrow exclusion として残る。`slack_notify.py` はそこに含まれない。
 
 > サンドボックス設定の詳細と全対象スクリプトの一覧は `docs/rules/sandbox-rules.md` を参照。
 
@@ -365,18 +357,13 @@ Claude Code のサンドボックスとは独立したプロセスで実行さ�
 
 ### スキルからの直接呼び出し（Bash ツール経由）
 
-スキル SKILL.md に記載されている以下のパターンが **`excludedCommands` に登録されたパターン** と一致する。
+スキル SKILL.md からの呼び出しは、接続先が `allowedDomains` に登録済みの `slack.com` /
+`api.slack.com` である限りそのまま動く（`excludedCommands` への一致は不要）。
 
 ```bash
-# OK: excludedCommands パターン "python3 *tools/*.py" にマッチ
 python3 "${CLAUDE_PROJECT_DIR}/tools/slack_notify.py" approval ...
-
-# OK: excludedCommands パターン "timeout * python3 *tools/*.py" にマッチ
 timeout 15s python3 "${CLAUDE_PROJECT_DIR}/tools/slack_notify.py" session-start ...
 ```
-
-**重要**: スキル内での `slack_notify.py` 呼び出しは必ず `python3 ... tools/slack_notify.py` 形式に従うこと。
-シェルラッパー（`bash tools/run_slack.sh` 等）を経由するとパターンにマッチしなくなる。
 
 ---
 
@@ -392,13 +379,7 @@ timeout 15s python3 "${CLAUDE_PROJECT_DIR}/tools/slack_notify.py" session-start 
         "slack.com",
         "api.slack.com"
       ]
-    },
-    "excludedCommands": [
-      "python3 *tools/*.py",
-      "python *tools/*.py",
-      "timeout * python3 *tools/*.py",
-      "timeout * python *tools/*.py"
-    ]
+    }
   },
   "hooks": {
     "Stop": [
@@ -407,6 +388,9 @@ timeout 15s python3 "${CLAUDE_PROJECT_DIR}/tools/slack_notify.py" session-start 
   }
 }
 ```
+
+> `excludedCommands` は `slack_notify.py` には不要（`allowedDomains` で足りる）。現行の
+> `excludedCommands` 全文は `docs/rules/sandbox-rules.md`（narrow exclusion のみ）を参照。
 
 `SLACK_BOT_TOKEN` または `SLACK_CHANNEL_ID` が未設定の場合、フックは **無音でスキップ**（`exit 0`）するため、設定前はエラーにならない。
 

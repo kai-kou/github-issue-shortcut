@@ -1,6 +1,7 @@
 ---
 name: apply-base
-description: kai-kou/claude-code-base の汎用ルール・スキル定義・ハーネス一式を現在のリポジトリへ反映（適用・同期）する。「claude-code-base の内容を反映して」「claude-code-base を適用して」「ベースを反映して」「ベース設定を取り込んで」「claude-code-base で初期化して」「claude-code-base のアップデートを確認して適用して」「ベースのアップデート内容を確認して」等と依頼された時に使用する。前回適用時点からの更新内容（コミット一覧・手動手順が必要な更新）の確認も本スキルが担う。private リポジトリのベースを git clone（クラウドでは gh の repo スコープ操作が 403 でブロックされるため git/MCP 経路）で取得して適用するため、ユーザーがコマンドを打つ必要はない。
+description: kai-kou/claude-code-repository-base（公開ベース）の汎用ルール・スキル定義・ハーネス一式を現在のリポジトリへ反映（適用・同期）する。「claude-code-base の内容を反映して」「claude-code-base を適用して」「ベースを反映して」「ベース設定を取り込んで」「claude-code-base で初期化して」「claude-code-base のアップデートを確認して適用して」「ベースのアップデート内容を確認して」等と依頼された時に使用する。前回適用時点からの更新内容（コミット一覧・手動手順が必要な更新）の確認も本スキルが担う。公開リポジトリのベースを git clone（クラウドでは gh の repo スコープ操作が 403 でブロックされるため git/MCP 経路）で取得して適用するため、ユーザーがコマンドを打つ必要はない。
+effort: medium
 ---
 
 > 🔴 **GitHub 操作の経路（必読・L-114）**: クラウド実行環境では `gh` がプリインストールされず、
@@ -11,14 +12,15 @@ description: kai-kou/claude-code-base の汎用ルール・スキル定義・ハ
 
 # claude-code-base 適用スキル（apply-base）
 
-現在のリポジトリ（カレントの作業リポジトリ）に、`kai-kou/claude-code-base` の
+現在のリポジトリ（カレントの作業リポジトリ）に、`kai-kou/claude-code-repository-base`（公開ベース）の
 **ルール・スキル定義・ハーネス・ツール一式** を反映する。ユーザーは
 「claude-code-base の内容を本リポジトリに反映して」程度の自然文を伝えるだけでよく、
 コマンド実行・ファイル名の把握は不要。本スキルが gh 経由で適用機構を取得して実行する。
 
 ## 0. 前提と方針
 
-- ベースは **private** の想定。取得は **git clone（`https://github.com/...`）を一次経路** にする（認証はプロキシ/トークンが付与）。
+> 🔶 **取得元**: `apply-base` の取得元は **公開リポジトリ `kai-kou/claude-code-repository-base` を正とする**（§1・§2 参照）。公開リポジトリからの取得になるため、アクセス権を持たない第三者も本スキルをそのまま使える。
+- ベースは **public**（`kai-kou/claude-code-repository-base`）の想定。取得は **git clone（`https://github.com/...`）を一次経路** にする（public のため認証不要。プロキシ/トークンが付与されていても支障はない）。
 - 🔴 **クラウド実行環境（`CLAUDE_CODE_REMOTE=true`）では `gh api repos/.../contents`・`gh repo clone` が egress プロキシに 403 でブロックされる**（L-114・`github-mcp-fallback-patterns.md`）。よってベース取得に `gh api contents` を使わない。クラウドで生存するのは `git clone https://...` と公式 MCP（`mcp__github__get_file_contents`）のみ。
 - 適用は **冪等**。初回適用にも、ベース更新後の再同期にも同じ手順を使う。
 - 既存の `CLAUDE.md` / `docs/project-mission.md` は **既定で保護**（上書きしない）。`.claude/settings.json` は退避してから導入される。
@@ -30,7 +32,7 @@ description: kai-kou/claude-code-base の汎用ルール・スキル定義・ハ
 # カレントが対象リポジトリのルートであること（サブディレクトリ実行を厳密に拒否）
 [ -z "$(git rev-parse --show-prefix 2>/dev/null)" ] || { echo "エラー: 対象リポジトリのルートで実行してください" >&2; exit 1; }
 # git でベースへ到達できること（クラウドでは git プロキシが認証付与・gh auth status は当てにしない）
-git ls-remote https://github.com/kai-kou/claude-code-base.git HEAD >/dev/null 2>&1 \
+git ls-remote https://github.com/kai-kou/claude-code-repository-base.git HEAD >/dev/null 2>&1 \
   || { echo "ベースに到達できません: GH_TOKEN/ネットワーク設定を確認してください" >&2; exit 1; }
 ```
 
@@ -46,14 +48,14 @@ git ls-remote https://github.com/kai-kou/claude-code-base.git HEAD >/dev/null 2>
 ```bash
 # クラウド・ローカル共通: git clone でベースを取得して適用スクリプトを実行
 tmp="$(mktemp -d)"
-git clone --depth 1 https://github.com/kai-kou/claude-code-base.git "$tmp/base" >/dev/null 2>&1 \
+git clone --depth 1 https://github.com/kai-kou/claude-code-repository-base.git "$tmp/base" >/dev/null 2>&1 \
   || { echo "ベースの clone に失敗しました" >&2; exit 1; }
 bash "$tmp/base/scripts/apply-to-repo.sh"            # オプションは末尾に付与（例: --prune --tz Asia/Tokyo）
 rm -rf "$tmp"
 ```
 
 - `apply-to-repo.sh` 内部の `fetch_base()` も `git clone https://...` フォールバックを持つため、`--base`/`--ref` で別リポ・別 ref を指定しても取得できる（`gh repo clone` はクラウドで失敗するが git フォールバックが効く）。
-- 単一ファイルだけ確認したい等で MCP を使う場合は `mcp__github__get_file_contents(owner="kai-kou", repo="claude-code-base", path="scripts/apply-to-repo.sh")` で取得できる（クラウドの 403 を回避）。`gh api repos/.../contents` は使わない。
+- 単一ファイルだけ確認したい等で MCP を使う場合は `mcp__github__get_file_contents(owner="kai-kou", repo="claude-code-repository-base", path="scripts/apply-to-repo.sh")` で取得できる（クラウドの 403 を回避）。`gh api repos/.../contents` は使わない。
 - 主なオプション: `--prune`（`modules.yaml` で無効化したモジュール資産を除去）/ `--tz` / `--overwrite-project`（CLAUDE.md 等も上書き）/ `--check-updates`（アップデート内容の表示のみ・適用なし）/ `--dry-run`（適用対象の確認のみ）。
 
 ## 2.5 アップデート確認（「アップデートを確認して適用して」の場合）
@@ -62,7 +64,8 @@ rm -rf "$tmp"
 適用済みベースの SHA と日時）を読み、以下を自動表示する。追加の手作業は不要:
 
 1. **前回適用以降の更新コミット一覧**（ベースの `git log <前回SHA>..HEAD --oneline`）
-2. **手動手順が必要な更新**（ベースの `docs/base-update-notes.md` から前回適用日以降のエントリを抜粋）
+2. **手動手順が必要な更新**（ベースの [`docs/base-update-notes.md`](../../../docs/base-update-notes.md) から
+   前回適用日以降のエントリを抜粋）
 
 このため「アップデートを確認して適用して」も §2 と同じコマンドでよい。運用手順:
 

@@ -166,8 +166,10 @@ modules:
 
   # ── ベース還流（任意・ベースリポジトリ側での運用が前提）──
   base-harvest:
-    enabled: true
-    description: "apply-base の逆方向。下流リポジトリの汎用ハーネス改善を kai-kou/claude-code-base へ還流する（実行はベース側セッションが前提のため、下流リポジトリでは通常 enabled:false で prune してよい）"
+    # 下流リポジトリのため無効（ベース #379 で配布対象外になった著者専用スキル。
+    # 実体は本リポジトリから削除済みで、還流はベース側セッションで実行する）
+    enabled: false
+    description: "apply-base の逆方向。下流リポジトリの汎用ハーネス改善を開発 SSOT（ベース）リポジトリへ還流する（実行はベース側セッションが前提のため、下流リポジトリでは通常 enabled:false で prune してよい）"
     skills:
       - base-harvest
 

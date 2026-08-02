@@ -1,6 +1,6 @@
 {
-  "base_repo": "kai-kou/claude-code-base",
+  "base_repo": "kai-kou/claude-code-repository-base",
   "ref": "main",
-  "commit": "d5deafd028455eea0120cfc4daadce1aafb85ffb",
-  "applied_at": "2026-08-01T11:29:58+0900"
+  "commit": "0cb12298b0a637e22323bc6f83ed2adfd89cb3f7",
+  "applied_at": "2026-08-02T12:17:39+0900"
 }

@@ -168,8 +168,8 @@ python3 tools/run_discussion_review.py \
   --targets "<対象パス,...>" --rounds 2
 ```
 
-スペック形式は両経路で共通。`tools/run_discussion_review.py` の docstring と
-`tools/discussion_specs/example_debate.json`（最小例・タブ vs スペース討論で動作検証可能）を参照。
+スペック形式は両経路で共通。`tools/run_discussion_review.py` の docstring を参照（最小例のスペック JSON は
+開発リポジトリ側に置いている。下流では各スキルが持つ議論スペック JSON を `--spec` に指定する）。
 
 ---
 
@@ -180,7 +180,5 @@ python3 tools/run_discussion_review.py \
 | `.claude/skills/discussion-review/SKILL.md` | ネイティブ議論型の実行手順（既定経路） |
 | `tools/discussion_whiteboard.py` | ホワイトボード基盤（init/post/render/list/show・--self-test） |
 | `tools/run_discussion_review.py` | claude -p 駆動オーケストレーター（フォールバック経路） |
-| `tools/discussion_specs/example_debate.json` | 最小スペック例（動作検証用） |
-| `docs/proposals/native-agent-teams-migration.md` | ネイティブ移行の経緯・実機検証（V-1〜V-6） |
 | `docs/rules/dynamic-workflows-rules.md` | WF主導の土台・ガードレール |
 | `docs/rules/agent-team.md` | 役割分担型 fan-out（議論型と使い分ける既存並列プリミティブ） |

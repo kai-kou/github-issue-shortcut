@@ -151,7 +151,7 @@ Step 3: claude -p も失敗 → スキル固有の最終手段（fan-out・DIY�
 3. **撤去は任意**: 休眠フォールバックの削除は義務ではない（残しても自動切替に影響しない）。
    削除する場合は安定運用（目安: ネイティブ実行 5 件 or 2 週間）を確認後、
    `modules.yaml` の追跡更新 + 派生リポ告知 Issue とセットで行う
-   （`docs/proposals/native-agent-teams-migration.md` §6 の Phase 3 手順と同じ）。
+   （撤去手順の詳細は開発リポジトリの提案記録 §6 Phase 3 に保持）。
 
 ## 5. 新しいギャップ機能を追加するとき
 
@@ -181,8 +181,8 @@ CLI 新機能が Web で未提供と判明したら（実試行の失敗で検�
 - **claude CLI 不在環境**: GitHub Issue/PR 起動のタスクモード等（L-117）では claude CLI 自体が
   使えない場合がある。`probe claude-headless` が fallback 判定を返す環境では claude -p 段を飛ばし、
   スキル固有の最終手段へ直行する。
-- **展開時の注意全般**（加算的コピー・prune の限界・告知は Issue で行う）は
-  `docs/proposals/native-agent-teams-migration.md` §6 を参照。
+- **展開時の注意全般**（加算的コピー・prune の限界・告知は Issue で行う）の経緯は
+  開発リポジトリの提案記録 §6 に保持している。
 
 ## 7. 完了・成功の定義
 
@@ -199,7 +199,8 @@ CLI 新機能が Web で未提供と判明したら（実試行の失敗で検�
 | ドキュメント | 関係 |
 |------------|------|
 | `tools/native_fallback.py` / `tools/native_capabilities.json` | 本ルールの機械実装（probe・headless ラッパー・台帳） |
-| `docs/proposals/native-agent-teams-migration.md` | Web 追いつきの実例（議論型 claude -p → ネイティブ移行）・派生展開 §6・Phase 3 撤去手順 |
+
+> Web 追いつきの実例（議論型 claude -p → ネイティブ移行）・派生展開・Phase 3 撤去手順の経緯は開発リポジトリの提案記録として保持している。
 | `.claude/skills/discussion-review/SKILL.md` | native-default の準拠実装（ネイティブ既定 + claude -p 休眠フォールバック + fan-out 最終退避） |
 | `.claude/skills/research-runner/SKILL.md` | isolation-by-design の準拠実装（Step 3b・エンジン選択ポリシー） |
 | `docs/rules/agent-team-summary.md` | フォールバック連鎖のログ必須規範（サイレント禁止の出典） |

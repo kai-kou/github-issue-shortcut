@@ -564,8 +564,8 @@ MCP サーバーの常時ロード設定。詳細は上記「`alwaysLoad` MCP �
 |------|-----|------|
 | `bypassPermissions` | `true` | フック制御下での自動実行 |
 | `autoAllowBashIfSandboxed` | `true` | Bash ツールの自動許可 |
-| `excludedCommands` | `python3 *tools/*.py` 等 4 パターン | tools/ スクリプトのネットワーク制限バイパス |
-| `allowedDomains` | 18 ドメイン | MCP サーバー・外部 API 通信用 |
+| `excludedCommands` | 接続先が動的な一部スクリプト限定（narrow exclusion・2026-08-01 見直し・#379） | secrets-broker 移行ツール等、`allowedDomains` に事前登録できないスクリプトだけのネットワーク制限バイパス |
+| `allowedDomains` | 登録ドメイン一覧は `docs/rules/sandbox-rules.md` 参照 | MCP サーバー・外部 API 通信用（tools/ スクリプトの既定の到達経路） |
 
 ### 権限の 3 層アーキテクチャ
 
@@ -751,6 +751,9 @@ MCP サーバー設定に `alwaysLoad: true` を追加すると、そのサー�
 - ✅ `allowedDomains` で全接続先ドメインを明示的にホワイトリスト登録（多層防御）
 - ✅ `sandbox-rules.md` でパターン設計の意図を文書化済み
 - **設計原則**: `excludedCommands` だけに頼らず、`allowedDomains` との **両方** で確実にカバーする
+- ⚠️ **前提条件（#383）**: 上記はいずれも `sandbox.enabled: true`（2026-08-02 追加）かつ `bwrap` /
+  Seatbelt が使えるローカル環境でのみ効く。クラウド実行環境ではサンドボックス自体が動作しないため、
+  本項の「防御策あり」をクラウドのリスク評価に数えない（SSOT: `sandbox-rules.md`）
 
 #### CC-BUG-13: サンドボックスの書き込み/読み込み非対称性
 

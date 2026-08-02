@@ -5,7 +5,7 @@
 >
 > **Warm 層**（タスク依存・全セッション常駐＝`ESSENTIAL_RULES` には入れない）。挙動サマリーは
 > `CLAUDE.md` ハーネス表に、フック仕様の位置づけは `docs/rules/hook-events-reference.md` に併記する。
-> 設計判断の議論履歴は `content/discussions/prompt-structuring-design-20260709/whiteboard.md`（Issue #172）。
+> 設計判断の議論記録（議題 ID: `prompt-structuring-design-20260709`・Issue #172）は開発リポジトリに保持している（公開リポジトリには含まれない）。
 
 ---
 
@@ -98,4 +98,4 @@ Claude が着手前に生指示を自分でスペック化する** workaround �
 | `.claude/hooks/user-prompt-submit-guard.sh` | 高リスク助言注入（責務分離・二重注入を本フックが抑制） |
 | `docs/rules/hook-events-reference.md` | UserPromptSubmit の stdout 注入・exit code 仕様の検証済み一覧 |
 | `docs/rules/output-verbosity-rules.md` | 内部作業サイレント原則（L-111・注入本文が準拠） |
-| `content/discussions/prompt-structuring-design-20260709/` | 設計の議論型レビュー履歴（Issue #172） |
+| 開発リポジトリの議論記録（議題 ID: `prompt-structuring-design-20260709`） | 設計の議論型レビュー履歴（Issue #172・公開リポジトリには含まれない） |

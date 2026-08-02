@@ -1,7 +1,7 @@
 # AIレビュアー戦略（FAIR 構成 SSOT）
 
 > `pr-review-flow.md` / `pr-review-flow-summary.md` / 各パイプライン SKILL.md のレビュー呼び出しは本方針に従う。
-> 意思決定経緯は `docs/proposals/claude-only-autonomous-review.md` を参照。
+> 意思決定経緯は開発リポジトリの提案記録として保持している。
 
 > **🔴 外部 AI レビュアーへの依頼は廃止（飼い主決定・本タスク）**: **Copilot へのレビュー依頼（`mcp__github__request_copilot_review` / `gh pr edit --add-reviewer @copilot`）は行わない。** Gemini も 2026-07-17 で廃止済み。レビューは **Claude 自身が実行するセルフレビュー（Layer 1）を主軸** とし、外部レビュアーの応答を待たない。外部従量レビューに依存しないことで 25 分待ちを解消し、コストをサブスク枠内に収める。
 
@@ -67,5 +67,5 @@ Layer 2 失敗時は stderr に警告を出力し、Layer 0+1 で継続する（
 
 - [#97] Layer 2 定常化 / [#2485] Gemini 廃止に伴う代替設計 / [#49] Claude 単独 FAIR への移行決定 / [Copilot 依頼廃止・`/code-review` セルフレビュー必須化タスク] / [#275] `/code-review` disable-model-invocation 対応 / [#280] 自前 `code-review` スキル新設（bundled 置換・Layer 1 標準実行手段）
 - `.claude/skills/code-review/SKILL.md`（Layer 1 実行主体・本方針の実装）
-- `tools/discussion_review_trigger.py` / `tools/discussion_specs/code_review.json`
+- `tools/discussion_review_trigger.py`（Layer 2 議論スペック `discussion_specs/code_review.json` は開発リポジトリ側で管理・下流では `--spec` に自前のスペック JSON を指定する）
 - `docs/rules/pr-review-flow.md` / `docs/rules/pr-review-flow-summary.md`

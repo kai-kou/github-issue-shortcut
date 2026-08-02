@@ -36,7 +36,7 @@ Opus 4.8 の effort デフォルト変更）。なお **新モデル世代のリ
 
 ## 起動トリガー
 
-1. 定期スロット（R-1 ルーティンのプリフライト・`docs/routines.md`）: `check_claude_code_updates.py --create-issue` が新規検知
+1. 定期スロット（R-1 ルーティンのプリフライト。スロット定義は開発リポジトリの運用メモが保持）: `check_claude_code_updates.py --create-issue` が新規検知
    → `BREAKING_DETECTED` 出力あり = 即対応フロー / 検証 Issue のみ = 検証・検討フローを1件消化
 2. 手動: `/claude-code-spec-sync` /「Claude Code の仕様変更に追随して」
 3. オープンの `lane:claude-code-spec` Issue が残っている（過去スロットの取りこぼし）
@@ -105,8 +105,8 @@ gh issue list --label "lane:claude-code-spec" --state open --json number,title,l
 
 ### Step 3: 完了処理
 
-- state ファイル（`config/claude_code_spec_state.json`）の変更を **ワークフロー完了コミットに含める**
-  （dedup の鮮度が必要なため破棄しない）
+- state ファイル（`config/claude_code_spec_state.json`。初回実行時に無ければ自動生成される） <!-- refcheck:ignore -->
+  の変更を **ワークフロー完了コミットに含める**（dedup の鮮度が必要なため破棄しない）
 - 修正 PR を伴った場合は `pr-review-flow-summary.md` に従いマージまで完遂してから終了する
 
 ## ガードレール（不変）

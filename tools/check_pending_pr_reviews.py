@@ -16,8 +16,20 @@ PR作成後のAIレビュー待ち（sleep ポーリング）中にセッショ�
 
 検出条件:
   1. Open状態のPR（kai-kou/github-issue-shortcut）
-  2. Claude 作業ブランチ（claude/ feat/ fix/ docs/ 等）の PR、または未解決スレッドのある PR
+  2. Claude 作業ブランチ（claude/ feat/ fix/ docs/ 等）**かつ著者が OWNER/MEMBER/COLLABORATOR**
+     （authorAssociation・#379）の PR、または未解決スレッドのある PR
   3. 指摘対応 or Layer 1 セルフレビューが未完了
+
+著者検証（#379・公開リスク監査 r03 critical）:
+  _is_claude_branch() はブランチ名の前方一致だけでなく、gh --json authorAssociation を
+  AND 条件に加える。fork PR は通常 CONTRIBUTOR 以下になるため、規約どおりの命名
+  （feat/ fix/ docs/ 等）で fork から PR を出しても needs_prompt（自動マージ対象）にならない。
+  authorAssociation が取得できない場合は安全側（対象外）に倒す。
+  gh 経路（実 gh・クラウドの gh_shim.py 双方）は REST の author_association から取得できるが、
+  gh が全面失敗して呼び出し元が mcp__github__list_pull_requests に直接切り替える場合、
+  同ツールには authorAssociation 相当のフィールドが存在しない（2026-08 実機確認）。
+  その場合は mcp__github__list_repository_collaborators で信頼済みログイン集合を作り
+  PR 著者（user.login）と突合するフォールバックを使う（docs/rules/github-mcp-fallback-patterns.md）。
 
 出力:
   - PENDING:<pr_number>:<status>:<summary>
@@ -198,7 +210,7 @@ def get_open_prs() -> list[dict]:
         "-R", REPO,
         "--state", "open",
         "--limit", "100",
-        "--json", "number,title,createdAt,headRefName,author,reviewRequests,labels,body",
+        "--json", "number,title,createdAt,headRefName,author,authorAssociation,reviewRequests,labels,body",
     ], critical=True)
     if not output:
         return []
@@ -395,6 +407,8 @@ def analyze_pr(pr: dict) -> dict:
     pr_labels = {lbl.get("name", "") for lbl in pr.get("labels", [])}
     # アイデンティティベース所有判定（#47）: PR 本文の Session-Id トレーラーを抽出
     owner_session_id = parse_session_id(pr.get("body", ""))
+    # 著者検証（#379・公開リスク監査 r03 critical）: ブランチ名だけでなく著者関係も見る
+    author_association = pr.get("authorAssociation", "")
 
     # status:waiting-user ラベル付き PR は自動マージ対象から除外（#2173）
     if "status:waiting-user" in pr_labels:
@@ -415,6 +429,7 @@ def analyze_pr(pr: dict) -> dict:
             "last_activity_min": 9999,
             "active_session": False,
             "owner_session_id": owner_session_id,
+            "author_association": author_association,
         }
 
     # レビューリクエスト（requested_reviewers）を確認
@@ -497,11 +512,35 @@ def analyze_pr(pr: dict) -> dict:
     # 経過時間でセッション復帰時の対応を決める。外部レビュアーの 25 分応答待ち・催促は廃止した。
     # has_gemini_review / has_copilot_review / gemini_quota_exceeded は履歴 PR の互換情報として
     # 返り値に残すが、マージ判定には用いない。
-    if has_unresolved:
+    #
+    # 🔴 著者検証は「分岐に入る前」に一度だけ行う（#379）。
+    #
+    # 経緯: 当初は _is_claude_branch() の内部にだけ authorAssociation を AND した。しかしその後の
+    # レビューで、判定に至る経路が 3 本あり、うち 2 本が検証を迂回できることが実測で判明した:
+    #   ① _is_claude_branch() 経由 …… ブランチ名の前方一致。命名規則は CLAUDE.md で公開済み
+    #   ② has_ai_reviewer_requested_combined / has_ai_review 経由 …… OR で並んでいたため、
+    #      fork PR の作成者が自分の PR に `/gemini review` と書く・bot レビューを呼ぶだけで到達できた
+    #   ③ has_unresolved 経由 …… ブランチ名すら不要。fork PR の作成者が自分の PR に
+    #      レビューコメントを 1 件投稿すれば未解決スレッドが立ち、needs_response に到達できた
+    #      （GitHub は自分の PR への approve は拒否するが comment は拒否しない）
+    # ①だけを塞ぐと穴が②③へ移動するだけなので、**すべての分岐の手前で信頼境界を 1 回引く**。
+    # 取得できないときは fail-closed（対象外）。外部 AI レビュアーは廃止済み（ai-reviewer-strategy.md）で
+    # ②の 2 経路は履歴 PR 互換のための残骸だが、残す以上は同じ信頼境界の内側に置く。
+    if not _is_trusted_author_association(author_association):
+        # 信頼できない著者（fork PR・外部コントリビューター・authorAssociation 取得失敗）は
+        # どのステータスにも乗せない。pr-review-watcher は status だけを見てマージまで進めるため、
+        # ここを通した時点で無人マージの対象になる（下流へも同じ設定が配布される）。
+        status = "no_action"
+        summary = "信頼境界外の著者による PR（自律レビュー・自動マージの対象外）"
+    elif has_unresolved:
         # 未解決スレッド（CI 失敗・人手コメント・履歴上のボット指摘等）→ 指摘対応が必要
         status = "needs_response"
         summary = f"未解決スレッド{unresolved}件（指摘対応が必要）"
-    elif _is_claude_branch(branch) or has_ai_reviewer_requested_combined or has_ai_review:
+    elif (
+        _is_claude_branch(branch, author_association)
+        or has_ai_reviewer_requested_combined
+        or has_ai_review
+    ):
         # Claude 作業ブランチの PR。Layer 0（機械ゲート）+ Layer 1（観点別フレッシュ文脈セルフレビュー）で
         # 完結する。復帰セッションはセルフレビューを実行し指摘を解消してから即マージする
         # （外部レビュアーの応答待ちは存在しない）。active_session（直近10分の活動）除外により
@@ -548,13 +587,41 @@ def analyze_pr(pr: dict) -> dict:
         "last_activity_min": last_activity_min,
         "active_session": active_session,
         "owner_session_id": owner_session_id,
+        "author_association": author_association,
     }
 
 
-def _is_claude_branch(branch: str) -> bool:
-    """Claude Code が作成したブランチかどうかを判定する。"""
+# 自動マージ対象と認めるレビュー著者関係（GitHub の authorAssociation 値）。
+# CONTRIBUTOR / FIRST_TIME_CONTRIBUTOR / FIRST_TIMER / NONE は信頼しない
+# （fork PR は通常 CONTRIBUTOR 以下になる）。
+TRUSTED_AUTHOR_ASSOCIATIONS = {"OWNER", "MEMBER", "COLLABORATOR"}
+
+
+def _is_trusted_author_association(author_association: str | None) -> bool:
+    """authorAssociation が信頼できる（OWNER/MEMBER/COLLABORATOR）かどうかを判定する。
+
+    取得できなかった場合（None・空文字・想定外の値）は **安全側（False）に倒す**
+    （公開リスク監査 r03・critical: ブランチ名の前方一致だけで自動マージ対象と
+    判定すると、CLAUDE.md が公開しているブランチ命名規則どおりの名前で fork から
+    PR を出すだけで対象になってしまう。取得失敗を「信頼できる」と誤判定しない）。
+    """
+    if not author_association:
+        return False
+    return author_association.strip().upper() in TRUSTED_AUTHOR_ASSOCIATIONS
+
+
+def _is_claude_branch(branch: str, author_association: str | None) -> bool:
+    """Claude Code が作成したブランチ、かつ著者が信頼できるか（AND 条件・#379）。
+
+    ブランチ名の前方一致だけを見ていた旧実装は、規約どおりの命名（feat/ fix/ docs/ 等）で
+    fork から PR を出すだけで自動マージ対象（needs_prompt）になってしまう critical な穴だった。
+    authorAssociation（gh --json authorAssociation・REST の author_association）を AND 条件に
+    加えることで、ブランチ名が一致していても著者が OWNER/MEMBER/COLLABORATOR でなければ
+    対象外にする。
+    """
     prefixes = ("claude/", "content/", "feat/", "fix/", "docs/")
-    return any(branch.startswith(p) for p in prefixes)
+    branch_matches = any(branch.startswith(p) for p in prefixes)
+    return branch_matches and _is_trusted_author_association(author_association)
 
 
 def _run_self_test() -> None:
@@ -577,11 +644,62 @@ def _run_self_test() -> None:
     # current_session_id: 明示指定が env より優先・小文字正規化
     if current_session_id("ABC-123") != "abc-123":
         failures.append("  current_session_id explicit override failed")
+
+    # 著者検証（#379・公開リスク監査 r03 critical）: ブランチ名一致 AND 信頼できる著者
+    branch_cases: list[tuple[str, str | None, bool]] = [
+        # (branch, authorAssociation, expected) — オーナー/メンバー/コラボレーターの正規 PR
+        ("feat/x", "OWNER", True),
+        ("fix/y", "MEMBER", True),
+        ("docs/z", "COLLABORATOR", True),
+        ("claude/session-123", "owner", True),  # 小文字応答も許容
+        ("content/V001-x", "Member", True),
+        # fork PR を模した入力（ブランチ名は規約どおりだが著者は信頼できない） → 対象外
+        ("feat/evil", "CONTRIBUTOR", False),
+        ("fix/evil", "FIRST_TIME_CONTRIBUTOR", False),
+        ("docs/evil", "NONE", False),
+        # authorAssociation 取得不能（gh 応答欠落等） → 安全側（対象外）
+        ("feat/unknown", None, False),
+        ("feat/unknown", "", False),
+        # ブランチ名がそもそも規約に一致しない → 著者が OWNER でも対象外
+        ("random-branch", "OWNER", False),
+    ]
+    for branch, assoc, expected in branch_cases:
+        got = _is_claude_branch(branch, assoc)
+        if got != expected:
+            failures.append(
+                f"  _is_claude_branch({branch!r}, {assoc!r}) = {got!r} (expected {expected!r})"
+            )
+
+    # 信頼境界そのもののテスト（#379）。_is_claude_branch() 単体のテストだけでは、
+    # 判定に至る 3 経路（ブランチ名一致 / AI レビュー痕跡 / 未解決スレッド）のうち
+    # 後ろ 2 つが検証を迂回していたことを検出できなかった。ここで境界関数を直接固定する。
+    assoc_cases: list[tuple[str | None, bool]] = [
+        ("OWNER", True),
+        ("MEMBER", True),
+        ("COLLABORATOR", True),
+        ("owner", True),          # 小文字応答
+        ("  MEMBER  ", True),     # 余白
+        ("CONTRIBUTOR", False),   # 過去にマージ実績があるだけの外部貢献者
+        ("FIRST_TIME_CONTRIBUTOR", False),
+        ("FIRST_TIMER", False),
+        ("NONE", False),
+        ("MANNEQUIN", False),
+        ("", False),              # 取得失敗 → fail-closed
+        (None, False),
+    ]
+    for assoc, expected in assoc_cases:
+        got = _is_trusted_author_association(assoc)
+        if got != expected:
+            failures.append(
+                f"  _is_trusted_author_association({assoc!r}) = {got!r} (expected {expected!r})"
+            )
+
+    total_cases = len(cases) + 1 + len(branch_cases) + len(assoc_cases)
     if failures:
         print("FAIL: check_pending_pr_reviews self-test", file=sys.stderr)
         print("\n".join(failures), file=sys.stderr)
         sys.exit(1)
-    print(f"PASS: check_pending_pr_reviews self-test ({len(cases) + 1} cases)")
+    print(f"PASS: check_pending_pr_reviews self-test ({total_cases} cases)")
 
 
 def main():
