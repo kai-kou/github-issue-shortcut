@@ -45,16 +45,14 @@ plain git push で永続化する。
 
 import argparse
 import json
-import os
-import subprocess
 import sys
-import tempfile
-import time
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 # calc_daily_cost と定数・換算を共有（DRY）
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+# git plumbing（データブランチへの push 手順）は telemetry_branch と共有する（#235 で切り出し）
+import telemetry_branch  # noqa: E402
 try:
     from calc_daily_cost import _MONTHLY_TOTAL_KEYS, USD_TO_JPY  # type: ignore
 except Exception:  # pragma: no cover - フォールバック（import 失敗時も自己完結）
@@ -89,28 +87,10 @@ BRANCH_README = (
 REDACTED_COST_KEYS = ("cost_usd",)
 
 
-def _run(cmd: list, timeout: int = 60, cwd: str | None = None,
-         env: dict | None = None, input_text: str | None = None) -> subprocess.CompletedProcess:
-    """サブプロセス実行（テキスト・タイムアウト付き）。
-
-    git 不在（FileNotFoundError）やタイムアウトでも未ハンドル例外でクラッシュさせず、
-    非ゼロ returncode の CompletedProcess を返す（呼び出し側は returncode で判定する）。
-    """
-    try:
-        return subprocess.run(
-            cmd, capture_output=True, text=True, encoding="utf-8",
-            timeout=timeout, cwd=cwd, env=env, input=input_text,
-        )
-    except FileNotFoundError as e:
-        return subprocess.CompletedProcess(args=cmd, returncode=127, stdout="",
-                                           stderr=f"command not found: {e}")
-    except subprocess.TimeoutExpired as e:
-        return subprocess.CompletedProcess(args=cmd, returncode=124, stdout="",
-                                           stderr=f"timeout: {e}")
-
-
-def project_dir() -> Path:
-    return Path(os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd())
+# 低レベルの git / プロセス実行は共有モジュールに一本化（#235）。名前は従来のまま維持する。
+_run = telemetry_branch.run
+project_dir = telemetry_branch.project_dir
+_json_at = telemetry_branch.json_at
 
 
 # ──────────────────────────────────────────────────────────
@@ -298,30 +278,12 @@ def serialize(report: dict) -> str:
 # ──────────────────────────────────────────────────────────
 
 def sync_remote_ref() -> str:
-    """データブランチのリモート追跡 ref を最新化し、状態を返す。
-
-    - "ok"    : fetch 成功（ref は最新）
-    - "absent": リモートにブランチが存在しない（初回。parentless コミットを作ってよい）
-    - "error" : ネットワーク等の失敗（absent と区別する。この状態で parentless コミットを
-                作ると、実在するブランチに対して non-FF が確定する無駄玉になる・#243 レビュー）
-    """
-    cp = _run(["git", "fetch", "origin",
-               f"+refs/heads/{TELEMETRY_BRANCH}:{TELEMETRY_REF}"],
-              timeout=45, cwd=str(project_dir()))
-    if cp.returncode == 0:
-        return "ok"
-    ls = _run(["git", "ls-remote", "--heads", "origin", TELEMETRY_BRANCH],
-              timeout=30, cwd=str(project_dir()))
-    if ls.returncode == 0 and not ls.stdout.strip():
-        return "absent"
-    return "error"
+    """データブランチのリモート追跡 ref を最新化し、状態（ok / absent / error）を返す。"""
+    return telemetry_branch.sync_remote_ref(TELEMETRY_BRANCH)
 
 
 def remote_branch_sha() -> str | None:
-    cp = _run(["git", "rev-parse", "--verify", "--quiet", TELEMETRY_REF],
-              timeout=15, cwd=str(project_dir()))
-    sha = cp.stdout.strip()
-    return sha if cp.returncode == 0 and sha else None
+    return telemetry_branch.remote_branch_sha(TELEMETRY_BRANCH)
 
 
 def read_local_monthly() -> dict:
@@ -388,18 +350,6 @@ def read_local_sessions() -> dict:
     for sid, (_ts, rec) in best.items():
         out.setdefault(rec["date"][:7], {})[sid] = rec
     return out
-
-
-def _json_at(git_ref_path: str) -> dict | None:
-    """`git show <ref>:<path>` の JSON を dict で返す（不在・破損は None）。"""
-    cp = _run(["git", "show", git_ref_path], timeout=15, cwd=str(project_dir()))
-    if cp.returncode != 0 or not cp.stdout.strip():
-        return None
-    try:
-        rep = json.loads(cp.stdout)
-        return rep if isinstance(rep, dict) else None
-    except json.JSONDecodeError:
-        return None
 
 
 def read_remote_monthly(month: str) -> dict | None:
@@ -471,138 +421,33 @@ def stamp_today() -> None:
 
 
 # ──────────────────────────────────────────────────────────
-# データブランチへの push（git plumbing・ワーキングツリー非接触）
+# データブランチへの push（plumbing は telemetry_branch に共通化・#235）
 # ──────────────────────────────────────────────────────────
 
-def _git_env() -> dict:
-    """commit-tree 用の identity をフォールバック付きで用意する（既存設定は尊重）。"""
-    env = os.environ.copy()
-    env.setdefault("GIT_AUTHOR_NAME", "claude-code-bot")
-    env.setdefault("GIT_AUTHOR_EMAIL", "claude-code-bot@users.noreply.github.com")
-    env.setdefault("GIT_COMMITTER_NAME", "claude-code-bot")
-    env.setdefault("GIT_COMMITTER_EMAIL", "claude-code-bot@users.noreply.github.com")
-    return env
+def _build_payload(parent_sha: str | None, remote_state: str):
+    """最新リモートに対して再マージし、push するファイル一式を組み立てる。
 
-
-def build_commit(changes: dict, parent_sha: str | None) -> str | None:
-    """changes を含むコミットオブジェクトを plumbing で構築し、その SHA を返す。
-
-    一時 index ファイルを使うため、通常の index・ワーキングツリーには一切影響しない。
+    push 試行のたびに呼ばれる（non-fast-forward で弾かれた後に、進んだリモートへ
+    マージし直すため）。初回（parentless）はブランチ README も同梱する。
     """
-    pdir = str(project_dir())
-    env = _git_env()
-    with tempfile.NamedTemporaryFile(prefix="cost-telemetry-index-", delete=False) as tf:
-        index_file = tf.name
-    env["GIT_INDEX_FILE"] = index_file
-    try:
-        # 1) ベース tree を一時 index に読み込む（初回は空 index から開始）
-        if parent_sha:
-            rt = _run(["git", "read-tree", f"{parent_sha}^{{tree}}"], timeout=30, cwd=pdir, env=env)
-        else:
-            rt = _run(["git", "read-tree", "--empty"], timeout=30, cwd=pdir, env=env)
-        if rt.returncode != 0:
-            print(f"[cost-telemetry] read-tree 失敗: {rt.stderr.strip()}", file=sys.stderr)
-            return None
-
-        # 2) 月次 JSON（+ 初回のみ README）を blob 化して index に登録
-        entries = {f"{MONTHLY_REL_DIR}/{month}.json": serialize(report)
-                   for month, report in changes.items()}
-        if not parent_sha:
-            entries["README.md"] = BRANCH_README
-        for rel_path, content in entries.items():
-            ho = _run(["git", "hash-object", "-w", "--stdin"], timeout=30, cwd=pdir,
-                      env=env, input_text=content)
-            blob = ho.stdout.strip()
-            if ho.returncode != 0 or not blob:
-                print(f"[cost-telemetry] hash-object 失敗: {ho.stderr.strip()}", file=sys.stderr)
-                return None
-            ui = _run(["git", "update-index", "--add", "--cacheinfo",
-                       f"100644,{blob},{rel_path}"], timeout=30, cwd=pdir, env=env)
-            if ui.returncode != 0:
-                print(f"[cost-telemetry] update-index 失敗: {ui.stderr.strip()}", file=sys.stderr)
-                return None
-
-        # 3) tree → commit オブジェクトを構築
-        wt = _run(["git", "write-tree"], timeout=30, cwd=pdir, env=env)
-        tree = wt.stdout.strip()
-        if wt.returncode != 0 or not tree:
-            print(f"[cost-telemetry] write-tree 失敗: {wt.stderr.strip()}", file=sys.stderr)
-            return None
-        months = ", ".join(sorted(changes))
-        msg = f"chore(telemetry): 月次コスト集計を更新（{months}）"
-        ct_cmd = ["git", "commit-tree", tree, "-m", msg]
-        if parent_sha:
-            ct_cmd[3:3] = ["-p", parent_sha]
-        ct = _run(ct_cmd, timeout=30, cwd=pdir, env=env)
-        commit = ct.stdout.strip()
-        if ct.returncode != 0 or not commit:
-            print(f"[cost-telemetry] commit-tree 失敗: {ct.stderr.strip()}", file=sys.stderr)
-            return None
-        return commit
-    finally:
-        try:
-            os.unlink(index_file)
-        except OSError:
-            pass
-
-
-def _push_retryable(push: subprocess.CompletedProcess) -> bool:
-    """リトライで解決しうる push 失敗か（non-FF 競合 / タイムアウト系のみ）。
-
-    403・認証等の恒久失敗まで 4 回リトライすると Stop hook の実行予算を浪費するため、
-    それらは初回で打ち切る（#243 レビュー）。
-    """
-    if push.returncode == 124:  # timeout
-        return True
-    err = (push.stderr or "").lower()
-    return any(s in err for s in ("non-fast-forward", "fetch first", "cannot lock ref",
-                                  "failed to push some refs"))
+    changes = compute_changes()
+    if not changes:
+        return None, "", ""
+    entries = {f"{MONTHLY_REL_DIR}/{month}.json": serialize(report)
+               for month, report in changes.items()}
+    if not parent_sha:
+        entries["README.md"] = BRANCH_README
+    months = ", ".join(sorted(changes))
+    return entries, f"chore(telemetry): 月次コスト集計を更新（{months}）", months
 
 
 def push_to_telemetry_branch(dry_run: bool = False) -> bool:
-    """ローカル月次データをデータブランチへ push する（競合時は再マージ・リトライ）。
-
-    non-fast-forward 拒否を並行セッションとの排他ロックとして扱い、拒否されたら
-    リモートを fetch し直して再マージ → 再構築 → 再 push する。成功で True。
-    dry_run=True は fetch + 差分判定・表示のみ（push しない・1 パス）。
-    """
-    pdir = str(project_dir())
-    attempts = (0,) if dry_run else (0, 2, 4, 8)
-    for attempt, wait in enumerate(attempts):
-        if wait:
-            time.sleep(wait)
-        state = sync_remote_ref()
-        if state == "error" and not dry_run:
-            # absent と区別できないまま parentless コミットを作らない（non-FF 確定の無駄玉）
-            print(f"[cost-telemetry] fetch 失敗（試行 {attempt + 1}/{len(attempts)}・"
-                  "ネットワーク要因の可能性）", file=sys.stderr)
-            continue
-        parent = remote_branch_sha()
-        # 毎試行、最新リモートに対して再マージ（並行 push で進んだ分を吸収）
-        changes = compute_changes()
-        if not changes:
-            print("[cost-telemetry] 永続化対象の差分なし（no-op）")
-            return True
-        if dry_run:
-            note = "" if state == "ok" else f"（注: リモート ref 未取得 state={state}・全月差分扱いの可能性）"
-            print(f"[cost-telemetry] dry-run: 差分のある月 = {', '.join(sorted(changes))}{note}")
-            return True
-        commit = build_commit(changes, parent)
-        if commit is None:
-            return False
-        push = _run(["git", "push", "origin", f"{commit}:refs/heads/{TELEMETRY_BRANCH}"],
-                    timeout=45, cwd=pdir)
-        if push.returncode == 0:
-            print(f"[cost-telemetry] {TELEMETRY_BRANCH} へ push 完了"
-                  f"（{', '.join(sorted(changes))} / {commit[:12]}）")
-            return True
-        print(f"[cost-telemetry] push 失敗（試行 {attempt + 1}/{len(attempts)}）: "
-              f"{push.stderr.strip()}", file=sys.stderr)
-        if not _push_retryable(push):
-            break
-    print("[cost-telemetry] 永続化失敗（当日中は次セッションの Stop hook が再試行する）",
-          file=sys.stderr)
-    return False
+    """ローカル月次データをデータブランチへ push する（競合時は再マージ・リトライ）。"""
+    ok = telemetry_branch.push_entries(TELEMETRY_BRANCH, _build_payload,
+                                       "[cost-telemetry]", dry_run=dry_run)
+    if not ok:
+        print("[cost-telemetry] 当日中は次セッションの Stop hook が再試行する", file=sys.stderr)
+    return ok
 
 
 # ──────────────────────────────────────────────────────────

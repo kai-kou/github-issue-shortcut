@@ -22,3 +22,8 @@ content/pipeline-state/daily_cost_stats.json
 content/pipeline-state/.cost_telemetry_pr_date
 content/pipeline-state/.cost_telemetry_push_date
 content/analytics/cost_monthly/
+
+# Workers 利用状況テレメトリ（#235）。正本はデータブランチ telemetry/worker-usage 側で、
+# ローカルのファイルは取り込み・集計用の作業コピーにすぎない。main で追跡すると、
+# 無関係な feature 差分と未コミット検知にテレメトリの更新が毎回混ざる（#242 と同じ理由）。
+content/analytics/worker_usage/
