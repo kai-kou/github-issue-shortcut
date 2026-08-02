@@ -1,20 +1,20 @@
 #!/usr/bin/env bash
-# apply-to-repo.sh — kai-kou/claude-code-base のルール・スキル定義・ハーネスを
+# apply-to-repo.sh — kai-kou/claude-code-repository-base のルール・スキル定義・ハーネスを
 # 「任意の既存リポジトリ」へワンコマンドで適用（または最新へ同期）する。
 #
 # これまで他リポジトリで毎回手動指示していた
-#   「gh で kai-kou/claude-code-base を参照し、ルール・スキル・ハーネスを全部適用して」
+#   「gh で kai-kou/claude-code-repository-base を参照し、ルール・スキル・ハーネスを全部適用して」
 # を 1 コマンドに置き換えるためのスクリプト。
 #
 # 使い方（対象リポジトリのルートで実行）:
 #   # A. リモートから直接（最も手軽。git だけで動く）
-#   curl -fsSL https://raw.githubusercontent.com/kai-kou/claude-code-base/main/scripts/apply-to-repo.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/kai-kou/claude-code-repository-base/main/scripts/apply-to-repo.sh | bash
 #
 #   # B. ローカルに置いて実行（オプション付き）
 #   bash scripts/apply-to-repo.sh [options]
 #
 # 主なオプション:
-#   --base owner/repo       ベースリポジトリ（既定: kai-kou/claude-code-base）
+#   --base owner/repo       ベースリポジトリ（既定: kai-kou/claude-code-repository-base）
 #   --ref  <branch|tag|sha> 取得する ref（既定: main）
 #   --repo owner/repo       対象リポジトリ slug（既定: git remote origin から自動判定）
 #   --name "Project Name"   プロジェクト名（プレースホルダ置換用・既定: リポジトリ名）
@@ -34,7 +34,7 @@
 #   - 何度でも再実行でき、最新のルール・スキル・ハーネスへ同期できる（idempotent）。
 set -euo pipefail
 
-BASE_REPO="kai-kou/claude-code-base"
+BASE_REPO="kai-kou/claude-code-repository-base"
 REF="main"
 TARGET_SLUG=""
 PROJECT_NAME=""
@@ -109,7 +109,7 @@ if [ -f "$TARGET/scripts/sync-upstream.sh" ] && [ ! -f "$TARGET/scripts/publish-
   echo "  claude-code-base の直接適用は対象外です（upstream は claude-wiki-hub）。" >&2
   echo "  アップデートの取り込み: bash scripts/sync-upstream.sh --yes" >&2
   echo "  （claude-wiki-hub の最新ハーネスを取り込みます。取り込み後は「アップデートを取り込んで」の発話で更新できます）" >&2
-  echo "  この判定が誤りの場合は kai-kou/claude-code-base に Issue を立ててください。" >&2
+  echo "  この判定が誤りの場合は kai-kou/claude-code-repository-base に Issue を立ててください。" >&2
   exit 1
 fi
 
@@ -142,10 +142,6 @@ fetch_base() {
   # クラウドでは gh がプリインストールされないのが既定・L-114）
   log "git でベースを取得します"
   local url="https://github.com/${BASE_REPO}.git"
-  # credential helper 未設定のローカル環境で private base を clone しようとすると、git が
-  # /dev/tty から認証情報を要求して無限に待つ（`curl ... | bash` でも tty を直接開くため止まる）。
-  # 決定論的に失敗させて gh フォールバックへ落とす。
-  export GIT_TERMINAL_PROMPT=0 GIT_ASKPASS=true
   if git clone --depth 1 --branch "$REF" "$url" "$CLONE_DIR" >/dev/null 2>&1; then
     return 0
   fi

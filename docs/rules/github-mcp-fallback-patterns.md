@@ -84,7 +84,7 @@ GitHub API アクセス付きでセッションに attach されていないこ�
 > **「07-14 に許可されたから今も使える」と暗記しない**。
 > 再検証は `curl -o /dev/null -w '%{http_code}' https://api.github.com/repos/{o}/{r}` の HTTP コードを見るのが最短
 > （`gh --shim-doctor` は実 gh の導入が前提のため、既定のクラウドセッションでは使えない）。
-> 挙動変化を検知したら本表と L-114（`docs/rules/lessons/cloud-environment.md`）を更新すること（CP-2）。
+> 挙動変化を検知したら本表と L-114 を更新すること（CP-2）。
 
 ## 1.5 gh シム（`tools/gh_shim.py`・Issue #254）— ローカル互換 + MCP 誘導シグナル
 
@@ -154,6 +154,27 @@ GitHub API アクセス付きでセッションに attach されていないこ�
 > **search 系の注意（Repository Scope）**: `search_issues` / `search_code` / `search_pull_requests` は
 > repo 引数・`repo:` 修飾を省くとセッションスコープ外のリポジトリまで検索できてしまう。
 > 必ず対象リポジトリを指定してスコープ内に限定すること。
+
+### 2.3.1 `authorAssociation`（PR 著者の信頼判定）は MCP に無い（2026-08-01 実機確認・#379）
+
+🔴 **`mcp__github__list_pull_requests` の `fields` にも `mcp__github__pull_request_read(method="get")` の
+応答にも `authorAssociation`（`author_association`）は含まれない**（本リポジトリの実 PR で実測確認済み。
+gh CLI の `--json authorAssociation` / REST `GET /repos/{o}/{r}/pulls` の `author_association` には存在する）。
+
+`tools/check_pending_pr_reviews.py` の `_is_claude_branch()` は自動マージ対象判定に
+`authorAssociation`（OWNER/MEMBER/COLLABORATOR のみ信頼）を使う（#379・公開リスク監査 r03
+critical: ブランチ名の前方一致だけで判定すると fork PR が規約どおりの命名で対象になってしまう）。
+この判定はスクリプト内部（gh・クラウドでは `gh_shim.py` が REST の `author_association` を
+`authorAssociation` にマップする）で完結するため、通常の gh 経路では問題にならない。
+
+**gh 自体が全面失敗し（`GhUnavailableError`・exit 3）、呼び出し元の Claude が §4 のフォールバックで
+`mcp__github__list_pull_requests` を直接使う場合は、著者の信頼判定にこのフィールドを使えない。**
+その場合は以下のいずれかで代替する（安全側＝判定不能なら「信頼しない」がデフォルト）:
+
+1. `mcp__github__list_repository_collaborators(owner, repo, affiliation="all")` で信頼済みログイン
+   集合を作り、PR の `user.login`（`list_pull_requests` / `pull_request_read` のどちらにも含まれる）が
+   その集合に含まれるかを突合する
+2. 該当しない・取得自体に失敗した場合は自動マージ対象と判定しない（A-1〜A-6 相当のリスクを取らない）
 
 ### 2.4 GitHub Actions Variables / Secrets は MCP に等価ツールがない（2026-07-02）
 
@@ -232,7 +253,7 @@ MCP は Issue・PR・レビュー・マージ・ファイル・search・Actions�
 `git` は API プロキシとは別の git プロキシを通るため、以下は **そのまま使える**:
 
 ```bash
-git clone --depth 1 https://github.com/kai-kou/claude-code-base.git   # ✅ gh repo clone の代わり
+git clone --depth 1 https://github.com/owner/repo.git                 # ✅ gh repo clone の代わり
 git fetch origin <branch>                                             # ✅
 git pull origin <branch>                                              # ✅
 git push -u origin <branch>                                           # ✅（push が 403/413/502 のときは L-079 のフォールバック）

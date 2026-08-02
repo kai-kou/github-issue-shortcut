@@ -120,7 +120,7 @@ def changed_files() -> list[str]:
 def update_notes_reminder(files: list[str]) -> str | None:
     """下流影響の破壊的シグナルがあるのに base-update-notes.md 追記が無ければ文言を返す。
 
-    検出ロジック（content/discussions/base-fork-review-211 の合意・Warning 一本）:
+    検出ロジック（開発リポジトリの議論記録・議題 ID: base-fork-review-211 の合意・Warning 一本）:
       - D/R（削除・リネーム）: DESTRUCTIVE_SCOPE 全域で拾う（range diff 1 本のみ）
       - 配線ファイル（WIRING_FILES）: ステータス不問の名前照合
       - .claude/rules/ への追加（新規 Hot 化 symlink）

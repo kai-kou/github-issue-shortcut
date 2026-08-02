@@ -1,6 +1,6 @@
 # CLAUDE.md — GitHub Issue Shortcut
 
-> このファイルは `kai-kou/claude-code-base`（汎用 Claude Code 自律運用ベース）から生成された雛形。
+> このファイルは `kai-kou/claude-code-repository-base`（汎用 Claude Code 自律運用ベース）から生成された雛形。
 > プロジェクト固有の設定は本ファイルと `docs/project-mission.md` に追記し、
 > 不要なルール・スキル・フックは「利用しない」（symlink を外す / 参照しない）方式で無効化する。
 

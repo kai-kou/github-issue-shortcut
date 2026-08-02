@@ -13,14 +13,15 @@ effort: medium
 # GitHub プロジェクト管理スキル
 
 GitHub Issues + Labels（+ Projects V2）でタスクを一元管理する。
-**初回セットアップ手順と GitHub リソース体系のリファレンスは `docs/setup/github-project-setup.md`** に分離した
-（progressive disclosure）。本スキルは日常運用フローを担う。
+**初回セットアップ手順（ラベル・マイルストーン・Projects V2 の作成コマンド）は開発リポジトリの運用メモに
+分離している**（progressive disclosure）。未セットアップのリポジトリでは §「ラベル体系（要約）」を参照して
+`gh label create` 等で同等のラベルを用意すること。本スキルは日常運用フローを担う。
 
 > **責務境界（`project-sync` との区別・#26）**: 本スキル（`project-manager`）は **能動的なタスク運用**
 > （Issue 作成・ステータス更新・進捗確認・マイルストーン管理）を担う。一方 `project-sync` は
 > **受動的なリポジトリ衛生**（Stale Issue リセット・Orphan PR 解消・Abandoned ブランチ検出）の
 > メンテナンスを担う（CP-3）。「タスクを作る/進める」= project-manager、「放置された Issue/PR を掃除する」=
-> project-sync と切り分ける。両者はラベル体系（`docs/setup/github-project-setup.md`）を共有する。
+> project-sync と切り分ける。両者は下記のラベル体系を共有する。
 
 ## トリガー条件
 
@@ -35,7 +36,7 @@ GitHub Issues + Labels（+ Projects V2）でタスクを一元管理する。
 
 - `gh` CLI が認証済み（`gh auth status`）・`gh auth refresh -s project` で project スコープ付与済み（**ローカル実行時のみ**）
 - リポジトリ: `kai-kou/github-issue-shortcut`
-- **未セットアップ（ラベル・マイルストーン未作成）の場合は先に `docs/setup/github-project-setup.md` を実施**
+- **未セットアップ（ラベル・マイルストーン未作成）の場合は先に「ラベル体系（要約）」に従って `gh label create` 等で初期セットアップを実施**
 
 > 🔴 **クラウド実行環境では repo スコープの `gh`（REST + GraphQL）が egress プロキシに 403 でブロックされる（L-114）。**
 > Issue / PR 操作は GitHub MCP（`mcp__github__*`）を一次経路とし、以下の `gh` コマンド例は **ローカル環境向けの代替** として読む
@@ -51,7 +52,7 @@ GitHub Issues + Labels（+ Projects V2）でタスクを一元管理する。
 | 優先度 | `priority:` | critical / high / medium / low |
 | 見積もり | `sp:` | 1 / 2 / 3 / 5 / 8（`session-sprint-rules.md` §3） |
 
-詳細・色定義・作成コマンドは `docs/setup/github-project-setup.md`。
+色定義・作成コマンドの雛形は開発リポジトリの運用メモに保持している（`gh label create <name> --color <hex> --description <text>` の要領で同等のラベルを作成すればよい）。
 
 ---
 

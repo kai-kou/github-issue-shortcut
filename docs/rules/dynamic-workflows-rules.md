@@ -63,7 +63,7 @@ Claude が **JavaScript のオーケストレーションスクリプトを自�
   - 制約の再確認（公式）: 同時 **16 エージェント**（CPU コア数で減少）・総 **1,000/run**・**セッション内のみ resume 可**（セッションを終了すると次セッションでは新規実行になる＝再開不可）・`"disableWorkflows": true`（`settings.json`）または `CLAUDE_CODE_DISABLE_WORKFLOWS=1` で無効化可能・`/deep-research` は **WebSearch ツールが利用可能であること** が前提条件。
 - **2026-06-23 記録（歴史的）**: 上記確認前の暫定メモ。「移行作業中」としていたが、2026-07-03 の公式ドキュメント確認により直接呼び出し可能な点は確定済みとなった。
 - **2026-06-06 実機確認（歴史的記録）**: ハーネスのメインセッションには `Workflow`/`TeamCreate`/`SendMessage` が非露出だったため、**Bash から `claude -p` サブプロセスを起動** する経路が必要だった（ツール存在確認 + 2体チームの peer-to-peer 議論が end-to-end 成立）。`run_deep_research_workflow.py` と同経路。**2026-07-03 追記**: 現在のセッションでは `Workflow` ツールが露出しているため、この制約は解消済み（環境・バージョンにより差がありうる点は留意）。
-- 議論の中間結果・履歴は **共有ホワイトボード（Blackboard パターン・git 管理 Markdown）** に集約する（ルール: `docs/rules/discussion-whiteboard-rules.md`。実装は `discussion-review` スキル（ネイティブ・既定）+ `tools/discussion_whiteboard.py` 基盤。`tools/run_discussion_review.py` = claude -p 駆動はフォールバック）。**2026-07-11 追記**: `SendMessage` も deferred ツールとしてメインセッションに露出（実測・`docs/proposals/native-agent-teams-migration.md` §1）。
+- 議論の中間結果・履歴は **共有ホワイトボード（Blackboard パターン・git 管理 Markdown）** に集約する（ルール: `docs/rules/discussion-whiteboard-rules.md`。実装は `discussion-review` スキル（ネイティブ・既定）+ `tools/discussion_whiteboard.py` 基盤。`tools/run_discussion_review.py` = claude -p 駆動はフォールバック）。**2026-07-11 追記**: `SendMessage` も deferred ツールとしてメインセッションに露出（実測。詳細は開発リポジトリの提案記録 §1 に保持）。
 
 ---
 
@@ -136,7 +136,7 @@ Claude が **JavaScript のオーケストレーションスクリプトを自�
 | **`checkpoint` スキルの射程と限界** | `.claude/skills/checkpoint/` はフェーズ境界での **手動・粗粒度** スナップショット（Issue コメント末尾 JSON）。セッション境界を跨げる利点はあるが、**分岐/合流を持たず、実行中だったサブエージェントの成果は救えない**（ネイティブ resume と同じ弱点）。「checkpoint があるから中断に強い」と誤認しないこと |
 | **禁止** | 中間成果をメインのコンテキストにだけ持たせる設計（圧縮・中断で消える）。長時間 1 体に全工程を任せる設計 |
 
-> **根拠と経緯**: Graph エンジニアリング適用検討（#348・`docs/proposals/graph-engineering-adoption.md`）で、公式設計則と本ベースの実装（whiteboard の atomic write）が結び付いていないため「checkpoint があるから安全」という誤認が残る、と判定されたため明文化した。
+> **根拠と経緯**: Graph エンジニアリング適用検討（#348・詳細は開発リポジトリの提案記録として保持）で、公式設計則と本ベースの実装（whiteboard の atomic write）が結び付いていないため「checkpoint があるから安全」という誤認が残る、と判定されたため明文化した。
 
 ### 過大評価への注意（誤解しやすいポイント）
 

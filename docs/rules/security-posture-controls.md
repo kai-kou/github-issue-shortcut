@@ -11,11 +11,18 @@
 | 設定 | 値 | 意味 |
 |------|----|------|
 | `permissions.bypassPermissions` | `true` | 全ツールの許可プロンプトをバイパスし自律実行する |
+| `sandbox.enabled` | `true`（2026-08-02 追加・#383） | サンドボックス機能全体の起動スイッチ。**これが無いと以下の sandbox 設定はすべて無効**（本リポジトリは 2026-08-02 まで欠落していた） |
 | `sandbox.autoAllowBashIfSandboxed` | `true` | サンドボックス内 Bash を自動許可 |
-| `sandbox.excludedCommands` | `python3 *tools/*.py` 等 | プロジェクトツールはサンドボックス外（ネットワーク可）で実行 |
+| `sandbox.excludedCommands` | 接続先ドメインが動的なスクリプト限定（narrow exclusion・2026-08-01 見直し・#379） | secrets-broker 移行ツール等だけがサンドボックス外（ネットワーク制限なし）で実行。他の tools/ スクリプトは `sandbox.network.allowedDomains` の範囲内で実行される |
 | `env.DISABLE_NON_ESSENTIAL_MODEL_CALLS` | `1` | 非必須モデル呼び出しを抑制 |
 
 `bypassPermissions: true` は確認プロンプトを出さないため、**補償統制が実効的なガードレール** となる。
+
+> 🔴 **実行環境による効き方の差（#383）**: sandbox 系の統制（§1.2）は **`bwrap` / Seatbelt が使える
+> ローカル環境でのみ機能する**。クラウド実行環境（Claude Code on the web）には `bwrap` が存在せず、
+> **サンドボックスは動作しない**（実機確認済み）。したがって本リポジトリの主運用であるクラウド無人
+> セッションで実効的な補償統制は **§1.1 deny リスト・§1.3 フック・セッションコンテナ自体の隔離**
+> の 3 層であり、sandbox network allowlist をここに数えてはならない。詳細は `sandbox-rules.md`。
 
 ---
 
@@ -33,9 +40,13 @@
 
 → bypass であっても **秘密情報の読取と権限設定ファイルの改変は拒否** される。
 
-### 1.2 sandbox network allowlist（外部通信先をドメイン限定）
+### 1.2 sandbox network allowlist（外部通信先をドメイン限定・**ローカル環境限定**）
 
-`sandbox.network.allowedDomains` で github / googleapis / slack / r2 / context7 等の **業務上必要なドメインのみ** を許可。未許可ドメインへの送信は遮断され、データ持ち出し面のリスクを抑える。
+`sandbox.network.allowedDomains` で github / slack / anthropic / context7 等の **業務上必要なドメインのみ** を許可。未許可ドメインへの送信は遮断され、データ持ち出し面のリスクを抑える。
+
+**前提条件（満たさないと機能しない・#383）**: ① `sandbox.enabled: true` が設定されていること
+② 実行環境に `bwrap`（Linux）または Seatbelt（macOS）が存在すること。**クラウド実行環境は ② を
+満たさないため本統制は働かない**。クラウドでのリスク評価に本項を数えないこと。
 
 ### 1.3 フックによる多層ガード（`.claude/hooks/`）
 
@@ -58,9 +69,6 @@
 - リモート側のルールセット `main protection`（bypass リスト空・#226）と合わせて二重化（L-065 参照）。
   PR 経由必須・必須ステータスチェック（`test` / `e2e` / `size`）・force push 禁止・削除禁止・squash のみ。
   bypass が空なのでインストール済み GitHub App も同じ制約を受ける。
-- GitHub Actions 側の統制（#226）: fork PR ワークフローは外部コントリビューター全員に承認必須、
-  既定の `GITHUB_TOKEN` は read-only（write は各ワークフローが明示宣言）、Actions による PR 作成・承認は無効、
-  全ワークフローの `uses:` はコミット SHA 固定。
 
 ### 1.5 MCP の最小権限
 

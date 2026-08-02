@@ -92,19 +92,19 @@ def _self_test() -> None:
     _ph = "".join(["__", "OWNER", "__", "/", "__", "REPO", "__"])
 
     # 置換済み（下流リポジトリ）は git/env に触れず即返す
-    assert resolve_repo_slug("kai-kou/claude-code-base") == "kai-kou/claude-code-base"
+    assert resolve_repo_slug("example-owner/example-repo") == "example-owner/example-repo"
 
     # github.com URL 形式
-    assert parse_owner_repo("git@github.com:kai-kou/claude-code-base.git") == (
-        "kai-kou", "claude-code-base",
+    assert parse_owner_repo("git@github.com:example-owner/example-repo.git") == (
+        "example-owner", "example-repo",
     )
-    assert parse_owner_repo("https://github.com/kai-kou/claude-code-base") == (
-        "kai-kou", "claude-code-base",
+    assert parse_owner_repo("https://github.com/example-owner/example-repo") == (
+        "example-owner", "example-repo",
     )
     # ローカル git プロキシ形式（scheduled trigger 実行時・#220）
     assert parse_owner_repo(
-        "http://local_proxy@127.0.0.1:12345/git/kai-kou/claude-code-base"
-    ) == ("kai-kou", "claude-code-base")
+        "http://local_proxy@127.0.0.1:12345/git/example-owner/example-repo"
+    ) == ("example-owner", "example-repo")
     # 未置換プレースホルダの remote（テスト用等）は None
     assert parse_owner_repo(f"https://github.com/{_ph}") is None
     # 認識できない形式は None

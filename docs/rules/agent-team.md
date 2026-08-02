@@ -22,7 +22,7 @@
 > - 内部の自動調査（`problem-investigation-protocol.md` Step 3 の障害調査）・定型チェックは fan-out が既定（軽量・速い）。
 > - **過剰指摘や誤検知が問題になるレビュー**（画像/台本レビュー等）も議論型を選び、各エージェントに互いの指摘を批判検証させて critical を相互検証済みに絞る。
 >
-> **ツール露出の変遷**: 旧実機検証（#2588）では `Workflow`/`TeamCreate`/`SendMessage` が claude -p サブプロセス内でのみ利用可能だったが、**2026-07 時点でメインセッションに `Workflow`（2026-07-03 確認）・`SendMessage`（deferred ツール・2026-07-11 実測）が露出**。name 付き Agent 起動で暗黙チームが成立するため `TeamCreate` は不要（v2.1.178 で `TeamCreate` / `TeamDelete` 自体が廃止され、`team_name` は無視される）。ただしサブエージェント側の共有タスクボード（TaskCreate 等）は利用不可・SendMessage の配達は受信側ターン継続中のみ（実測 V-5・`docs/proposals/native-agent-teams-migration.md` §1）。委譲が空回答・期待外になる公式要因は §F-1〜F-7 を必ず確認する。
+> **ツール露出の変遷**: 旧実機検証（#2588）では `Workflow`/`TeamCreate`/`SendMessage` が claude -p サブプロセス内でのみ利用可能だったが、**2026-07 時点でメインセッションに `Workflow`（2026-07-03 確認）・`SendMessage`（deferred ツール・2026-07-11 実測）が露出**。name 付き Agent 起動で暗黙チームが成立するため `TeamCreate` は不要（v2.1.178 で `TeamCreate` / `TeamDelete` 自体が廃止され、`team_name` は無視される）。ただしサブエージェント側の共有タスクボード（TaskCreate 等）は利用不可・SendMessage の配達は受信側ターン継続中のみ（実測 V-5・詳細は開発リポジトリの提案記録 §1 に保持）。委譲が空回答・期待外になる公式要因は §F-1〜F-7 を必ず確認する。
 
 ## Phase別の並列化パターン
 

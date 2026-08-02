@@ -18,7 +18,7 @@ Opus 4.8 の effort デフォルト変更）。なお **新モデル世代のリ
 ## 1. アーキテクチャ（検知と対応の分離・2つの速度）
 
 ```
-定期実行（R-1 ルーティンのプリフライト・docs/routines.md）または手動 /claude-code-spec-sync
+定期実行（R-1 ルーティンのプリフライト。実行スケジュールの定義は開発リポジトリの運用メモに保持）または手動 /claude-code-spec-sync
   ↓
 tools/check_claude_code_updates.py --create-issue   ← 検知（LLM 非依存・軽量）
   ├─ 新バージョンなし（exit 10）→ 何もしない
@@ -78,16 +78,16 @@ tools/check_claude_code_updates.py --create-issue   ← 検知（LLM 非依存�
 
 | 項目 | 値 |
 |------|-----|
-| 実行頻度 | R-1 ルーティンのプリフライト（`docs/routines.md`・4 時間ごと・dedup により実質日次相当）＋手動 |
+| 実行頻度 | R-1 ルーティンのプリフライト（4 時間ごと・dedup により実質日次相当・具体的なスロット定義は開発リポジトリの運用メモが保持）＋手動 |
 | 検知ツール | `tools/check_claude_code_updates.py`（設定: `config/claude_code_spec_sync.yaml`） |
-| state | `config/claude_code_spec_state.json`（dedup 用・**コミット対象**） |
+| state | `config/claude_code_spec_state.json`（dedup 用・**コミット対象**。初回実行時に無ければ自動生成される） <!-- refcheck:ignore --> |
 | Issue ラベル | `lane:claude-code-spec` + `type:improvement` + `status:waiting-claude` + `sp:2` |
 | 対応スキル | `.claude/skills/claude-code-spec-sync/SKILL.md` |
 | 採用の記録先 | `docs/rules/claude-code-optimization.md`「バージョン差分ログ」セクション |
 
 > `[CC-Sync]` Issue は `type:improvement` + `status:waiting-claude` を持つため R-1 の消化対象にも
 > 自然に乗る。R-1 が `[CC-Sync]` プレフィックスの Issue を選んだ場合は、`self-improvement-loop` では
-> なく本レーンのスキル（Step 1 / Step 2）に従って消化する（`docs/routines.md` R-1 手順参照）。
+> なく本レーンのスキル（Step 1 / Step 2）に従って消化する（R-1 の具体手順は開発リポジトリの運用メモ参照）。
 
 ## 6. ガードレール（不変）
 
@@ -105,5 +105,6 @@ tools/check_claude_code_updates.py --create-issue   ← 検知（LLM 非依存�
 | `config/claude_code_spec_sync.yaml` | 検知設定（キーワード辞書・ラベル・dedup） |
 | `.claude/skills/claude-code-spec-sync/SKILL.md` | 対応フロー（即対応 / 検証・検討） |
 | `docs/rules/claude-code-optimization.md` | 採用・対応の記録先（バージョン差分ログ・CC-BUG-NN） |
-| `docs/routines.md` | R-1 プリフライトへの組込み（定期実行の配線） |
 | `docs/rules/native-fallback-rules.md` | 隣接機構（Web 未提供機能のフォールバック。本レーンは仕様追随が責務） |
+
+> R-1 プリフライトへの組込み（定期実行の配線）は、下流プロジェクトごとの運用メモ（開発リポジトリ側で保持）に定義する。
