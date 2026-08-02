@@ -55,7 +55,12 @@
 ### 1.4 ブランチ保護とPRフロー
 
 - `main` への直接 push は禁止（A-1・既約境界外）。全変更は作業ブランチ → PR → AIレビュー → 自動マージ。
-- リモート側 branch protection と合わせて二重化（L-065 参照）。
+- リモート側のルールセット `main protection`（bypass リスト空・#226）と合わせて二重化（L-065 参照）。
+  PR 経由必須・必須ステータスチェック（`test` / `e2e` / `size`）・force push 禁止・削除禁止・squash のみ。
+  bypass が空なのでインストール済み GitHub App も同じ制約を受ける。
+- GitHub Actions 側の統制（#226）: fork PR ワークフローは外部コントリビューター全員に承認必須、
+  既定の `GITHUB_TOKEN` は read-only（write は各ワークフローが明示宣言）、Actions による PR 作成・承認は無効、
+  全ワークフローの `uses:` はコミット SHA 固定。
 
 ### 1.5 MCP の最小権限
 
