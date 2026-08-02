@@ -4,7 +4,7 @@
   "free_tier_daily_requests": 100000,
   "daily": {
     "2026-08-01": {
-      "requests": 17,
+      "requests": 100,
       "errors": 0,
       "subrequests": 5
     },
@@ -15,10 +15,11 @@
     }
   },
   "totals": {
-    "requests": 54,
+    "requests": 137,
     "errors": 0,
     "subrequests": 26,
     "days": 2
   },
-  "last_updated": "2026-08-03T08:44:42+09:00"
+  "last_updated": "2026-08-03T08:50:11+09:00",
+  "last_reported_at": "2026-08-03T08:51:29+09:00"
 }
