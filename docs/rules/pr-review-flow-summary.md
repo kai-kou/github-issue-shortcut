@@ -30,8 +30,14 @@
 | タイミング | アクション |
 |---------|-----------|
 | PR 作成直後 | Layer 1 セルフレビュー → 指摘対応（修正コミット or スキップ + 返信 + Resolve） |
-| Layer 0+1 通過後 | `mcp__github__merge_pull_request`（`merge_method="squash"`）で即マージ → Slack 完了通知 |
+| Layer 0+1 通過後 | 必須 CI（`test` / `e2e` / `size`）の完走を待ってから `mcp__github__merge_pull_request`（`merge_method="squash"`）でマージ → Slack 完了通知 |
 | 任意 | CI 失敗・人手コメントがあれば対応してからマージ |
+
+> **🔴 `main` はルールセット `main protection` で保護されている（bypass なし・#226）**: PR 経由必須・
+> 必須ステータスチェック（`test` / `e2e` / `size`）通過必須・force push / 削除禁止・マージ方式は squash のみ。
+> **セルフレビュー直後の「即マージ」はできない**（CI 未完走の `merge_pull_request` は失敗する）。
+> チェック状況は `mcp__github__pull_request_read(method="get_check_runs")` で確認してからマージする。
+> `lighthouse` は必須チェックに含めていない（スコア閾値で落ちやすくハードゲートに不向きなため）。
 
 サーキットブレーカー: 修正サイクル 2 回超で STOP → ユーザー報告（A-4）。
 
