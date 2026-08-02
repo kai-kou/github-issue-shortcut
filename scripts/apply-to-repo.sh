@@ -142,6 +142,10 @@ fetch_base() {
   # クラウドでは gh がプリインストールされないのが既定・L-114）
   log "git でベースを取得します"
   local url="https://github.com/${BASE_REPO}.git"
+  # credential helper 未設定のローカル環境で認証が要るベース（--base で private を指した場合等）を
+  # clone しようとすると、git が /dev/tty から認証情報を要求して無限に待つ（`curl ... | bash` でも
+  # tty を直接開くため止まる）。決定論的に失敗させて後続のフォールバックへ落とす。
+  export GIT_TERMINAL_PROMPT=0 GIT_ASKPASS=true
   if git clone --depth 1 --branch "$REF" "$url" "$CLONE_DIR" >/dev/null 2>&1; then
     return 0
   fi
