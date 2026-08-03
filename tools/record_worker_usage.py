@@ -50,6 +50,8 @@ import telemetry_branch  # noqa: E402
 JST = timezone(timedelta(hours=9))
 USAGE_REL_DIR = "content/analytics/worker_usage"
 SUMMARY_REL = f"{USAGE_REL_DIR}/SUMMARY.md"
+# GitHub Pages のダッシュボード（#239）が fetch する集計フィード
+DASHBOARD_REL = f"{USAGE_REL_DIR}/dashboard.json"
 TELEMETRY_BRANCH = "telemetry/worker-usage"
 LOG_PREFIX = "[worker-usage]"
 SCRIPT_NAME = "github-issue-shortcut"
@@ -58,6 +60,7 @@ FREE_TIER_DAILY_REQUESTS = 100_000
 WARN_RATIO, CRITICAL_RATIO = 0.70, 0.90
 METRIC_KEYS = ("requests", "errors", "subrequests")
 DATE_PATTERN = re.compile(r"\d{4}-\d{2}-\d{2}")
+MONTH_PATTERN = re.compile(r"\d{4}-\d{2}")
 DEFAULT_REPORT_INTERVAL_DAYS = 7
 
 BRANCH_README = (
@@ -208,8 +211,19 @@ def usage_dir() -> Path:
     return telemetry_branch.project_dir() / USAGE_REL_DIR
 
 
+def is_month_file(stem: str) -> bool:
+    """`YYYY-MM.json` だけを月次データとして扱う。
+
+    同じディレクトリには派生物（`dashboard.json`）も置くため、名前で弾かないと
+    フィードが「月次レポート」として読み込まれ、次の push で上書きされて壊れる。
+    """
+    return bool(MONTH_PATTERN.fullmatch(stem))
+
+
 def read_local_months() -> dict:
-    return telemetry_branch.read_local_jsons(usage_dir(), LOG_PREFIX)
+    return {stem: rep
+            for stem, rep in telemetry_branch.read_local_jsons(usage_dir(), LOG_PREFIX).items()
+            if is_month_file(stem)}
 
 
 def read_remote_month(month: str) -> dict | None:
@@ -238,9 +252,10 @@ def hydrate_from_remote() -> str:
     local = read_local_months()
     for rel in ls.stdout.splitlines():
         rel = rel.strip()
-        if not rel.endswith(".json"):
-            continue
         month = Path(rel).stem
+        # 月次ファイルだけを取り込む（dashboard.json 等の派生物は月次として扱わない）
+        if not rel.endswith(".json") or not is_month_file(month):
+            continue
         remote = telemetry_branch.json_at(f"{ref}:{rel}")
         if remote is None:
             continue
@@ -398,6 +413,82 @@ def format_summary(s: dict) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _week_start(date_str: str) -> str:
+    """その日が属する週（月曜始まり）の開始日を返す。"""
+    d = datetime.strptime(date_str, "%Y-%m-%d")
+    return (d - timedelta(days=d.weekday())).strftime("%Y-%m-%d")
+
+
+def _bucket(daily: dict, labels: list, key_of) -> list:
+    """日次レコードを labels（表示順）のバケットへ畳む。
+
+    欠測（そのバケットに 1 日もレコードが無い）を `missing: true` で残すのが要点。
+    ゼロ埋めして「0 件だった」と嘘をつかないため（ダッシュボードはハッチングで区別する）。
+    """
+    buckets = {label: {"label": label, "requests": 0, "errors": 0, "subrequests": 0,
+                       "days": 0, "missing": True} for label in labels}
+    for date, rec in daily.items():
+        label = key_of(date)
+        b = buckets.get(label)
+        if b is None:
+            continue
+        for key in METRIC_KEYS:
+            b[key] += int(rec.get(key) or 0)
+        b["days"] += 1
+        b["missing"] = False
+    return [buckets[label] for label in labels]
+
+
+def build_dashboard_feed(months: dict | None = None, anchor: str | None = None) -> dict:
+    """GitHub Pages のダッシュボードが読む集計フィードを組み立てる（#239）。
+
+    ダッシュボードは静的ページで、この JSON をデータブランチから fetch するだけで描画する
+    （`site/` にデータを焼き込まない = 更新のたびに PR を作らないため・議論 D-3）。
+    週次・月次は WAE などへ問い合わせ直さず、保存済みの日次から合算して作る（D-4）。
+    """
+    months = read_local_months() if months is None else months
+    daily = flatten_daily(months)
+    # アンカーは「今日」ではなく **データのある最終日**。今日を基準にすると、取り込みが無い日でも
+    # 窓がずれてフィードだけが変化し、実データの更新が無いのに毎日 push が走る。鮮度は
+    # last_updated で正直に伝える（窓の右端を動かして伝えるものではない）。
+    anchor = anchor or (max(daily) if daily else datetime.now(timezone.utc).strftime("%Y-%m-%d"))
+    end = datetime.strptime(anchor, "%Y-%m-%d")
+
+    day_labels = [(end - timedelta(days=i)).strftime("%Y-%m-%d") for i in range(29, -1, -1)]
+    week_labels, cursor = [], _week_start(anchor)
+    for i in range(11, -1, -1):
+        week_labels.append((datetime.strptime(cursor, "%Y-%m-%d")
+                            - timedelta(weeks=i)).strftime("%Y-%m-%d"))
+    month_labels = []
+    y, m = end.year, end.month
+    for _ in range(6):
+        month_labels.append(f"{y:04d}-{m:02d}")
+        y, m = (y - 1, 12) if m == 1 else (y, m - 1)
+    month_labels.reverse()
+
+    # 収集時刻は 3 粒度とも同一（週次・月次は日次の合算であって別取得ではないため）。
+    # 粒度ごとに分けて持つのは、WAE 由来の系列を足す #242 で取得頻度が変わりうるから。
+    updated = max((str(rep.get("last_updated") or "") for rep in months.values()), default="")
+    series = {
+        "daily": {"last_updated": updated,
+                  "points": _bucket(daily, day_labels, lambda d: d)},
+        "weekly": {"last_updated": updated,
+                   "points": _bucket(daily, week_labels, _week_start)},
+        "monthly": {"last_updated": updated,
+                    "points": _bucket(daily, month_labels, lambda d: d[:7])},
+    }
+    return {
+        "schema": 1,
+        "script": SCRIPT_NAME,
+        "source": f"{TELEMETRY_BRANCH}:{USAGE_REL_DIR}",
+        "free_tier_daily_requests": FREE_TIER_DAILY_REQUESTS,
+        "generated_at": datetime.now(JST).isoformat(timespec="seconds"),
+        "coverage": {"first": min(daily), "last": max(daily), "days": len(daily)} if daily
+                    else {"first": "", "last": "", "days": 0},
+        "series": series,
+    }
+
+
 def build_summary(days: int = 30, anchor: str | None = None,
                   months: dict | None = None) -> str:
     """集計サマリーを Markdown で返す。
@@ -428,18 +519,33 @@ def compute_changes() -> dict:
     return changes
 
 
+def dashboard_substance(feed: dict | None) -> str:
+    """フィードの実データ部分（生成時刻を除く）の同一性判定キー。"""
+    if not isinstance(feed, dict):
+        return ""
+    return json.dumps({k: v for k, v in feed.items() if k != "generated_at"},
+                      ensure_ascii=False, sort_keys=True)
+
+
 def _build_payload(parent_sha: str | None, remote_state: str):
     changes = compute_changes()
-    if not changes:
+    merged = {**read_local_months(), **changes}
+    feed = build_dashboard_feed(months=merged)
+    ref = telemetry_branch.remote_ref(TELEMETRY_BRANCH)
+    remote_feed = telemetry_branch.json_at(f"{ref}:{DASHBOARD_REL}")
+    feed_changed = dashboard_substance(feed) != dashboard_substance(remote_feed)
+    if not changes and not feed_changed:
         return None, "", ""
     entries = {f"{USAGE_REL_DIR}/{month}.json": serialize(report)
                for month, report in changes.items()}
-    # SUMMARY.md は「同じコミットで書き込む月次 JSON」と同じデータから作る（再マージ後の値を反映）
-    entries[SUMMARY_REL] = build_summary(months={**read_local_months(), **changes})
+    # SUMMARY.md / dashboard.json は「同じコミットで書き込む月次 JSON」と同じデータから作る
+    # （再マージ後の値を反映する）
+    entries[SUMMARY_REL] = build_summary(months=merged)
+    entries[DASHBOARD_REL] = serialize(feed)
     if not parent_sha:
         entries["README.md"] = BRANCH_README
-    months = ", ".join(sorted(changes))
-    return entries, f"chore(telemetry): Workers 利用状況を更新（{months}）", months
+    summary = ", ".join(sorted(changes)) if changes else "ダッシュボードフィードのみ"
+    return entries, f"chore(telemetry): Workers 利用状況を更新（{summary}）", summary
 
 
 def push(dry_run: bool = False) -> bool:
@@ -564,6 +670,39 @@ def self_test() -> int:
         if got:
             failures.append(f"不正な日付を受理した（パス脱出の恐れ）: {bad_date!r} → {list(got)}")
 
+    # 10c) ダッシュボードフィード: 日次 30 / 週次 12 / 月次 6 のバケットと欠測の扱い（#239）
+    feed_months = {"2099-05": {"month": "2099-05", "daily": {
+        "2099-05-04": {"requests": 10, "errors": 1, "subrequests": 2},   # 月曜
+        "2099-05-05": {"requests": 20, "errors": 0, "subrequests": 3},   # 火曜（同じ週）
+        "2099-05-18": {"requests": 5, "errors": 0, "subrequests": 0},    # 2 週後の月曜
+    }, "last_updated": "2099-05-18T09:00:00+09:00"}}
+    feed = build_dashboard_feed(months=feed_months, anchor="2099-05-18")
+    d_pts, w_pts, m_pts = (feed["series"][k]["points"] for k in ("daily", "weekly", "monthly"))
+    if [len(d_pts), len(w_pts), len(m_pts)] != [30, 12, 6]:
+        failures.append(f"フィードのバケット数が不正: {len(d_pts)}/{len(w_pts)}/{len(m_pts)}")
+    if d_pts[-1]["label"] != "2099-05-18" or d_pts[-1]["requests"] != 5:
+        failures.append(f"日次の最終バケットが不正: {d_pts[-1]}")
+    if not any(p["missing"] for p in d_pts):
+        failures.append("欠測日が missing=true になっていない（ゼロ埋めで嘘をついている）")
+    week = next((p for p in w_pts if p["label"] == "2099-05-04"), None)
+    if not week or week["requests"] != 30 or week["errors"] != 1 or week["days"] != 2:
+        failures.append(f"週次バケット（月曜始まり）の合算が不正: {week}")
+    if any(p["label"] == "2099-05-18" and p["missing"] for p in w_pts):
+        failures.append("データのある週が missing 扱いになっている")
+    month = next((p for p in m_pts if p["label"] == "2099-05"), None)
+    if not month or month["requests"] != 35 or month["days"] != 3:
+        failures.append(f"月次バケットの合算が不正: {month}")
+    if feed["coverage"]["days"] != 3 or feed["series"]["daily"]["last_updated"] != \
+            "2099-05-18T09:00:00+09:00":
+        failures.append(f"フィードのメタ情報が不正: {feed['coverage']} / {feed['series']['daily']}")
+
+    # 10d) 月次ファイルの判別（#239）: 同じディレクトリに置く派生物を月次として読み込むと、
+    #      フィードが「月次レポート」に化けて次の push で壊れる（実際に踏んだ）
+    for stem, want in (("2026-08", True), ("2026-8", False), ("dashboard", False),
+                       ("SUMMARY", False), ("2026-08-02", False)):
+        if is_month_file(stem) != want:
+            failures.append(f"月次ファイル判定が不正: {stem!r} → {is_month_file(stem)}（期待 {want}）")
+
     # 11) 壊れた入力でクラッシュしない
     for bad in (None, [], "x", {"workersInvocationsAdaptive": "not-a-list"},
                 {"result": {"data": None}}):
@@ -581,7 +720,7 @@ def self_test() -> int:
             print(f"  ✗ {f}", file=sys.stderr)
         print(f"self-test FAILED（{len(failures)} 件）", file=sys.stderr)
         return 1
-    print("self-test PASSED（14 ケース）")
+    print("self-test PASSED（16 ケース）")
     return 0
 
 

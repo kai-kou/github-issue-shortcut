@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>利用状況 — GitHub Issue Shortcut</title>
+    <meta
+      name="description"
+      content="GitHub Issue Shortcut の利用状況（日次・週次・月次のリクエスト数とエラー数）。個人を識別する情報は含みません。"
+    />
+    <link rel="canonical" href="https://kai-kou.github.io/github-issue-shortcut/analytics/" />
+
+    <!-- GitHub Pages はカスタムレスポンスヘッダーを設定できない（_headers は Cloudflare Pages /
+         Netlify の機能）ため、CSP は meta で宣言する。connect-src は集計 JSON の取得先だけに限定し、
+         それ以外の外部通信を禁じる（議論 D-3・delivery-security の要求）。 -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; connect-src https://raw.githubusercontent.com; img-src 'self' data:; style-src 'self'; script-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'"
+    />
+
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0d1117" />
+    <meta name="robots" content="noindex" />
+
+    <link rel="icon" href="../assets/icon-192.png" type="image/png" />
+    <link rel="stylesheet" href="../styles.css" />
+    <link rel="stylesheet" href="analytics.css" />
+  </head>
+
+  <body class="analytics">
+    <header class="analytics__header">
+      <div class="analytics__container">
+        <p class="analytics__breadcrumb">
+          <a href="../">GitHub Issue Shortcut</a>
+        </p>
+        <h1>利用状況</h1>
+        <p class="analytics__lead">
+          Cloudflare Workers の実測値です。<strong>静的なスナップショット</strong>で、開いている間の自動更新はありません。
+          個人を識別する情報は収集していません。
+        </p>
+      </div>
+    </header>
+
+    <main class="analytics__container">
+      <div class="period" role="radiogroup" aria-label="集計期間">
+        <input type="radio" name="period" id="period-daily" />
+        <label for="period-daily">日次</label>
+        <input type="radio" name="period" id="period-weekly" checked />
+        <label for="period-weekly">週次</label>
+        <input type="radio" name="period" id="period-monthly" />
+        <label for="period-monthly">月次</label>
+      </div>
+
+      <!-- 各パネルの中身は analytics.js が描画する。JS 無効時・取得失敗時は下の状態表示が残る。 -->
+      <section class="panel panel--daily" id="panel-daily" aria-label="日次の利用状況">
+        <p class="panel__status" data-status>読み込み中…</p>
+      </section>
+      <section class="panel panel--weekly" id="panel-weekly" aria-label="週次の利用状況">
+        <p class="panel__status" data-status>読み込み中…</p>
+      </section>
+      <section class="panel panel--monthly" id="panel-monthly" aria-label="月次の利用状況">
+        <p class="panel__status" data-status>読み込み中…</p>
+      </section>
+    </main>
+
+    <footer class="analytics__footer">
+      <div class="analytics__container">
+        <p>
+          データ元は
+          <a href="https://github.com/kai-kou/github-issue-shortcut/tree/telemetry/worker-usage"
+            >テレメトリ用データブランチ</a
+          >
+          で、スプリントルーティンの実行ごとに更新されます。Cloudflare の分析 API は 32 日より前を返さないため、
+          それ以前の値はこのリポジトリに保存した履歴です。取得先の CDN キャッシュにより、最大 5 分ほど古い値が表示されることがあります。
+        </p>
+        <p>
+          <a href="../">トップページ</a> ・
+          <a href="https://github.com/kai-kou/github-issue-shortcut">GitHub</a>
+        </p>
+      </div>
+    </footer>
+
+    <script src="analytics.js" defer></script>
+  </body>
+</html>

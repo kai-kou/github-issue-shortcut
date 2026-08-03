@@ -71,6 +71,8 @@ JSON
 
 同一日はフィールド毎 max でマージされるので、1 日に何度実行しても値は後退せず、差分がなければ push は no-op になる。ローカルの `content/analytics/worker_usage/` は gitignore 対象の作業コピーで、正本はデータブランチ側（fresh コンテナでは実行時に自動で hydrate される）。
 
+この push には、公開ダッシュボード（[利用状況ページ](https://kai-kou.github.io/github-issue-shortcut/analytics/)・#239）が読む `dashboard.json`（日次 30 / 週次 12 / 月次 6 バケット）も含まれる。**ダッシュボードの更新はこの Step だけで完結し、`site/` を触る必要はない**（`site/` は main 上にあり、更新のたびに PR が要る構造を避けるための設計・議論 `wae-dashboard-20260803` の D-3）。
+
 判定は `--summary` の **「当日（UTC）」行**（`→ 正常 / Warning / Critical`）に対応する。同じ出力の「期間内ピーク」行は参考値で、過去のスパイクを示すだけなので、それを理由にエスカレーションしない。
 
 | 当日の requests | 判定 | 対処 |
