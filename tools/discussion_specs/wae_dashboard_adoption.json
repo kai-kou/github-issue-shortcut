@@ -1,0 +1,43 @@
+{
+  "topic": "Workers Analytics Engine の導入と、GitHub Pages 上の利用状況ダッシュボード（日次・週次・月次）の設計",
+  "brief": "飼い主の指示は『WAE を導入する方針で進める』『利用状況を GitHub Pages の専用ダッシュボードで確認できるようにする』『UI/UX は最新トレンド・ベストプラクティスをリサーチしてから実装する』『最低限、日次・週次・月次で状況確認したい』。導入可否そのものは決定済みなので蒸し返さず、**どう作るか** に集中せよ。議論を始める前に必ず Read すること: content/research/2026-08-03-workers-analytics-engine.md（WAE の料金・制限・サンプリング・SQL 関数の一次情報）、docs/design/stateless-architecture.md（サーバーに個人データを保持しない設計思想）、wrangler.jsonc（現行バインディングと observability 設定）、tools/record_worker_usage.py（#235 で入れた既存の利用状況履歴化ツールとデータブランチ telemetry/worker-usage）、docs/routines/sprint-session.md の Step 1.6（定期実行の動線）、.github/workflows/pages.yml と site/（現行 LP と公開経路）、docs/design/design-guidelines.md（D-1〜D-10 のデザイン規約）。確定済みの重要前提: (a) WAE は Workers Free 枠内（書き込み 10 万件/日・クエリ 1 万件/日）で足り、公式に『現時点では課金されない』と明記されている。本プロジェクトの実測は 1 日平均 63 リクエストで枠の 0.06%。(b) WAE の保持は 3 か月しかないため長期履歴は自前で残す必要がある（#235 の telemetry/worker-usage が同じ問題を既に解いている）。(c) index は 1 個・96 バイトで、これがサンプリングのキーになる。(d) count(DISTINCT) は使えるが _sample_interval の補正対象外。現規模ではサンプリングはまず発動しない。(e) WAE に可視化 UI は無く、読み出しは SQL API（Account Analytics Read 権限のトークンが必要）。(f) リポジトリは public で GitHub Pages も公開。過去にコスト実額を公開ブランチに残していた事故（#189/#202）がある。(g) 現行 Worker は永続化 API を一切持たない（D1/KV/R2/DO なし）。争点は次の 6 点である: ①識別子設計とプライバシー境界（誰を『1 人』と数えるか。日次ソルト付きハッシュ等の是非と、保持ゼロの設計思想・プライバシーポリシーとの整合） ②公開ダッシュボードにどこまで運用数値を出すか（public に晒してよい指標と、晒すべきでない指標の線引き） ③データ供給経路（静的な GitHub Pages へどうやって数値を届けるか。API トークンをクライアントに出す設計は論外という前提で、定期ビルドで JSON を焼き込む案・データブランチ経由・Worker 側にエンドポイントを作る案などを比較） ④日次・週次・月次の集計設計と保持（WAE 3 か月制約と #235 の履歴化との役割分担。二重実装を避ける） ⑤ダッシュボードの UI/UX（2026 年のダッシュボード設計のベストプラクティス、既存 LP との一貫性、アクセシビリティ、size-limit 80KB の予算） ⑥実装分割（Epic と子 Issue・SP・着手順）。YAGNI を厳守し、1 人 + AI 運用で維持できない仕組みは提案しないこと。",
+  "participants": [
+    {
+      "name": "privacy-identity",
+      "model": "sonnet",
+      "lens": "プライバシー・識別子設計の担当。『利用者数を数える』ために何を index に置くかを具体的に設計し、その法的・倫理的な帰結を評価する。日次ソルト付き HMAC・IP ベース・セッション Cookie ベース・そもそも数えない（リクエスト数と起票成功数だけ見る）といった選択肢を列挙し、それぞれについて (1) docs/design/stateless-architecture.md の『サーバーに個人データを保持しない』という約束を破るか (2) 現行のプライバシーポリシー（site/ と README・ポリシー文書）に追記が必要か (3) GDPR/APPI 上の個人データ該当性 (4) WAE の保持 3 か月・index 96 バイト制限との適合、を判定せよ。既存の TOKEN_ENCRYPTION_KEY を鍵に流用してよいかにも触れること（#208 の HKDF 分離未対応を踏まえる）。『数えない』という結論も選択肢として真剣に検討すること。",
+      "targets_hint": "docs/design/stateless-architecture.md, worker/index.ts, site/, README.md"
+    },
+    {
+      "name": "data-pipeline",
+      "model": "sonnet",
+      "lens": "データ設計・パイプラインの担当。WAE のスキーマ（index に何を入れるか・blobs/doubles に何を入れるか）と、日次/週次/月次の集計クエリを具体的に設計する。#235 で既に入れた record_worker_usage.py + telemetry/worker-usage との **役割分担** を明確にし、二重実装・二重の真実源を作らないこと（例: 総リクエスト数は既存経路が持っているのに WAE でも数えるべきか）。WAE の保持 3 か月と自前履歴化の関係、サンプリング補正（SUM(_sample_interval)）を集計クエリにどう織り込むか、count(DISTINCT) が補正対象外である事実への対処、クエリ回数の無料枠（1 万件/日）を守る呼び出し設計も示せ。既存ツールの拡張で足りるなら新規ファイルを作らない案を優先すること。",
+      "targets_hint": "tools/record_worker_usage.py, tools/telemetry_branch.py, docs/routines/sprint-session.md, wrangler.jsonc"
+    },
+    {
+      "name": "delivery-security",
+      "model": "sonnet",
+      "lens": "配信経路・セキュリティ・公開範囲の担当。静的な GitHub Pages に数値を届ける方式を比較評価する（案 A: GitHub Actions の定期実行が SQL API を叩いて JSON を生成し site/ に焼き込んで Pages を再デプロイ、案 B: データブランチ telemetry/worker-usage の JSON を raw.githubusercontent などから取得、案 C: Worker 側に公開エンドポイントを作りダッシュボードから fetch、案 D: セッションが定期ルーティンで生成してコミット）。各案について (1) Cloudflare API トークンの置き場所と露出リスク（GitHub Secrets への登録はキーレス方針 docs/research/2026-07-10-cloudflare-connector-keyless.md と衝突する点を必ず考慮） (2) 公開リポジトリ・公開 Pages に運用数値を晒すことの是非と、晒してよい指標の線引き（#189/#202 のコスト実額露出事故を踏まえる） (3) 更新頻度と鮮度 (4) 障害時の劣化（データが無いときダッシュボードがどう見えるか） (5) 追加の攻撃面（案 C は未認証エンドポイントの増設になる。#207 の可用性防御の議論を踏まえる）を評価し、推奨案を 1 つ選べ。",
+      "targets_hint": ".github/workflows/pages.yml, site/, worker/index.ts, docs/research/2026-07-10-cloudflare-connector-keyless.md"
+    },
+    {
+      "name": "dashboard-ux",
+      "model": "sonnet",
+      "lens": "ダッシュボード UI/UX の担当。2026 年時点のダッシュボード設計のベストプラクティスを **WebSearch / WebFetch で実際にリサーチしてから**（推測で書かない・出典 URL を必ず添える）、本ダッシュボードの画面設計を提案する。必ず扱うこと: (1) 日次・週次・月次をどう切り替えるか（タブ / セグメンテッドコントロール / 期間ピッカーのどれが適切か。最新の知見に基づいて） (2) 最初の画面で何を見せるか（KPI カードの選定と個数・上部に置く指標の優先順位） (3) グラフの型（時系列は折れ線か棒か・スパークライン・比較の見せ方）とデータインク比 (4) 空状態・欠測・サンプリング済みデータの正直な表示方法 (5) アクセシビリティ（色だけに依存しない・コントラスト比・キーボード操作・prefers-reduced-motion） (6) ダークモード対応（本 LP は prefers-color-scheme で自動切替の方針） (7) 依存ライブラリを入れるか（Chart.js 等）自前 SVG かの判断（size-limit の予算 80KB brotli・LP は依存ゼロの静的ファイルという現行方針を踏まえる）。docs/design/design-guidelines.md の D-1〜D-10 と矛盾しない案にすること。",
+      "targets_hint": "docs/design/design-guidelines.md, site/index.html, site/styles.css, site/main.js"
+    },
+    {
+      "name": "scope-delivery",
+      "model": "sonnet",
+      "lens": "スコープ・分割・実行可能性の担当。他 4 名の提案を『1 人 + AI が維持できるか』の観点で削り込み、Epic + 子 Issue への分割案を出す。各子 Issue に (1) タイトル（feat:/improvement: プレフィックス） (2) 何ができたら完了か（検証可能な Done Criteria） (3) SP（1/2/3/5/8・docs/rules/session-sprint-rules.md の基準 + Dynamic 補正） (4) 依存関係と着手順 を付けること。特に『最初の 1 本で価値が出る最小構成は何か』を明示し、初手で全部作ろうとする案を潰すこと。YAGNI 違反（1 箇所しか使わない抽象化・使われないフィルタ UI・過剰な指標）と、既存資産（#235 の履歴化・sprint-session.md の定期実行・site/ の LP）で代替できる部分を具体的に指摘せよ。テストと機械検証（何が完了を保証するか）も各 Issue に対応付けること。",
+      "targets_hint": "docs/rules/session-sprint-rules.md, tools/record_worker_usage.py, docs/routines/sprint-session.md"
+    }
+  ],
+  "synthesizer": {
+    "name": "lead",
+    "model": "sonnet",
+    "instruction": "5 役の議論全文を show で読み、次を consensus として post する: ①確定した設計判断（識別子設計・公開範囲・データ供給経路・集計と保持の役割分担・UI 方針）を各 1〜3 行で、選ばれなかった案とその棄却理由付きで ②Epic + 子 Issue の一覧（タイトル・Done Criteria・SP・着手順・依存） ③意図的に今回やらないこと（YAGNI で落とした項目）。verdict は PASS（設計が固まり着手可能）/ WARN（着手可能だが要注意点あり）/ FAIL（前提に重大な欠陥があり設計をやり直すべき）。critical には議論を経ても残った真の問題だけを入れる（相互検証で否定された指摘は除外）。summary は飼い主がこの 1 ページで方針を理解できる日本語で書く。",
+    "verdict_schema": "{\"verdict\":\"PASS|WARN|FAIL\",\"critical\":[],\"decisions\":[],\"issues\":[],\"not_doing\":[],\"consensus\":\"\",\"summary\":\"\"}"
+  },
+  "verdict_schema": "{\"verdict\":\"PASS|WARN|FAIL\",\"critical\":[],\"decisions\":[],\"issues\":[],\"not_doing\":[],\"consensus\":\"\",\"summary\":\"\"}"
+}
