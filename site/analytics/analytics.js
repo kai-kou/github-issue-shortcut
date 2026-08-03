@@ -291,7 +291,7 @@
     var points = series.points;
     var stats = kpis(points);
     var meta =
-      "最終更新: " +
+      "データ最終更新: " +
       formatJst(series.last_updated) +
       "（静的スナップショット・自動更新なし）";
     if (stats.missing > 0) {

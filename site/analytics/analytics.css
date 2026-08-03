@@ -67,7 +67,8 @@
   display: inline-flex;
   margin: 32px 0 24px;
   padding: 4px;
-  gap: 4px;
+  /* ターゲット間隔は 8px 以上（design-guidelines.md §2） */
+  gap: 8px;
   background: var(--color-bg-alt);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-m);
@@ -126,6 +127,14 @@ body:has(#period-monthly:checked) .panel--monthly {
 body:has(#period-daily:checked) .panel--weekly,
 body:has(#period-monthly:checked) .panel--weekly {
   display: none;
+}
+
+/* :has() が使えない環境では切替が効かないので、操作できない UI 自体を見せない
+   （押しても無反応 = 壊れて見える、を避ける） */
+@supports not selector(:has(*)) {
+  .period {
+    display: none;
+  }
 }
 
 .panel__status {

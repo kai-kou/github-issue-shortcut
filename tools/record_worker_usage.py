@@ -520,11 +520,24 @@ def compute_changes() -> dict:
 
 
 def dashboard_substance(feed: dict | None) -> str:
-    """フィードの実データ部分（生成時刻を除く）の同一性判定キー。"""
+    """フィードの実データ部分の同一性判定キー。
+
+    時刻フィールド（`generated_at` と各系列の `last_updated`）は除外する。除外しないと、
+    取り込みのたびに更新される `last_updated` だけで差分ありと判定され、数値が 1 つも
+    変わっていないのに push が走る（月次 JSON 側の `substance()` が `last_updated` を
+    除外しているのと同じ理由・セルフレビュー指摘）。
+    """
     if not isinstance(feed, dict):
         return ""
-    return json.dumps({k: v for k, v in feed.items() if k != "generated_at"},
-                      ensure_ascii=False, sort_keys=True)
+    core = {k: v for k, v in feed.items() if k != "generated_at"}
+    series = core.get("series")
+    if isinstance(series, dict):
+        core["series"] = {
+            name: {k: v for k, v in body.items() if k != "last_updated"}
+            if isinstance(body, dict) else body
+            for name, body in series.items()
+        }
+    return json.dumps(core, ensure_ascii=False, sort_keys=True)
 
 
 def _build_payload(parent_sha: str | None, remote_state: str):
@@ -703,6 +716,20 @@ def self_test() -> int:
         if is_month_file(stem) != want:
             failures.append(f"月次ファイル判定が不正: {stem!r} → {is_month_file(stem)}（期待 {want}）")
 
+    # 10e) フィードの冪等判定: 収集時刻だけ動いても差分なし（数値が変われば差分あり）。
+    #      ここを外すと、実データが 1 つも変わっていないのに毎回 push が走る（セルフレビュー指摘）
+    feed_a = build_dashboard_feed(months=feed_months, anchor="2099-05-18")
+    bumped = {"2099-05": dict(feed_months["2099-05"], last_updated="2099-05-19T10:00:00+09:00")}
+    feed_b = build_dashboard_feed(months=bumped, anchor="2099-05-18")
+    if dashboard_substance(feed_a) != dashboard_substance(feed_b):
+        failures.append("last_updated のみ変化でフィードに差分ありと誤判定（冪等性違反）")
+    grown = {"2099-05": dict(feed_months["2099-05"], daily=dict(
+        feed_months["2099-05"]["daily"], **{"2099-05-18": {"requests": 99, "errors": 0,
+                                                           "subrequests": 0}}))}
+    if dashboard_substance(build_dashboard_feed(months=grown, anchor="2099-05-18")) == \
+            dashboard_substance(feed_a):
+        failures.append("実データの変化がフィードの差分として検出されない")
+
     # 11) 壊れた入力でクラッシュしない
     for bad in (None, [], "x", {"workersInvocationsAdaptive": "not-a-list"},
                 {"result": {"data": None}}):
@@ -720,7 +747,7 @@ def self_test() -> int:
             print(f"  ✗ {f}", file=sys.stderr)
         print(f"self-test FAILED（{len(failures)} 件）", file=sys.stderr)
         return 1
-    print("self-test PASSED（16 ケース）")
+    print("self-test PASSED（18 ケース）")
     return 0
 
 

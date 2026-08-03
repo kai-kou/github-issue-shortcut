@@ -52,15 +52,33 @@
         <label for="period-monthly">月次</label>
       </div>
 
-      <!-- 各パネルの中身は analytics.js が描画する。JS 無効時・取得失敗時は下の状態表示が残る。 -->
-      <section class="panel panel--daily" id="panel-daily" aria-label="日次の利用状況">
-        <p class="panel__status" data-status>読み込み中…</p>
+      <!-- 各パネルの中身は analytics.js が描画する。CSP で inline script を禁じているため
+           no-js クラスの付け外しは使えない。代わりに初期文言を「JS が要る」と明示し、
+           JS が無効なら noscript の案内が出る（読み込み中のまま固まらないようにする）。 -->
+      <noscript>
+        <p class="panel__status">
+          このページはグラフの描画に JavaScript を使います。JavaScript を有効にするか、
+          <a
+            href="https://github.com/kai-kou/github-issue-shortcut/blob/telemetry/worker-usage/content/analytics/worker_usage/SUMMARY.md"
+            >テキスト版のサマリー</a
+          >
+          をご覧ください。
+        </p>
+      </noscript>
+
+      <section class="panel panel--daily" id="panel-daily" aria-label="日次の利用状況" aria-live="polite">
+        <p class="panel__status" data-status>データを読み込んでいます（JavaScript が必要です）…</p>
       </section>
-      <section class="panel panel--weekly" id="panel-weekly" aria-label="週次の利用状況">
-        <p class="panel__status" data-status>読み込み中…</p>
+      <section class="panel panel--weekly" id="panel-weekly" aria-label="週次の利用状況" aria-live="polite">
+        <p class="panel__status" data-status>データを読み込んでいます（JavaScript が必要です）…</p>
       </section>
-      <section class="panel panel--monthly" id="panel-monthly" aria-label="月次の利用状況">
-        <p class="panel__status" data-status>読み込み中…</p>
+      <section
+        class="panel panel--monthly"
+        id="panel-monthly"
+        aria-label="月次の利用状況"
+        aria-live="polite"
+      >
+        <p class="panel__status" data-status>データを読み込んでいます（JavaScript が必要です）…</p>
       </section>
     </main>
 
