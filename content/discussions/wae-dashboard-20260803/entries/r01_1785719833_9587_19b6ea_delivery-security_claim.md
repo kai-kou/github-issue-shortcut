@@ -29,5 +29,5 @@ ts: 2026-08-03T10:17:12+09:00
 - ❌ 晒すべきでない: 個票・行レベルデータ、IP や識別子そのもの、**コスト・課金の実額**（#189/#202 の直接の再発条件）、`_sample_interval` 補正前の生カウント（誤読を招く）。
 
 **実装時の付帯論点（ブロッカーではないが記録推奨）**:
-- `site/`（LP）には現状 `_headers` も CSP も無い（`public/_headers` はアプリ側 SPA 用で別物）。案 B でダッシュボード JS が `raw.githubusercontent.com` 等へ fetch するなら、**最小限の CSP（`connect-src` を取得先ドメインだけに限定）を `site/` にも新設**するのが望ましい（LP の攻撃面を広げない防御）。
+- `site/`（LP）には現状 `_headers` も CSP も無い（`public/_headers` はアプリ側 SPA 用で別物）。案 B でダッシュボード JS が `raw.githubusercontent.com` 等へ fetch するなら、**最小限の CSP（`connect-src` を取得先ドメインだけに限定）を `site/` にも新設** するのが望ましい（LP の攻撃面を広げない防御）。
 - データブランチを GitHub Pages で直接公開する案（別 Pages ソース）も検討可だが、`pages.yml` は現状 `site/**` 限定・単一ソースのため、素直には `raw.githubusercontent.com` 経由 fetch が最小変更。
