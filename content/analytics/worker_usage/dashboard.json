@@ -1,0 +1,413 @@
+{
+  "schema": 1,
+  "script": "github-issue-shortcut",
+  "source": "telemetry/worker-usage:content/analytics/worker_usage",
+  "free_tier_daily_requests": 100000,
+  "generated_at": "2026-08-03T10:32:40+09:00",
+  "coverage": {
+    "first": "2026-07-13",
+    "last": "2026-08-02",
+    "days": 21
+  },
+  "series": {
+    "daily": {
+      "last_updated": "2026-08-03T09:02:10+09:00",
+      "points": [
+        {
+          "label": "2026-07-04",
+          "requests": 0,
+          "errors": 0,
+          "subrequests": 0,
+          "days": 0,
+          "missing": true
+        },
+        {
+          "label": "2026-07-05",
+          "requests": 0,
+          "errors": 0,
+          "subrequests": 0,
+          "days": 0,
+          "missing": true
+        },
+        {
+          "label": "2026-07-06",
+          "requests": 0,
+          "errors": 0,
+          "subrequests": 0,
+          "days": 0,
+          "missing": true
+        },
+        {
+          "label": "2026-07-07",
+          "requests": 0,
+          "errors": 0,
+          "subrequests": 0,
+          "days": 0,
+          "missing": true
+        },
+        {
+          "label": "2026-07-08",
+          "requests": 0,
+          "errors": 0,
+          "subrequests": 0,
+          "days": 0,
+          "missing": true
+        },
+        {
+          "label": "2026-07-09",
+          "requests": 0,
+          "errors": 0,
+          "subrequests": 0,
+          "days": 0,
+          "missing": true
+        },
+        {
+          "label": "2026-07-10",
+          "requests": 0,
+          "errors": 0,
+          "subrequests": 0,
+          "days": 0,
+          "missing": true
+        },
+        {
+          "label": "2026-07-11",
+          "requests": 0,
+          "errors": 0,
+          "subrequests": 0,
+          "days": 0,
+          "missing": true
+        },
+        {
+          "label": "2026-07-12",
+          "requests": 0,
+          "errors": 0,
+          "subrequests": 0,
+          "days": 0,
+          "missing": true
+        },
+        {
+          "label": "2026-07-13",
+          "requests": 1,
+          "errors": 0,
+          "subrequests": 0,
+          "days": 1,
+          "missing": false
+        },
+        {
+          "label": "2026-07-14",
+          "requests": 40,
+          "errors": 0,
+          "subrequests": 4,
+          "days": 1,
+          "missing": false
+        },
+        {
+          "label": "2026-07-15",
+          "requests": 12,
+          "errors": 0,
+          "subrequests": 0,
+          "days": 1,
+          "missing": false
+        },
+        {
+          "label": "2026-07-16",
+          "requests": 13,
+          "errors": 0,
+          "subrequests": 0,
+          "days": 1,
+          "missing": false
+        },
+        {
+          "label": "2026-07-17",
+          "requests": 38,
+          "errors": 0,
+          "subrequests": 8,
+          "days": 1,
+          "missing": false
+        },
+        {
+          "label": "2026-07-18",
+          "requests": 328,
+          "errors": 0,
+          "subrequests": 229,
+          "days": 1,
+          "missing": false
+        },
+        {
+          "label": "2026-07-19",
+          "requests": 61,
+          "errors": 0,
+          "subrequests": 31,
+          "days": 1,
+          "missing": false
+        },
+        {
+          "label": "2026-07-20",
+          "requests": 22,
+          "errors": 0,
+          "subrequests": 0,
+          "days": 1,
+          "missing": false
+        },
+        {
+          "label": "2026-07-21",
+          "requests": 117,
+          "errors": 0,
+          "subrequests": 63,
+          "days": 1,
+          "missing": false
+        },
+        {
+          "label": "2026-07-22",
+          "requests": 96,
+          "errors": 0,
+          "subrequests": 55,
+          "days": 1,
+          "missing": false
+        },
+        {
+          "label": "2026-07-23",
+          "requests": 37,
+          "errors": 0,
+          "subrequests": 19,
+          "days": 1,
+          "missing": false
+        },
+        {
+          "label": "2026-07-24",
+          "requests": 12,
+          "errors": 0,
+          "subrequests": 0,
+          "days": 1,
+          "missing": false
+        },
+        {
+          "label": "2026-07-25",
+          "requests": 308,
+          "errors": 0,
+          "subrequests": 203,
+          "days": 1,
+          "missing": false
+        },
+        {
+          "label": "2026-07-26",
+          "requests": 13,
+          "errors": 0,
+          "subrequests": 0,
+          "days": 1,
+          "missing": false
+        },
+        {
+          "label": "2026-07-27",
+          "requests": 95,
+          "errors": 0,
+          "subrequests": 52,
+          "days": 1,
+          "missing": false
+        },
+        {
+          "label": "2026-07-28",
+          "requests": 9,
+          "errors": 1,
+          "subrequests": 0,
+          "days": 1,
+          "missing": false
+        },
+        {
+          "label": "2026-07-29",
+          "requests": 17,
+          "errors": 0,
+          "subrequests": 3,
+          "days": 1,
+          "missing": false
+        },
+        {
+          "label": "2026-07-30",
+          "requests": 33,
+          "errors": 0,
+          "subrequests": 19,
+          "days": 1,
+          "missing": false
+        },
+        {
+          "label": "2026-07-31",
+          "requests": 11,
+          "errors": 0,
+          "subrequests": 0,
+          "days": 1,
+          "missing": false
+        },
+        {
+          "label": "2026-08-01",
+          "requests": 17,
+          "errors": 0,
+          "subrequests": 5,
+          "days": 1,
+          "missing": false
+        },
+        {
+          "label": "2026-08-02",
+          "requests": 37,
+          "errors": 0,
+          "subrequests": 21,
+          "days": 1,
+          "missing": false
+        }
+      ]
+    },
+    "weekly": {
+      "last_updated": "2026-08-03T09:02:10+09:00",
+      "points": [
+        {
+          "label": "2026-05-11",
+          "requests": 0,
+          "errors": 0,
+          "subrequests": 0,
+          "days": 0,
+          "missing": true
+        },
+        {
+          "label": "2026-05-18",
+          "requests": 0,
+          "errors": 0,
+          "subrequests": 0,
+          "days": 0,
+          "missing": true
+        },
+        {
+          "label": "2026-05-25",
+          "requests": 0,
+          "errors": 0,
+          "subrequests": 0,
+          "days": 0,
+          "missing": true
+        },
+        {
+          "label": "2026-06-01",
+          "requests": 0,
+          "errors": 0,
+          "subrequests": 0,
+          "days": 0,
+          "missing": true
+        },
+        {
+          "label": "2026-06-08",
+          "requests": 0,
+          "errors": 0,
+          "subrequests": 0,
+          "days": 0,
+          "missing": true
+        },
+        {
+          "label": "2026-06-15",
+          "requests": 0,
+          "errors": 0,
+          "subrequests": 0,
+          "days": 0,
+          "missing": true
+        },
+        {
+          "label": "2026-06-22",
+          "requests": 0,
+          "errors": 0,
+          "subrequests": 0,
+          "days": 0,
+          "missing": true
+        },
+        {
+          "label": "2026-06-29",
+          "requests": 0,
+          "errors": 0,
+          "subrequests": 0,
+          "days": 0,
+          "missing": true
+        },
+        {
+          "label": "2026-07-06",
+          "requests": 0,
+          "errors": 0,
+          "subrequests": 0,
+          "days": 0,
+          "missing": true
+        },
+        {
+          "label": "2026-07-13",
+          "requests": 493,
+          "errors": 0,
+          "subrequests": 272,
+          "days": 7,
+          "missing": false
+        },
+        {
+          "label": "2026-07-20",
+          "requests": 605,
+          "errors": 0,
+          "subrequests": 340,
+          "days": 7,
+          "missing": false
+        },
+        {
+          "label": "2026-07-27",
+          "requests": 219,
+          "errors": 1,
+          "subrequests": 100,
+          "days": 7,
+          "missing": false
+        }
+      ]
+    },
+    "monthly": {
+      "last_updated": "2026-08-03T09:02:10+09:00",
+      "points": [
+        {
+          "label": "2026-03",
+          "requests": 0,
+          "errors": 0,
+          "subrequests": 0,
+          "days": 0,
+          "missing": true
+        },
+        {
+          "label": "2026-04",
+          "requests": 0,
+          "errors": 0,
+          "subrequests": 0,
+          "days": 0,
+          "missing": true
+        },
+        {
+          "label": "2026-05",
+          "requests": 0,
+          "errors": 0,
+          "subrequests": 0,
+          "days": 0,
+          "missing": true
+        },
+        {
+          "label": "2026-06",
+          "requests": 0,
+          "errors": 0,
+          "subrequests": 0,
+          "days": 0,
+          "missing": true
+        },
+        {
+          "label": "2026-07",
+          "requests": 1263,
+          "errors": 1,
+          "subrequests": 686,
+          "days": 19,
+          "missing": false
+        },
+        {
+          "label": "2026-08",
+          "requests": 54,
+          "errors": 0,
+          "subrequests": 26,
+          "days": 2,
+          "missing": false
+        }
+      ]
+    }
+  }
+}
