@@ -38,34 +38,61 @@ python3 tools/check_pending_pr_reviews.py --actionable-only --json          # �
 
 監査での反映（クローズ・ラベル変更）は成果として Issue コメントに記録する。反映があってもなくても Step 2 の Issue 選定へ進む（監査だけで終了しない）。
 
-### Step 1.6: 本番の使用量チェック（毎回・軽量・NFR-14 の検知実装）
+### Step 1.6: 本番の使用量チェックと利用状況の履歴化（毎回・軽量・NFR-14 の検知実装 / #235）
 
-Workers 無料枠（**100,000 requests/日**・UTC 00:00 リセット）に対する当日の消費量を実測する。
+Workers 無料枠（**100,000 requests/日**・UTC 00:00 リセット）の消費量を実測し、**同時に日次値を履歴として永続化する**。
 
-> **なぜルーティンでやるのか**: Cloudflare の Notifications には「Workers のリクエスト数が無料枠の X% に達したら通知する」というアラート種別が **存在しない**（`alerting/v3/available_alerts` を全件確認済み。Budget Alert / Billing Usage Alert は金額ベースで、課金の発生しない Free プランでは機能しない・#171 の実測）。枠を超えると **Error 1027 で当日いっぱい全停止** するため、本 Step が現状で唯一の検知手段である。
+> **なぜルーティンでやるのか**: ① Cloudflare の Notifications には「Workers のリクエスト数が無料枠の X% に達したら通知する」というアラート種別が **存在しない**（`alerting/v3/available_alerts` を全件確認済み。Budget Alert / Billing Usage Alert は金額ベースで、課金の発生しない Free プランでは機能しない・#171 の実測）。枠を超えると **Error 1027 で当日いっぱい全停止** する。② GraphQL Analytics は **32 日（4w4d）より過去のレンジを拒否する** ため、取り込まずに放置すると履歴が消える。本 Step が現状で唯一の検知手段かつ唯一の履歴化手段である。
 
-`mcp__Cloudflare_API__execute` で GraphQL Analytics を叩く（アカウント ID は MCP 側が注入するので `accountId` をそのまま使う）:
+**手順 1**: `mcp__Cloudflare_API__execute` で直近 30 日の日次値を取得する（アカウント ID は MCP 側が注入するので `accountId` をそのまま使う）。
 
 ```js
 async () => {
+  const q = `query($a:String!,$s:Time!,$e:Time!){viewer{accounts(filter:{accountTag:$a}){
+    workersInvocationsAdaptive(limit:200,orderBy:[date_ASC],
+      filter:{datetime_geq:$s,datetime_leq:$e,scriptName:"github-issue-shortcut"})
+    { dimensions { date } sum { requests errors subrequests } } }}}`;
   const now = new Date();
-  const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())).toISOString();
-  const query = `query U($a:String!,$s:Time!,$e:Time!){viewer{accounts(filter:{accountTag:$a}){
-    workersInvocationsAdaptive(limit:100,filter:{datetime_geq:$s,datetime_leq:$e,scriptName:"github-issue-shortcut"})
-    { sum { requests errors } } }}}`;
-  return cloudflare.request({ method: "POST", path: "/graphql",
-    body: { query, variables: { a: accountId, s: start, e: now.toISOString() } } });
+  const from = new Date(now.getTime() - 30 * 86400000).toISOString();
+  const r = await cloudflare.request({ method: "POST", path: "/graphql",
+    body: { query: q, variables: { a: accountId, s: from, e: now.toISOString() } } });
+  const rows = r.result?.viewer?.accounts?.[0]?.workersInvocationsAdaptive ?? [];
+  return JSON.stringify({ viewer: { accounts: [{ workersInvocationsAdaptive: rows }] } });
 }
 ```
 
+**手順 2**: 応答をそのまま取り込み → データブランチ `telemetry/worker-usage` へ永続化 → サマリー出力する。
+
+```bash
+python3 tools/record_worker_usage.py --ingest - --push --summary <<'JSON'
+{ ← 手順 1 の応答 JSON をそのまま貼る }
+JSON
+```
+
+同一日はフィールド毎 max でマージされるので、1 日に何度実行しても値は後退せず、差分がなければ push は no-op になる。ローカルの `content/analytics/worker_usage/` は gitignore 対象の作業コピーで、正本はデータブランチ側（fresh コンテナでは実行時に自動で hydrate される）。
+
+判定は `--summary` の **「当日（UTC）」行**（`→ 正常 / Warning / Critical`）に対応する。同じ出力の「期間内ピーク」行は参考値で、過去のスパイクを示すだけなので、それを理由にエスカレーションしない。
+
 | 当日の requests | 判定 | 対処 |
 |---|---|---|
-| 70,000 未満（70%） | 正常 | **記録不要**（no-op で Step 2 へ。毎回の正常報告はしない） |
-| 70,000〜89,999（70〜90%） | Warning | #171 にコメントで実測値を記録し、流入源（Bot・スクレイパー・記事バズ）を調査する |
+| 70,000 未満（70%） | 正常 | **記録不要**（履歴の push だけして Step 2 へ。毎回の正常報告はしない） |
+| 70,000〜89,999（70〜90%） | Warning | #195 にサマリーをコメントし、流入源（Bot・スクレイパー・記事バズ）を調査する |
 | 90,000 以上（90%〜） | Critical | レート制限の強化を検討し、有料プラン移行（$5/月）の要否をオーナーへ打診する（**課金設定の変更は A-6**） |
 | `errors` が急増、または Error 1027 を観測 | 全停止中 | 最優先で対応。UTC 00:00 のリセットまで自然復旧しない |
 
 `errors` が 0 でないときは、requests が閾値未満でも原因を確認する（アプリの例外は `observability` のサンプリング 5% でしか残らないため、件数の推移が一次シグナルになる）。
+
+**手順 3（週次のみ）**: `--report-due` が `yes` を返したときだけ、サマリーを **#195**（利用状況計測の再評価）へコメントし、投稿済みを記録する。閾値未満の週は何もしない（毎回 ping しない）。
+
+```bash
+python3 tools/record_worker_usage.py --report-due          # yes のときだけ手順を続ける
+python3 tools/record_worker_usage.py --summary             # コメント本文
+python3 tools/record_worker_usage.py --mark-reported --push
+```
+
+> **取れる数字と取れない数字**: requests / errors / subrequests は取れるが、**ユニーク利用者数・DAU は取得できない**（Workers のメトリクスにユニーク軸がなく、workers.dev のためゾーンの `uniques` も使えず、`invocation_logs: false` + サンプリング 5% でリクエスト単位ログも残していない）。利用者数の計測を足すかどうかは #195（Workers Analytics Engine の導入判断）の範囲で、本 Step の数値をその判断材料にする。
+>
+> 履歴の参照: `git show origin/telemetry/worker-usage:content/analytics/worker_usage/SUMMARY.md`
 
 ### Step 2: 対象 Issue の選定（上から順に 1 件）
 

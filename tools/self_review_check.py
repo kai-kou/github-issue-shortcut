@@ -260,13 +260,14 @@ def main() -> int:
                 f"サブエージェント定義チェックが異常終了しました（exit={proc.returncode}）: {tail[:200]}"
             )
 
-    # 月次コストテレメトリの feature PR 混入チェック（#106・#242 回帰検知）
-    # cost_monthly は gitignore 対象で、telemetry/cost-data ブランチへのみ永続化する（#242）。
+    # テレメトリの feature PR 混入チェック（#106・#242 回帰検知）
+    # cost_monthly / worker_usage は gitignore 対象で、telemetry/* データブランチへのみ永続化する。
     # 回帰シグナルは 2 種（#243 レビュー）:
     #   a) ブランチのコミット済み差分に追加/変更(A/M/R/C)として現れた（WIP 除外の破れ）
     #   b) 未追跡かつ非 ignore で現れた（gitignore エントリの破れ。--flush が再生成する）
     # 追跡解除（削除差分）と、旧ブランチ上の未コミット worktree 変更では発火させない。
-    tele_prefix = "content/analytics/cost_monthly/"
+    # Workers 利用状況テレメトリ（#235）も同じ扱い（gitignore + データブランチ）なので同時に見る
+    tele_prefix = ("content/analytics/cost_monthly/", "content/analytics/worker_usage/")
     if any(f.startswith(tele_prefix) for f in files):
         ns = sh(["git", "diff", "--name-status", f"origin/{default_branch()}...HEAD"]).stdout
         committed = set()
@@ -275,13 +276,13 @@ def main() -> int:
             if parts and parts[0][:1] in "AMRC" and parts[-1].startswith(tele_prefix):
                 committed.add(parts[-1])
         untracked = set(
-            sh(["git", "ls-files", "--others", "--exclude-standard", "--", tele_prefix])
+            sh(["git", "ls-files", "--others", "--exclude-standard", "--", *tele_prefix])
             .stdout.splitlines()
         )
         tele = sorted({f for f in files if f in committed or f in untracked})
         if tele:
             warnings.append(
-                "月次コストテレメトリが feature 差分に混入しています（#106・#242 回帰）: "
+                "テレメトリが feature 差分に混入しています（#106・#242 回帰）: "
                 f"{', '.join(tele)} → gitignore と Stop hook の WIP add 除外を確認し、差分から外してください"
             )
 

@@ -58,11 +58,12 @@ if [[ "${CLAUDE_CODE_REMOTE:-}" = "true" ]]; then
   if [ -n "$_branch" ] && [ "$_branch" != "main" ] && [ "$_branch" != "master" ]; then
     if [ -n "$(git -C "$REPO_ROOT" status --porcelain 2>/dev/null || true)" ]; then
       _timestamp=$(TZ='Asia/Tokyo' date '+%Y-%m-%d %H:%M' 2>/dev/null || date '+%Y-%m-%d %H:%M')
-      # 月次コストテレメトリ（cost_monthly）は feature ブランチに混入させない（#106・#242）。
+      # テレメトリ（cost_monthly / worker_usage）は feature ブランチに混入させない（#106）。
       # gitignore 化済みだが、gitignore 反映前の旧ブランチで追跡されている場合に備え
       # pathspec でも明示除外する（永続化は telemetry/cost-data ブランチが担う）。
-      git -C "$REPO_ROOT" add -A -- . ':(exclude)content/analytics/cost_monthly/' 2>/dev/null || true
-      # cost_monthly 以外に変更が無ければ何もコミットしない（空コミットを避ける）
+      git -C "$REPO_ROOT" add -A -- . ':(exclude)content/analytics/cost_monthly/' \
+        ':(exclude)content/analytics/worker_usage/' 2>/dev/null || true
+      # テレメトリ以外に変更が無ければ何もコミットしない（空コミットを避ける）
       if ! git -C "$REPO_ROOT" diff --cached --quiet 2>/dev/null && \
          git -C "$REPO_ROOT" commit -m "[wip] セッション終了前自動コミット（${_timestamp}）"; then
         # push 失敗時はリトライ（指数バックオフ: 2s, 4s, 8s）
