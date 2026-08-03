@@ -1,0 +1,309 @@
+/* 利用状況ダッシュボード（Issue #239）
+   - トークン（色・角丸・フォント）は ../styles.css をそのまま継承する。新規パレットを持ち込まない（D-10）
+   - 依存ライブラリなし。グラフは analytics.js が生成する SVG（D-6）
+   - ダークモードは LP と同じ prefers-color-scheme 自動切替（トグル UI は足さない・D-3） */
+
+:root {
+  --color-chart-bar: var(--color-accent);
+  --color-chart-error: #d1242f;
+  --color-chart-grid: var(--color-border-subtle);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-chart-error: #ff7b72;
+  }
+}
+
+.analytics {
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+.analytics__container {
+  width: min(100% - 32px, 960px);
+  margin-inline: auto;
+}
+
+.analytics__header {
+  padding: 40px 0 8px;
+}
+
+.analytics__breadcrumb {
+  margin: 0 0 12px;
+  font-size: 0.875rem;
+}
+
+.analytics h1 {
+  margin: 0 0 8px;
+  font-size: clamp(1.75rem, 4vw, 2.25rem);
+}
+
+.analytics__lead {
+  margin: 0;
+  max-width: 62ch;
+  color: var(--color-text-muted);
+  line-height: 1.7;
+}
+
+.analytics__footer {
+  margin-top: 56px;
+  padding: 24px 0 48px;
+  border-top: 1px solid var(--color-border-subtle);
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+}
+
+.analytics__footer p {
+  max-width: 72ch;
+  line-height: 1.7;
+}
+
+/* ============================================================
+   期間切替（radio + CSS のセグメンテッドコントロール・JS 非依存）
+   ============================================================ */
+
+.period {
+  display: inline-flex;
+  margin: 32px 0 24px;
+  padding: 4px;
+  /* ターゲット間隔は 8px 以上（design-guidelines.md §2） */
+  gap: 8px;
+  background: var(--color-bg-alt);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-m);
+}
+
+.period input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.period label {
+  /* 44px は design-guidelines のタップターゲット最小値 */
+  display: grid;
+  place-items: center;
+  min-width: 88px;
+  min-height: 44px;
+  padding: 0 16px;
+  border-radius: calc(var(--radius-m) - 4px);
+  color: var(--color-text-muted);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.period input:checked + label {
+  background: var(--color-surface);
+  color: var(--color-text);
+  box-shadow: var(--shadow-card);
+}
+
+/* 選択状態は色だけでなく境界と文字色でも示す（色覚特性に依存しない・D-9） */
+.period input:focus-visible + label {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+/* パネルの出し分け。ラジオとパネルは親要素が違うため兄弟結合子（~）は使えず :has() で参照する。
+   :has() 未対応のブラウザでは下の 3 ブロックがまるごと無効になり、既定の週次だけが表示される
+   （＝何も見えない状態にはならない）。 */
+.panel {
+  display: none;
+}
+
+.panel--weekly {
+  display: block;
+}
+
+body:has(#period-daily:checked) .panel--daily,
+body:has(#period-weekly:checked) .panel--weekly,
+body:has(#period-monthly:checked) .panel--monthly {
+  display: block;
+}
+
+body:has(#period-daily:checked) .panel--weekly,
+body:has(#period-monthly:checked) .panel--weekly {
+  display: none;
+}
+
+/* :has() が使えない環境では切替が効かないので、操作できない UI 自体を見せない
+   （押しても無反応 = 壊れて見える、を避ける） */
+@supports not selector(:has(*)) {
+  .period {
+    display: none;
+  }
+}
+
+.panel__status {
+  padding: 24px;
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-m);
+  color: var(--color-text-muted);
+}
+
+.panel__meta {
+  margin: 0 0 20px;
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+}
+
+/* ============================================================
+   KPI カード
+   ============================================================ */
+
+.kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  margin: 0 0 28px;
+  padding: 0;
+  list-style: none;
+}
+
+.kpi {
+  padding: 16px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-m);
+}
+
+.kpi__label {
+  margin: 0 0 6px;
+  color: var(--color-text-muted);
+  font-size: 0.8125rem;
+}
+
+.kpi__value {
+  font-size: clamp(1.5rem, 3.5vw, 2rem);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+
+.kpi__note {
+  margin: 6px 0 0;
+  color: var(--color-text-muted);
+  font-size: 0.75rem;
+}
+
+/* ============================================================
+   グラフ
+   ============================================================ */
+
+.chart {
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.chart__bar {
+  fill: var(--color-chart-bar);
+}
+
+.chart__bar--error {
+  fill: var(--color-chart-error);
+}
+
+/* 欠測は「値ゼロ」ではなく「測っていない」。色ではなく斜線パターンで区別する（D-9）。
+   fill のパターン参照はパネルごとに id が変わるため JS 側で属性として付ける。 */
+.chart__bar--missing {
+  stroke: var(--color-border);
+  stroke-width: 1;
+  stroke-dasharray: 2 2;
+}
+
+.chart__hatch {
+  stroke: var(--color-text-muted);
+  stroke-width: 2;
+  opacity: 0.3;
+}
+
+.chart__axis {
+  stroke: var(--color-chart-grid);
+  stroke-width: 1;
+}
+
+.chart__tick {
+  fill: var(--color-text-muted);
+  font-size: 10px;
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--color-text-muted);
+  font-size: 0.8125rem;
+}
+
+.legend li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.legend__swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+  background: var(--color-chart-bar);
+}
+
+.legend__swatch--error {
+  background: var(--color-chart-error);
+}
+
+/* 欠測は色ではなく斜線パターンで示す（凡例側も同じ表現に揃える） */
+.legend__swatch--missing {
+  background: repeating-linear-gradient(
+    45deg,
+    transparent 0 3px,
+    var(--color-text-muted) 3px 4px
+  );
+  border: 1px solid var(--color-border);
+}
+
+/* ============================================================
+   データ表（スクリーンリーダー・詳細確認用）
+   ============================================================ */
+
+.data-table {
+  margin-top: 20px;
+}
+
+.data-table > summary {
+  cursor: pointer;
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+}
+
+.data-table table {
+  width: 100%;
+  margin-top: 12px;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.data-table th,
+.data-table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--color-border-subtle);
+  text-align: right;
+}
+
+.data-table th:first-child,
+.data-table td:first-child {
+  text-align: left;
+}
+
+.data-table thead th {
+  color: var(--color-text-muted);
+  font-weight: 600;
+}

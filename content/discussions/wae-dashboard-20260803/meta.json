@@ -1,0 +1,14 @@
+{
+  "id": "wae-dashboard-20260803",
+  "topic": "Workers Analytics Engine の導入と GitHub Pages 利用状況ダッシュボード（日次・週次・月次）の設計",
+  "brief": "飼い主の指示: WAE 導入方針で進める / 利用状況を GitHub Pages の専用ダッシュボードで確認できるようにする / UI-UX は最新トレンド・ベストプラクティスをリサーチしてから実装 / 最低限 日次・週次・月次で確認したい。導入可否は決定済みのため蒸し返さず「どう作るか」に集中する。争点は 識別子設計とプライバシー境界 / 公開範囲 / データ供給経路 / 集計と保持の役割分担 / UI-UX / 実装分割 の 6 点。",
+  "participants": [
+    "privacy-identity",
+    "data-pipeline",
+    "delivery-security",
+    "dashboard-ux",
+    "scope-delivery"
+  ],
+  "created_at": "2026-08-03T10:14:15+09:00",
+  "updated_at": "2026-08-03T10:14:15+09:00"
+}
