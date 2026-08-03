@@ -48,9 +48,25 @@ jobs:
       # LP はビルド不要（依存ゼロの静的ファイル）なので、site/ をそのまま成果物にする。
       - uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5
 
-      - uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3
+      # actions/upload-pages-artifact は使えない（#244）。あちらは内部で
+      # actions/upload-artifact@v4 を **タグ参照** で呼んでおり、リポジトリ設定の
+      # "Require actions to be pinned to a full-length commit SHA" が推移的な依存にも
+      # 効くため、こちらが SHA 固定していてもデプロイが弾かれる。
+      # 同等の処理（Pages 用の tar を作り github-pages という名前で上げる）を自前で行い、
+      # upload-artifact を直接 SHA 固定で呼ぶ。成果物の形式は upload-pages-artifact と同じ。
+      - name: Pages 用の tar を作成する
+        run: |
+          tar --dereference --hard-dereference \
+            --exclude=.git --exclude=.github \
+            -cvf "$RUNNER_TEMP/artifact.tar" -C site .
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          path: site
+          # deploy-pages が探す既定の artifact 名。変更しないこと
+          name: github-pages
+          path: ${{ runner.temp }}/artifact.tar
+          retention-days: 1
+          if-no-files-found: error
 
       - id: deployment
         uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4
