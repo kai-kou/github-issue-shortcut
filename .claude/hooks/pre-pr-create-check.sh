@@ -83,16 +83,16 @@ if ! git rev-parse --git-dir >/dev/null 2>&1; then exit 0; fi
 # pathspec は cwd 相対のため、リポジトリルートへ固定する（#243 レビュー）
 cd "$(git rev-parse --show-toplevel)" || exit 0
 
-# 月次コストテレメトリは PR 前チェックから除外する（#242・stop-git-check.sh と同一方針）。
+# テレメトリ（月次コスト・Workers 利用状況）は PR 前チェックから除外する（stop-git-check.sh と同一方針）。
 # 旧ブランチで追跡されたまま --flush 更新されると、WIP コミット除外と衝突して
 # PR 作成が恒久ブロックされるデッドロックになるため（#243 レビュー）。
-TELEMETRY_EXCLUDE=':(exclude)content/analytics/cost_monthly/'
+TELEMETRY_EXCLUDE=(':(exclude)content/analytics/cost_monthly/' ':(exclude)content/analytics/worker_usage/')
 
 errors=""
 
 # 1. 未ステージの変更チェック
-if ! git diff --quiet -- . "$TELEMETRY_EXCLUDE" 2>/dev/null; then
-  changed_files=$(git diff --name-only -- . "$TELEMETRY_EXCLUDE" 2>/dev/null | head -10)
+if ! git diff --quiet -- . "${TELEMETRY_EXCLUDE[@]}" 2>/dev/null; then
+  changed_files=$(git diff --name-only -- . "${TELEMETRY_EXCLUDE[@]}" 2>/dev/null | head -10)
   errors="${errors}未ステージの変更があります:
 ${changed_files}
 
@@ -100,8 +100,8 @@ ${changed_files}
 fi
 
 # 2. ステージ済み未コミットの変更チェック
-if ! git diff --cached --quiet -- . "$TELEMETRY_EXCLUDE" 2>/dev/null; then
-  staged_files=$(git diff --cached --name-only -- . "$TELEMETRY_EXCLUDE" 2>/dev/null | head -10)
+if ! git diff --cached --quiet -- . "${TELEMETRY_EXCLUDE[@]}" 2>/dev/null; then
+  staged_files=$(git diff --cached --name-only -- . "${TELEMETRY_EXCLUDE[@]}" 2>/dev/null | head -10)
   errors="${errors}ステージ済み未コミットの変更があります:
 ${staged_files}
 
@@ -109,7 +109,7 @@ ${staged_files}
 fi
 
 # 3. 未追跡ファイルチェック
-untracked=$(git ls-files --others --exclude-standard -- . "$TELEMETRY_EXCLUDE" 2>/dev/null | head -10)
+untracked=$(git ls-files --others --exclude-standard -- . "${TELEMETRY_EXCLUDE[@]}" 2>/dev/null | head -10)
 if [ -n "$untracked" ]; then
   errors="${errors}未追跡ファイルがあります:
 ${untracked}

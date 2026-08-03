@@ -288,18 +288,7 @@ def remote_branch_sha() -> str | None:
 
 def read_local_monthly() -> dict:
     """ローカル作業ツリーの月次レポートを {month: report} で返す。"""
-    out: dict = {}
-    d = project_dir() / MONTHLY_REL_DIR
-    if not d.is_dir():
-        return out
-    for f in sorted(d.glob("*.json")):
-        try:
-            rep = json.loads(f.read_text(encoding="utf-8"))
-            if isinstance(rep, dict):
-                out[f.stem] = rep
-        except (json.JSONDecodeError, OSError):
-            continue
-    return out
+    return telemetry_branch.read_local_jsons(project_dir() / MONTHLY_REL_DIR)
 
 
 def read_local_sessions() -> dict:

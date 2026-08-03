@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
-"""テレメトリ専用データブランチへの永続化プリミティブ（共有モジュール・#242 → #235）
+"""テレメトリ専用データブランチへの永続化プリミティブ（共有モジュール・#235）
 
 「main を汚さず・PR も作らず、機械生成データを専用ブランチへ plain git push で永続化する」
-手順（#242 で確立）を、複数のテレメトリ系ツールで共有するための低レベルモジュールにゃ。
+手順（`commit_cost_telemetry.py` で確立）を、複数のテレメトリ系ツールで共有するための
+低レベルモジュールにゃ。
 
 利用側:
   - `tools/commit_cost_telemetry.py` → `telemetry/cost-data`（月次トークン集計）
   - `tools/record_worker_usage.py`   → `telemetry/worker-usage`（Workers 利用状況）
 
-設計上の要点（#242 / #243 レビューで確定した挙動をそのまま踏襲する）:
+設計上の要点（`commit_cost_telemetry.py` で確定した挙動をそのまま踏襲する）:
   - 一時 index（`GIT_INDEX_FILE`）で commit オブジェクトを構築し、通常の index・
     ワーキングツリー・チェックアウトに一切触れない（worktree も作らない）。
   - 並行セッション競合は push の non-fast-forward 拒否が排他ロックになる。拒否されたら
@@ -75,7 +76,7 @@ def sync_remote_ref(branch: str) -> str:
     - "ok"    : fetch 成功（ref は最新）
     - "absent": リモートにブランチが存在しない（初回。parentless コミットを作ってよい）
     - "error" : ネットワーク等の失敗（absent と区別する。この状態で parentless コミットを
-                作ると、実在するブランチに対して non-FF が確定する無駄玉になる・#243 レビュー）
+                作ると、実在するブランチに対して non-FF が確定する無駄玉になる）
     """
     cp = run(["git", "fetch", "origin", f"+refs/heads/{branch}:{remote_ref(branch)}"],
              timeout=45, cwd=str(project_dir()))
@@ -105,6 +106,27 @@ def json_at(git_ref_path: str) -> dict | None:
         return rep if isinstance(rep, dict) else None
     except json.JSONDecodeError:
         return None
+
+
+def read_local_jsons(directory: Path, log_prefix: str | None = None) -> dict:
+    """ディレクトリ内の `*.json` を {ファイル名の stem: dict} で読み込む（不在・破損はスキップ）。
+
+    テレメトリ系ツールはいずれも「月次ファイルをディレクトリごと読む」ため共有する。
+    log_prefix を渡すと破損ファイルを stderr に報告する（渡さなければ黙ってスキップ）。
+    """
+    out: dict = {}
+    if not directory.is_dir():
+        return out
+    for f in sorted(directory.glob("*.json")):
+        try:
+            rep = json.loads(f.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as e:
+            if log_prefix:
+                print(f"{log_prefix} 読み込み失敗（スキップ）: {f.name}: {e}", file=sys.stderr)
+            continue
+        if isinstance(rep, dict):
+            out[f.stem] = rep
+    return out
 
 
 def build_commit(entries: dict, parent_sha: str | None, message: str,
@@ -168,7 +190,7 @@ def push_retryable(push: subprocess.CompletedProcess) -> bool:
     """リトライで解決しうる push 失敗か（non-FF 競合 / タイムアウト系のみ）。
 
     403・認証等の恒久失敗まで 4 回リトライすると Stop hook の実行予算を浪費するため、
-    それらは初回で打ち切る（#243 レビュー）。
+    それらは初回で打ち切る。
     """
     if push.returncode == 124:  # timeout
         return True

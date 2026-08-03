@@ -39,6 +39,7 @@ Cloudflare の GraphQL Analytics は **32 日（4w4d）より過去のレンジ�
 
 import argparse
 import json
+import re
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -56,6 +57,7 @@ SCRIPT_NAME = "github-issue-shortcut"
 FREE_TIER_DAILY_REQUESTS = 100_000
 WARN_RATIO, CRITICAL_RATIO = 0.70, 0.90
 METRIC_KEYS = ("requests", "errors", "subrequests")
+DATE_PATTERN = re.compile(r"\d{4}-\d{2}-\d{2}")
 DEFAULT_REPORT_INTERVAL_DAYS = 7
 
 BRANCH_README = (
@@ -63,7 +65,7 @@ BRANCH_README = (
     "Cloudflare Workers（`github-issue-shortcut`）の日次利用状況（機械生成テレメトリ）専用の\n"
     "データブランチにゃ。\n\n"
     "- 書き込みは `tools/record_worker_usage.py` のみ（スプリントルーティン Step 1.6 から実行）。\n"
-    "- main とはマージしない（コード履歴を汚さない・#242 と同じ方針）。\n"
+    "- main とはマージしない（コード履歴を汚さない・telemetry/cost-data と同じ方針）。\n"
     "- Cloudflare の GraphQL Analytics は 32 日より過去を返さないため、ここが長期履歴の正本になる。\n"
     "- 含むのはリクエスト数・エラー数・サブリクエスト数のみ。**利用者を識別する情報は含まない**\n"
     "  （そもそも Workers のメトリクスに個人を識別できる軸が無い）。\n"
@@ -85,7 +87,10 @@ def extract_daily(payload) -> dict:
     out: dict = {}
 
     def add(date: str, sums: dict) -> None:
-        if not date:
+        # 日付は月次ファイル名（= 書き込み先パス）になるため、書式が合わないレコードは捨てる。
+        # 長さだけの検査では "../../evil" のような 10 文字の値が通り、意図した
+        # content/analytics/worker_usage/ の外へ書き込めてしまう（セルフレビュー指摘）。
+        if not DATE_PATTERN.fullmatch(date or ""):
             return
         rec = out.setdefault(date, {k: 0 for k in METRIC_KEYS})
         for key in METRIC_KEYS:
@@ -204,19 +209,7 @@ def usage_dir() -> Path:
 
 
 def read_local_months() -> dict:
-    out: dict = {}
-    d = usage_dir()
-    if not d.is_dir():
-        return out
-    for f in sorted(d.glob("*.json")):
-        try:
-            rep = json.loads(f.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError) as e:
-            print(f"{LOG_PREFIX} 読み込み失敗（スキップ）: {f.name}: {e}", file=sys.stderr)
-            continue
-        if isinstance(rep, dict):
-            out[f.stem] = rep
-    return out
+    return telemetry_branch.read_local_jsons(usage_dir(), LOG_PREFIX)
 
 
 def read_remote_month(month: str) -> dict | None:
@@ -264,7 +257,8 @@ def ingest(daily: dict) -> list:
         incoming = {"daily": {d: rec for d, rec in daily.items() if d[:7] == month},
                     "last_updated": now}
         merged = merge_month(month, local.get(month), incoming)
-        merged["last_updated"] = now
+        # merge_month が選んだ値より古い時刻へ後退させない（並行書き込みでの単調性）
+        merged["last_updated"] = max(str(merged.get("last_updated") or ""), now)
         write_local_month(month, merged)
         touched.append(month)
     return touched
@@ -362,7 +356,11 @@ def summarize(daily: dict, anchor: str, days: int = 30) -> dict:
         "today_requests": int(today.get("requests") or 0),
         "today_ratio": round(int(today.get("requests") or 0) / FREE_TIER_DAILY_REQUESTS * 100, 3),
         "peak_ratio": round(long_agg["peak"] / FREE_TIER_DAILY_REQUESTS * 100, 3),
-        "verdict": verdict(long_agg["peak"]),
+        # 枠は UTC 00:00 でリセットされるため、ルーティンの判定（Warning / Critical → A-6 打診）は
+        # **当日の消費量** で決める。期間内ピークで判定すると、過去のスパイクが残っている限り
+        # 当日が正常でも Critical を出し続け、不要なユーザーエスカレーションを招く（セルフレビュー指摘）。
+        "verdict": verdict(int(today.get("requests") or 0)),
+        "peak_verdict": verdict(long_agg["peak"]),
         "error_days": {d: int(r.get("errors") or 0)
                        for d, r in sorted(recent.items()) if int(r.get("errors") or 0) > 0},
     }
@@ -384,9 +382,9 @@ def format_summary(s: dict) -> str:
         f"（平均 {s['long']['avg']}/日・エラー {s['long']['errors']:,}"
         f" / サブリクエスト {s['long']['subrequests']:,}）",
         f"- **当日（{s['anchor']}・UTC）**: {s['today_requests']:,} requests"
-        f"（無料枠の {s['today_ratio']}%）",
-        f"- **無料枠 {FREE_TIER_DAILY_REQUESTS:,} req/日**: 期間内の最大消費率 {s['peak_ratio']}%"
-        f"（{s['long']['peak']:,} @ {s['long']['peak_date'] or '—'}）→ **{s['verdict']}**",
+        f"（無料枠 {FREE_TIER_DAILY_REQUESTS:,} req/日 の {s['today_ratio']}%）→ **{s['verdict']}**",
+        f"- **期間内ピーク**: {s['long']['peak']:,} requests"
+        f"（{s['long']['peak_date'] or '—'}・無料枠の {s['peak_ratio']}%・当時の水準は {s['peak_verdict']}）",
     ]
     if s["error_days"]:
         detail = " / ".join(f"{d}（{n} 件）" for d, n in s["error_days"].items())
@@ -400,8 +398,15 @@ def format_summary(s: dict) -> str:
     return "\n".join(lines) + "\n"
 
 
-def build_summary(days: int = 30, anchor: str | None = None) -> str:
-    daily = flatten_daily(read_local_months())
+def build_summary(days: int = 30, anchor: str | None = None,
+                  months: dict | None = None) -> str:
+    """集計サマリーを Markdown で返す。
+
+    months を渡すとその月次レポート群から組み立てる（push 時に「リモートと再マージ済みの
+    データ」を渡すため。ローカルだけから作ると、並行セッションの push を吸収した月次 JSON と
+    同じコミット内の SUMMARY.md が食い違う・セルフレビュー指摘）。
+    """
+    daily = flatten_daily(read_local_months() if months is None else months)
     if not daily:
         return f"{LOG_PREFIX} 記録がまだない（--ingest で取り込む）\n"
     anchor = anchor or max(max(daily), datetime.now(timezone.utc).strftime("%Y-%m-%d"))
@@ -429,7 +434,8 @@ def _build_payload(parent_sha: str | None, remote_state: str):
         return None, "", ""
     entries = {f"{USAGE_REL_DIR}/{month}.json": serialize(report)
                for month, report in changes.items()}
-    entries[SUMMARY_REL] = build_summary()
+    # SUMMARY.md は「同じコミットで書き込む月次 JSON」と同じデータから作る（再マージ後の値を反映）
+    entries[SUMMARY_REL] = build_summary(months={**read_local_months(), **changes})
     if not parent_sha:
         entries["README.md"] = BRANCH_README
     months = ", ".join(sorted(changes))
@@ -513,6 +519,14 @@ def self_test() -> int:
     if s["today_requests"] != 100:
         failures.append(f"当日値が不正: {s['today_requests']}")
 
+    # 6b) 判定の主語は「当日」であって期間内ピークではない（過去スパイクで Critical が
+    #     居座り、当日が正常なのに A-6 打診へ誘導される事故を防ぐ）
+    spike = {"2099-02-01": {"requests": 95_000, "errors": 0, "subrequests": 0},
+             "2099-02-10": {"requests": 500, "errors": 0, "subrequests": 0}}
+    s6b = summarize(spike, "2099-02-10", 30)
+    if s6b["verdict"] != "正常" or s6b["peak_verdict"] != "Critical":
+        failures.append(f"判定の主語が当日になっていない: {s6b['verdict']} / {s6b['peak_verdict']}")
+
     # 7) 無料枠の閾値判定（70% / 90%）
     for peak, want in ((69_999, "正常"), (70_000, "Warning"), (89_999, "Warning"),
                        (90_000, "Critical")):
@@ -543,6 +557,13 @@ def self_test() -> int:
     if not report_due(now=base, stamp="not-a-timestamp")[0]:
         failures.append("壊れた last_reported_at で due にならない（安全側に倒れていない）")
 
+    # 10b) 日付書式の検証: 月次ファイル名（書き込み先パス）になるため、YYYY-MM-DD 以外は捨てる
+    for bad_date in ("../../evil", "2099-1-1xx", "20990101AB", "  99-01-01"):
+        got = extract_daily({"workersInvocationsAdaptive": [
+            {"dimensions": {"date": bad_date}, "sum": {"requests": 1}}]})
+        if got:
+            failures.append(f"不正な日付を受理した（パス脱出の恐れ）: {bad_date!r} → {list(got)}")
+
     # 11) 壊れた入力でクラッシュしない
     for bad in (None, [], "x", {"workersInvocationsAdaptive": "not-a-list"},
                 {"result": {"data": None}}):
@@ -560,7 +581,7 @@ def self_test() -> int:
             print(f"  ✗ {f}", file=sys.stderr)
         print(f"self-test FAILED（{len(failures)} 件）", file=sys.stderr)
         return 1
-    print("self-test PASSED（12 ケース）")
+    print("self-test PASSED（14 ケース）")
     return 0
 
 
@@ -575,9 +596,7 @@ def main() -> int:
                     help=f"{TELEMETRY_BRANCH} へ永続化する")
     ap.add_argument("--dry-run", action="store_true", help="--push の差分判定のみ")
     ap.add_argument("--report-due", action="store_true",
-                    help="週次サマリー投稿の要否を判定して出力する")
-    ap.add_argument("--interval-days", type=int, default=DEFAULT_REPORT_INTERVAL_DAYS,
-                    help=f"--report-due の閾値日数（既定 {DEFAULT_REPORT_INTERVAL_DAYS}）")
+                    help=f"週次サマリー投稿の要否（前回から {DEFAULT_REPORT_INTERVAL_DAYS} 日経過）を判定する")
     ap.add_argument("--mark-reported", action="store_true",
                     help="週次サマリーを投稿したことを記録する（--push で永続化）")
     ap.add_argument("--no-fetch", action="store_true",
@@ -620,7 +639,7 @@ def main() -> int:
         ok = push(dry_run=args.dry_run)
 
     if args.report_due:
-        due, reason = report_due(args.interval_days)
+        due, reason = report_due()
         print(f"{LOG_PREFIX} report_due: {'yes' if due else 'no'}（{reason}）")
 
     if args.summary:
